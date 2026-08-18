@@ -1,0 +1,57 @@
+# Render Blueprint - provisions the whole stack in one "New Blueprint" import:
+# a Postgres database, the Express/Prisma API, and the Expo web build as a
+# static site. See DEPLOY.md for the one-time manual steps (create the
+# Render account, connect GitHub, import this blueprint).
+#
+# Free-tier notes (flagged here so they're not a surprise later):
+#   - pestapp-db (free Postgres) expires 30 days after creation unless
+#     upgraded to a paid plan. Fine for a review/demo period, not for
+#     anything long-lived.
+#   - pestapp-backend has no persistent disk on the free plan, so uploaded
+#     photos/site-map images/PDF reports are stored on ephemeral local disk
+#     and are lost whenever the service restarts or redeploys (including the
+#     automatic spin-down after 15 min of inactivity on the free plan).
+#     Upgrading pestapp-backend to a paid instance type unlocks attaching a
+#     Render Disk for real persistence - ask if you want that wired in.
+#   - pestapp-web (static site) is free on Render regardless of plan.
+
+databases:
+  - name: pestapp-db
+    plan: free
+    databaseName: pestapp
+    user: pestapp
+
+services:
+  - type: web
+    name: pestapp-backend
+    runtime: node
+    plan: free
+    rootDir: .
+    buildCommand: npm install && npm run prisma:generate -w backend
+    startCommand: npm run prisma:migrate:deploy -w backend && npm run start -w backend
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pestapp-db
+          property: connectionString
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: STORAGE_DIR
+        value: ./storage
+      - key: PORT
+        value: 4000
+
+  - type: static
+    name: pestapp-web
+    rootDir: .
+    buildCommand: npm install && EXPO_PUBLIC_API_URL=https://$RENDER_BACKEND_HOST npm run build:web -w mobile
+    staticPublishPath: mobile/dist
+    envVars:
+      - key: RENDER_BACKEND_HOST
+        fromService:
+          type: web
+          name: pestapp-backend
+          property: host

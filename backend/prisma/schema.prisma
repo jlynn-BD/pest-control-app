@@ -1,0 +1,501 @@
+// Pest Control Inspection App - backend data model
+//
+// Provider is Postgres (moved from the original zero-install SQLite dev
+// setup for real deployment - Postgres survives redeploys/restarts, SQLite
+// on most hosts' ephemeral filesystem doesn't). "Enum-like" fields are still
+// modeled as String rather than native Postgres enums so the schema stays
+// portable and matches shared/src/enums (validated at the API boundary with
+// zod) without a second source of truth.
+//
+// All syncable models carry createdAt/updatedAt/deletedAt: updatedAt drives
+// last-write-wins conflict resolution, deletedAt is a soft-delete tombstone
+// so the mobile sync pull can propagate deletions.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id
+  email         String   @unique
+  passwordHash  String
+  firstName     String
+  lastName      String
+  role          String // ADMIN | OFFICE | TECHNICIAN
+  phone         String?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  refreshTokens        RefreshToken[]
+  technicianAppointments Appointment[]      @relation("AppointmentTechnician")
+  createdAppointments  Appointment[]      @relation("AppointmentCreatedBy")
+  technicianInspections Inspection[]
+  technicianTreatments TreatmentRecord[]
+  signaturesAsUser     Signature[]
+  generatedReports     Report[]
+  ownedRecommendations Recommendation[]
+  createdEstimates     Estimate[]
+}
+
+model RefreshToken {
+  id        String    @id
+  userId    String
+  tokenHash String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Customer {
+  id                  String    @id
+  type                String // RESIDENTIAL | COMMERCIAL
+  name                String
+  email               String?
+  phone               String?
+  billingAddressLine1 String?
+  billingAddressLine2 String?
+  city                String?
+  state               String?
+  postalCode          String?
+  country             String?
+  notes               String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  deletedAt           DateTime?
+
+  contacts     Contact[]
+  properties   Property[]
+  appointments Appointment[]
+  inspections  Inspection[]
+  estimates    Estimate[]
+}
+
+model Contact {
+  id         String    @id
+  customerId String
+  firstName  String
+  lastName   String
+  role       String?
+  email      String?
+  phone      String?
+  isPrimary  Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  customer                Customer         @relation(fields: [customerId], references: [id])
+  ownedRecommendations    Recommendation[]
+  approvedTreatments      TreatmentRecord[]
+  signaturesAsContact     Signature[]
+
+  @@index([customerId])
+}
+
+model Property {
+  id             String    @id
+  customerId     String
+  label          String?
+  addressLine1   String
+  addressLine2   String?
+  city           String
+  state          String
+  postalCode     String
+  country        String    @default("US")
+  lat            Float?
+  lng            Float?
+  propertyType   String // RESIDENTIAL_SINGLE | RESIDENTIAL_MULTI | COMMERCIAL | INDUSTRIAL | OTHER
+  squareFootage  Int?
+  yearBuilt      Int?
+  accessNotes    String?
+  notes          String?
+  siteMapImageUrl   String?
+  siteMapSketch     String? // JSON-encoded { lines: {x1,y1,x2,y2}[], labels: {x,y,text}[] }, normalized 0-1 coords
+  siteMapUpdatedAt  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  customer          Customer           @relation(fields: [customerId], references: [id])
+  inspections       Inspection[]
+  appointments      Appointment[]
+  monitoringDevices MonitoringDevice[]
+  estimates         Estimate[]
+
+  @@index([customerId])
+}
+
+model InspectionTemplate {
+  id          String   @id
+  name        String
+  description String?
+  pestCategory String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sections    TemplateSection[]
+  inspections Inspection[]
+}
+
+model TemplateSection {
+  id         String @id
+  templateId String
+  name       String
+  category   String @default("OTHER") // EXTERIOR | INTERIOR | OTHER - groups sections into the exterior/interior checklists
+  sortOrder  Int    @default(0)
+
+  template InspectionTemplate @relation(fields: [templateId], references: [id])
+  items    TemplateItem[]
+
+  @@index([templateId])
+}
+
+model TemplateItem {
+  id        String  @id
+  sectionId String
+  prompt    String
+  itemType  String // CHECKBOX | TEXT | NUMBER | PHOTO | PEST_FINDING
+  sortOrder Int     @default(0)
+  required  Boolean @default(false)
+
+  section             TemplateSection     @relation(fields: [sectionId], references: [id])
+  checklistResponses  ChecklistResponse[]
+
+  @@index([sectionId])
+}
+
+model ChecklistResponse {
+  id             String    @id
+  inspectionId   String
+  templateItemId String
+  status         String // SATISFACTORY | NEEDS_ATTENTION | NOT_APPLICABLE
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  inspection   Inspection   @relation(fields: [inspectionId], references: [id])
+  templateItem TemplateItem @relation(fields: [templateItemId], references: [id])
+
+  @@unique([inspectionId, templateItemId])
+  @@index([inspectionId])
+}
+
+model Appointment {
+  id               String    @id
+  propertyId       String
+  customerId       String
+  technicianId     String
+  inspectionId     String?   @unique
+  type             String // INITIAL_INSPECTION | FOLLOWUP_INSPECTION | TREATMENT | OTHER
+  scheduledStart   DateTime
+  scheduledEnd     DateTime?
+  status           String    @default("SCHEDULED") // SCHEDULED | CONFIRMED | IN_PROGRESS | COMPLETED | CANCELED | NO_SHOW
+  notes            String?
+  createdByUserId  String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  property    Property   @relation(fields: [propertyId], references: [id])
+  customer    Customer   @relation(fields: [customerId], references: [id])
+  technician  User       @relation("AppointmentTechnician", fields: [technicianId], references: [id])
+  createdBy   User       @relation("AppointmentCreatedBy", fields: [createdByUserId], references: [id])
+  inspection  Inspection? @relation(fields: [inspectionId], references: [id])
+
+  @@index([propertyId])
+  @@index([technicianId])
+  @@index([scheduledStart])
+}
+
+model Inspection {
+  id                 String    @id
+  propertyId         String
+  customerId         String
+  templateId         String?
+  technicianId       String
+  appointmentId      String?   @unique
+  status             String    @default("SCHEDULED") // SCHEDULED | IN_PROGRESS | COMPLETED | CANCELED
+  scheduledAt        DateTime?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  generalNotes       String?
+  weatherConditions  String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deletedAt          DateTime?
+
+  property        Property             @relation(fields: [propertyId], references: [id])
+  customer        Customer             @relation(fields: [customerId], references: [id])
+  template        InspectionTemplate?  @relation(fields: [templateId], references: [id])
+  technician      User                 @relation(fields: [technicianId], references: [id])
+  appointment     Appointment?         @relation
+
+  findings           Finding[]
+  recommendations    Recommendation[]
+  treatmentRecords   TreatmentRecord[]
+  signatures         Signature[]
+  report             Report?
+  followUpsFrom      FollowUp[]          @relation("FollowUpSource")
+  followUpFor        FollowUp?           @relation("FollowUpInspection")
+  checklistResponses ChecklistResponse[]
+  estimates          Estimate[]
+
+  @@index([propertyId])
+  @@index([technicianId])
+  @@index([status])
+}
+
+model PestType {
+  id       String  @id
+  name     String  @unique
+  category String?
+  active   Boolean @default(true)
+
+  findings Finding[]
+}
+
+model Finding {
+  id             String    @id
+  inspectionId   String
+  pestTypeId     String?
+  pestTypeOther  String?
+  areaLocation   String
+  locationDetail String?
+  evidenceTypes  String // JSON-encoded string[]
+  severity       String // LOW | MEDIUM | HIGH | CRITICAL
+  riskFactors    String // JSON-encoded string[]
+  entryPoints    String? // JSON-encoded string[]
+  description    String?
+  lat            Float?
+  lng            Float?
+  floorPlanX          Float? // site map arrow head (target location), normalized 0-1 within the property's site map image
+  floorPlanY          Float? // site map arrow head (target location), normalized 0-1 within the property's site map image
+  siteMapArrowStartX  Float? // site map arrow tail (label anchor), normalized 0-1; null means this finding isn't placed on the site map
+  siteMapArrowStartY  Float?
+  deviceId       String? // v1.1 door-open
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  inspection      Inspection        @relation(fields: [inspectionId], references: [id])
+  pestType        PestType?         @relation(fields: [pestTypeId], references: [id])
+  device          MonitoringDevice? @relation(fields: [deviceId], references: [id])
+  photos          FindingPhoto[]
+  recommendations Recommendation[]
+  treatmentRecords TreatmentRecord[]
+
+  @@index([inspectionId])
+}
+
+model FindingPhoto {
+  id        String   @id
+  findingId String
+  fileUrl   String
+  caption   String?
+  takenAt   DateTime?
+  lat       Float?
+  lng       Float?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  finding Finding @relation(fields: [findingId], references: [id])
+
+  @@index([findingId])
+}
+
+model Recommendation {
+  id                   String    @id
+  inspectionId         String
+  findingId            String?
+  title                String
+  description          String?
+  priority             String // LOW | MEDIUM | HIGH | URGENT
+  ownerType            String // CUSTOMER | TECHNICIAN | THIRD_PARTY
+  ownerUserId          String?
+  ownerContactId       String?
+  deadline             DateTime?
+  status               String    @default("OPEN") // OPEN | IN_PROGRESS | COMPLETED | VERIFIED | WONT_FIX
+  completedAt          DateTime?
+  verifiedAt           DateTime?
+  verifiedByFollowUpId String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  deletedAt            DateTime?
+
+  inspection Inspection @relation(fields: [inspectionId], references: [id])
+  finding    Finding?   @relation(fields: [findingId], references: [id])
+  ownerUser  User?      @relation(fields: [ownerUserId], references: [id])
+  ownerContact Contact? @relation(fields: [ownerContactId], references: [id])
+
+  @@index([inspectionId])
+  @@index([status])
+}
+
+model TreatmentRecord {
+  id                 String    @id
+  inspectionId       String
+  findingId          String?
+  technicianId       String
+  method             String
+  targetPest         String?
+  areaTreated        String?
+  appliedAt          DateTime
+  safetyInstructions String?
+  notes              String?
+  approvalStatus     String    @default("PENDING") // PENDING | APPROVED | DECLINED
+  approvedByContactId String?
+  approvedAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deletedAt          DateTime?
+
+  inspection      Inspection        @relation(fields: [inspectionId], references: [id])
+  finding         Finding?          @relation(fields: [findingId], references: [id])
+  technician      User              @relation(fields: [technicianId], references: [id])
+  approvedByContact Contact?        @relation(fields: [approvedByContactId], references: [id])
+  products        TreatmentProduct[]
+
+  @@index([inspectionId])
+}
+
+model TreatmentProduct {
+  id                    String   @id
+  treatmentRecordId     String
+  productName           String
+  epaRegistrationNumber String?
+  activeIngredient      String?
+  quantity              Float
+  unit                  String
+  concentration         String?
+  applicationMethod     String?
+  createdAt             DateTime @default(now())
+
+  treatmentRecord TreatmentRecord @relation(fields: [treatmentRecordId], references: [id])
+
+  @@index([treatmentRecordId])
+}
+
+model Signature {
+  id              String   @id
+  inspectionId    String
+  signerType      String // CUSTOMER | TECHNICIAN
+  signerName      String
+  signerContactId String?
+  signerUserId    String?
+  imageUrl        String
+  signedAt        DateTime
+  createdAt       DateTime @default(now())
+
+  inspection    Inspection @relation(fields: [inspectionId], references: [id])
+  signerContact Contact?   @relation(fields: [signerContactId], references: [id])
+  signerUser    User?      @relation(fields: [signerUserId], references: [id])
+
+  @@index([inspectionId])
+}
+
+model Report {
+  id                 String   @id
+  inspectionId       String   @unique
+  pdfUrl             String
+  generatedAt        DateTime @default(now())
+  generatedByUserId  String
+  followUpDate       DateTime?
+  version            Int      @default(1)
+  createdAt          DateTime @default(now())
+
+  inspection    Inspection @relation(fields: [inspectionId], references: [id])
+  generatedBy   User       @relation(fields: [generatedByUserId], references: [id])
+}
+
+model FollowUp {
+  id                     String    @id
+  inspectionId           String
+  followUpInspectionId   String?   @unique
+  reason                 String?
+  scheduledDate          DateTime?
+  reminderSentAt         DateTime?
+  warrantyExpiresAt      DateTime?
+  correctiveActionStatus String    @default("PENDING") // PENDING | VERIFIED | FAILED | NOT_APPLICABLE
+  status                 String    @default("SCHEDULED") // SCHEDULED | COMPLETED | CANCELED
+  notes                  String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  deletedAt              DateTime?
+
+  inspection         Inspection  @relation("FollowUpSource", fields: [inspectionId], references: [id])
+  followUpInspection Inspection? @relation("FollowUpInspection", fields: [followUpInspectionId], references: [id])
+
+  @@index([inspectionId])
+}
+
+// v1.1 door-open: trap/bait-station/sensor tracking. Table + nullable FK
+// from Finding included now so this doesn't require a breaking migration
+// later; no API/UI ships for it in v1.
+model MonitoringDevice {
+  id          String    @id
+  propertyId  String
+  deviceType  String // TRAP | BAIT_STATION | SENSOR
+  label       String
+  lat         Float?
+  lng         Float?
+  installedAt DateTime?
+  status      String    @default("ACTIVE") // ACTIVE | INACTIVE | REMOVED
+  notes       String?
+
+  property Property  @relation(fields: [propertyId], references: [id])
+  findings Finding[]
+
+  @@index([propertyId])
+}
+
+model Estimate {
+  id              String    @id
+  inspectionId    String?
+  customerId      String
+  propertyId      String
+  createdByUserId String
+  status          String    @default("DRAFT") // DRAFT | SENT | APPROVED | DECLINED | EXPIRED
+  subtotal        Float     @default(0)
+  taxRate         Float     @default(0)
+  taxAmount       Float     @default(0)
+  total           Float     @default(0)
+  notes           String?
+  validUntil      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  inspection Inspection?        @relation(fields: [inspectionId], references: [id])
+  customer   Customer           @relation(fields: [customerId], references: [id])
+  property   Property           @relation(fields: [propertyId], references: [id])
+  createdBy  User               @relation(fields: [createdByUserId], references: [id])
+  lineItems  EstimateLineItem[]
+
+  @@index([customerId])
+  @@index([inspectionId])
+}
+
+model EstimateLineItem {
+  id          String @id
+  estimateId  String
+  description String
+  quantity    Float  @default(1)
+  unitPrice   Float  @default(0)
+  amount      Float
+  sortOrder   Int    @default(0)
+
+  estimate Estimate @relation(fields: [estimateId], references: [id])
+
+  @@index([estimateId])
+}

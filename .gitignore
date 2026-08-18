@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+.expo/
+.expo-shared/
+web-build/
+*.log
+.DS_Store
+backend/storage/
+backend/prisma/dev.db
+backend/prisma/dev.db-journal
+.env
+.env.local
+*.tsbuildinfo
