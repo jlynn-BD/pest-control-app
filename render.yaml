@@ -44,8 +44,9 @@ services:
       - key: PORT
         value: 4000
 
-staticSites:
-  - name: pestapp-web
+  - type: web
+    name: pestapp-web
+    runtime: static
     rootDir: .
     buildCommand: npm install && EXPO_PUBLIC_API_URL=https://$RENDER_BACKEND_HOST npm run build:web -w mobile
     staticPublishPath: mobile/dist
