@@ -6,7 +6,7 @@ import { prisma } from "../../lib/prisma";
 import { storage } from "../../lib/storage";
 import { asyncHandler, HttpError } from "../../middleware/error-handler";
 import { requireAuth } from "../../middleware/auth";
-import { InspectionReportDocument, ReportData } from "./pdfTemplate";
+import { InspectionReportDocument, ReportData, ReportSiteMapLabel, ReportSiteMapLine } from "./pdfTemplate";
 
 export const reportsRouter = Router();
 reportsRouter.use(requireAuth);
@@ -54,33 +54,47 @@ async function buildReportData(inspectionId: string): Promise<ReportData> {
   const placedFindings = inspection.findings.filter(
     (f) => f.floorPlanX != null && f.floorPlanY != null && f.siteMapArrowStartX != null && f.siteMapArrowStartY != null
   );
-  let sketch: { lines: { x1: number; y1: number; x2: number; y2: number }[]; labels: { x: number; y: number; text: string }[] } = {
-    lines: [],
-    labels: [],
-  };
-  if (inspection.property.siteMapSketch) {
+  const toArrow = (f: (typeof placedFindings)[number]) => ({
+    startX: f.siteMapArrowStartX!,
+    startY: f.siteMapArrowStartY!,
+    endX: f.floorPlanX!,
+    endY: f.floorPlanY!,
+    label: f.areaLocation,
+    severity: f.severity,
+  });
+
+  // Photo mode (one flat uploaded image) and grid/sketch mode (technician-
+  // drawn, split into levels since a flat drawing can't show a multi-story
+  // structure) are mutually exclusive per property - see SiteMapScreen.
+  let siteMapPanels: ReportData["siteMapPanels"] = [];
+  if (inspection.property.siteMapImageUrl) {
+    siteMapPanels = [
+      {
+        title: "Site Map",
+        imagePath: mediaUrlToAbsolutePath(inspection.property.siteMapImageUrl),
+        lines: [],
+        labels: [],
+        arrows: placedFindings.map(toArrow),
+      },
+    ];
+  } else if (inspection.property.siteMapSketch) {
+    let sketch: { levels: { id: string; name: string; sortOrder: number; lines: unknown[]; labels: unknown[] }[] } = { levels: [] };
     try {
       sketch = JSON.parse(inspection.property.siteMapSketch);
     } catch {
       // Malformed sketch JSON shouldn't block report generation - render without it.
     }
+    siteMapPanels = [...sketch.levels]
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((level) => ({
+        title: `Site Map — ${level.name}`,
+        imagePath: null,
+        lines: level.lines as ReportSiteMapLine[],
+        labels: level.labels as ReportSiteMapLabel[],
+        arrows: placedFindings.filter((f) => f.siteMapLevel === level.id).map(toArrow),
+      }))
+      .filter((panel) => panel.lines.length > 0 || panel.labels.length > 0 || panel.arrows.length > 0);
   }
-  const hasSiteMapContent = Boolean(inspection.property.siteMapImageUrl) || sketch.lines.length > 0 || placedFindings.length > 0;
-  const siteMap = hasSiteMapContent
-    ? {
-        imagePath: inspection.property.siteMapImageUrl ? mediaUrlToAbsolutePath(inspection.property.siteMapImageUrl) : null,
-        lines: sketch.lines,
-        labels: sketch.labels,
-        arrows: placedFindings.map((f) => ({
-          startX: f.siteMapArrowStartX!,
-          startY: f.siteMapArrowStartY!,
-          endX: f.floorPlanX!,
-          endY: f.floorPlanY!,
-          label: f.areaLocation,
-          severity: f.severity,
-        })),
-      }
-    : null;
 
   return {
     inspectionId: inspection.id,
@@ -93,7 +107,7 @@ async function buildReportData(inspectionId: string): Promise<ReportData> {
     generalNotes: inspection.generalNotes,
     generatedAt: new Date().toISOString(),
     followUpDate: inspection.followUpsFrom[0]?.scheduledDate?.toISOString() ?? null,
-    siteMap,
+    siteMapPanels,
     checklistSections,
     findings: inspection.findings.map((f) => ({
       areaLocation: f.areaLocation,

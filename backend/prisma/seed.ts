@@ -210,24 +210,47 @@ async function main() {
 
   // Give the property a structure sketch (grid + house outline + nameplate
   // labels, no photo needed) so the demo inspection's site map isn't blank.
+  // Split into levels - Exterior plus a lighter Attic sketch - to show off
+  // the per-level feature rather than a single flat drawing.
+  const EXTERIOR_LEVEL_ID = "seed-level-exterior";
+  const ATTIC_LEVEL_ID = "seed-level-attic";
   if (!property.siteMapSketch) {
     await prisma.property.update({
       where: { id: property.id },
       data: {
         siteMapSketch: JSON.stringify({
-          lines: [
-            { x1: 0.28, y1: 0.3, x2: 0.63, y2: 0.3 },
-            { x1: 0.63, y1: 0.3, x2: 0.63, y2: 0.62 },
-            { x1: 0.63, y1: 0.62, x2: 0.44, y2: 0.62 },
-            { x1: 0.28, y1: 0.3, x2: 0.28, y2: 0.62 },
-            { x1: 0.28, y1: 0.62, x2: 0.38, y2: 0.62 },
-            { x1: 0.38, y1: 0.55, x2: 0.38, y2: 0.62 },
-            { x1: 0.38, y1: 0.55, x2: 0.44, y2: 0.55 },
-            { x1: 0.44, y1: 0.55, x2: 0.44, y2: 0.62 },
-          ],
-          labels: [
-            { x: 0.52, y: 0.56, text: "Garage" },
-            { x: 0.39, y: 0.57, text: "Porch" },
+          levels: [
+            {
+              id: EXTERIOR_LEVEL_ID,
+              name: "Exterior",
+              sortOrder: 0,
+              lines: [
+                { x1: 0.28, y1: 0.3, x2: 0.63, y2: 0.3 },
+                { x1: 0.63, y1: 0.3, x2: 0.63, y2: 0.62 },
+                { x1: 0.63, y1: 0.62, x2: 0.44, y2: 0.62 },
+                { x1: 0.28, y1: 0.3, x2: 0.28, y2: 0.62 },
+                { x1: 0.28, y1: 0.62, x2: 0.38, y2: 0.62 },
+                { x1: 0.38, y1: 0.55, x2: 0.38, y2: 0.62 },
+                { x1: 0.38, y1: 0.55, x2: 0.44, y2: 0.55 },
+                { x1: 0.44, y1: 0.55, x2: 0.44, y2: 0.62 },
+              ],
+              labels: [
+                { x: 0.52, y: 0.56, text: "Garage" },
+                { x: 0.39, y: 0.57, text: "Porch" },
+              ],
+            },
+            {
+              id: ATTIC_LEVEL_ID,
+              name: "Attic",
+              sortOrder: 1,
+              lines: [
+                { x1: 0.3, y1: 0.35, x2: 0.6, y2: 0.35 },
+                { x1: 0.6, y1: 0.35, x2: 0.6, y2: 0.6 },
+                { x1: 0.6, y1: 0.6, x2: 0.3, y2: 0.6 },
+                { x1: 0.3, y1: 0.6, x2: 0.3, y2: 0.35 },
+              ],
+              labels: [{ x: 0.38, y: 0.45, text: "Attic access" }],
+            },
           ],
         }),
         siteMapUpdatedAt: new Date(),
@@ -289,6 +312,7 @@ async function main() {
         floorPlanY: 0.5,
         siteMapArrowStartX: 0.8,
         siteMapArrowStartY: 0.42,
+        siteMapLevel: EXTERIOR_LEVEL_ID,
       },
     });
 

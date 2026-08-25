@@ -21,15 +21,22 @@ export interface Line {
 }
 
 // Graph-paper grid for properties without an uploaded photo, in pixel space
-// (width/height of the canvas) - matches the backend's normalized-space
-// version used for the PDF, just scaled for on-screen rendering.
-export function gridLines(width: number, height: number, divisions = 10): Line[] {
-  const lines: Line[] = [];
-  for (let i = 1; i < divisions; i++) {
-    const x = (i / divisions) * width;
-    const y = (i / divisions) * height;
-    lines.push({ x1: x, y1: 0, x2: x, y2: height });
-    lines.push({ x1: 0, y1: y, x2: width, y2: y });
+// (width/height of the canvas). Same 40-minor / every-5th-major proportions
+// as the PDF's 13.5pt/67.5pt print grid (see pdfTemplate.tsx), just scaled
+// to whatever size the canvas actually renders at on screen instead of a
+// fixed physical page size.
+const GRID_MINOR_DIVISIONS = 40;
+const GRID_MAJOR_EVERY = 5;
+
+export function gridLines(width: number, height: number): { minor: Line[]; major: Line[] } {
+  const minor: Line[] = [];
+  const major: Line[] = [];
+  for (let i = 1; i < GRID_MINOR_DIVISIONS; i++) {
+    const x = (i / GRID_MINOR_DIVISIONS) * width;
+    const y = (i / GRID_MINOR_DIVISIONS) * height;
+    const bucket = i % GRID_MAJOR_EVERY === 0 ? major : minor;
+    bucket.push({ x1: x, y1: 0, x2: x, y2: height });
+    bucket.push({ x1: 0, y1: y, x2: width, y2: y });
   }
-  return lines;
+  return { minor, major };
 }

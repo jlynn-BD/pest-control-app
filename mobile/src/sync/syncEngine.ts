@@ -80,6 +80,7 @@ function findingToChange(f: LocalFinding): SyncChangePayload {
       floorPlanY: f.floorPlanY,
       siteMapArrowStartX: f.siteMapArrowStartX,
       siteMapArrowStartY: f.siteMapArrowStartY,
+      siteMapLevel: f.siteMapLevel,
     },
   };
 }

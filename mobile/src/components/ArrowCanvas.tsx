@@ -143,9 +143,19 @@ export function SiteMapCanvas({
       {size.width > 0 ? (
         <Svg width={size.width} height={size.height} style={StyleSheet.absoluteFill} pointerEvents="none">
           {!imageUri
-            ? gridLines(size.width, size.height).map((g, i) => (
-                <SvgLine key={`grid-${i}`} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke="#D5DBD8" strokeWidth={1} />
-              ))
+            ? (() => {
+                const grid = gridLines(size.width, size.height);
+                return (
+                  <>
+                    {grid.minor.map((g, i) => (
+                      <SvgLine key={`grid-minor-${i}`} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke="#E1E6E3" strokeWidth={0.75} />
+                    ))}
+                    {grid.major.map((g, i) => (
+                      <SvgLine key={`grid-major-${i}`} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke="#B9C2BD" strokeWidth={1.25} />
+                    ))}
+                  </>
+                );
+              })()
             : null}
           {savedLines.map((l, i) => (
             <SvgLine

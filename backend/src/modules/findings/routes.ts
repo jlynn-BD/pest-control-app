@@ -35,6 +35,7 @@ const findingSchema = z.object({
   floorPlanY: z.number().min(0).max(1).optional().nullable(),
   siteMapArrowStartX: z.number().min(0).max(1).optional().nullable(),
   siteMapArrowStartY: z.number().min(0).max(1).optional().nullable(),
+  siteMapLevel: z.string().optional().nullable(),
 });
 
 // Mounted at /api/inspections/:inspectionId/findings
@@ -76,6 +77,7 @@ findingsOnInspectionRouter.post(
         floorPlanY: body.floorPlanY,
         siteMapArrowStartX: body.siteMapArrowStartX,
         siteMapArrowStartY: body.siteMapArrowStartY,
+        siteMapLevel: body.siteMapLevel,
       },
       include: { photos: true, pestType: true },
     });

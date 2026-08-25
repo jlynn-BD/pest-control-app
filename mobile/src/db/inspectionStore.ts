@@ -152,6 +152,7 @@ export interface NewFindingInput {
   floorPlanY?: number | null;
   siteMapArrowStartX?: number | null;
   siteMapArrowStartY?: number | null;
+  siteMapLevel?: string | null;
 }
 
 export function addLocalFinding(inspectionId: string, input: NewFindingInput): LocalFinding {
@@ -175,13 +176,14 @@ export function addLocalFinding(inspectionId: string, input: NewFindingInput): L
     floorPlanY: input.floorPlanY ?? null,
     siteMapArrowStartX: input.siteMapArrowStartX ?? null,
     siteMapArrowStartY: input.siteMapArrowStartY ?? null,
+    siteMapLevel: input.siteMapLevel ?? null,
     createdAt: now,
     updatedAt: now,
     syncStatus: "pending",
   };
   db.runSync(
-    `INSERT INTO findings (id, inspectionId, pestTypeId, pestTypeOther, areaLocation, locationDetail, evidenceTypes, severity, riskFactors, entryPoints, description, lat, lng, floorPlanX, floorPlanY, siteMapArrowStartX, siteMapArrowStartY, createdAt, updatedAt, syncStatus)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO findings (id, inspectionId, pestTypeId, pestTypeOther, areaLocation, locationDetail, evidenceTypes, severity, riskFactors, entryPoints, description, lat, lng, floorPlanX, floorPlanY, siteMapArrowStartX, siteMapArrowStartY, siteMapLevel, createdAt, updatedAt, syncStatus)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       finding.id,
       finding.inspectionId,
@@ -200,6 +202,7 @@ export function addLocalFinding(inspectionId: string, input: NewFindingInput): L
       finding.floorPlanY,
       finding.siteMapArrowStartX,
       finding.siteMapArrowStartY,
+      finding.siteMapLevel,
       finding.createdAt,
       finding.updatedAt,
       finding.syncStatus,

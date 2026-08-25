@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS findings (
   id TEXT PRIMARY KEY, inspectionId TEXT, pestTypeId TEXT, pestTypeOther TEXT, areaLocation TEXT,
   locationDetail TEXT, evidenceTypes TEXT, severity TEXT, riskFactors TEXT, entryPoints TEXT,
   description TEXT, lat REAL, lng REAL,
-  floorPlanX REAL, floorPlanY REAL, siteMapArrowStartX REAL, siteMapArrowStartY REAL,
+  floorPlanX REAL, floorPlanY REAL, siteMapArrowStartX REAL, siteMapArrowStartY REAL, siteMapLevel TEXT,
   createdAt TEXT, updatedAt TEXT, syncStatus TEXT DEFAULT 'pending'
 );
 CREATE TABLE IF NOT EXISTS finding_photos (

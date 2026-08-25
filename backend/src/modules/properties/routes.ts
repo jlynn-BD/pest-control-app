@@ -122,14 +122,24 @@ propertiesRouter.post(
 );
 
 const siteMapSketchSchema = z.object({
-  lines: z.array(z.object({ x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number() })),
-  labels: z.array(z.object({ x: z.number(), y: z.number(), text: z.string().min(1) })),
+  levels: z.array(
+    z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      sortOrder: z.number().int(),
+      lines: z.array(z.object({ x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number() })),
+      labels: z.array(z.object({ x: z.number(), y: z.number(), text: z.string().min(1) })),
+    })
+  ),
 });
 
 // Freehand structure sketch (wall outlines + nameplate labels) drawn
-// directly in the app, as an alternative or complement to an uploaded
-// site-map photo - some properties never get a photographed diagram, just
-// a technician's own quick rectangle-and-arrows sketch of the building.
+// directly in the app, split into technician-defined levels (Exterior, 1st
+// Floor, ...) - as an alternative or complement to an uploaded site-map
+// photo, since some properties never get a photographed diagram, just a
+// technician's own quick rectangle-and-arrows sketch of the building. The
+// client always sends the full sketch (all levels), same replace-not-merge
+// semantics as before levels existed.
 propertiesRouter.patch(
   "/:id/site-map-sketch",
   asyncHandler(async (req, res) => {

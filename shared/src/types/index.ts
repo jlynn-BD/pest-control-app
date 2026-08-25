@@ -93,10 +93,28 @@ export interface SiteMapSketchLabel {
   text: string;
 }
 
-export interface SiteMapSketch {
+// A sketch is split into technician-defined levels (e.g. "Exterior", "1st
+// Floor", "2nd Floor", "Attic") since a single flat drawing can't represent
+// a multi-story structure - not every property has every level, so the
+// technician adds only the ones that apply rather than filling out a fixed
+// set. Only meaningful in grid/sketch mode; a property using an uploaded
+// photo as its site map instead has no levels.
+export interface SiteMapLevel {
+  id: string;
+  name: string;
+  sortOrder: number;
   lines: SiteMapSketchLine[];
   labels: SiteMapSketchLabel[];
 }
+
+export interface SiteMapSketch {
+  levels: SiteMapLevel[];
+}
+
+// Suggested level names shown to the technician when adding one - not
+// exhaustive, just the common cases so most inspections don't need to type
+// a custom name.
+export const SITE_MAP_LEVEL_SUGGESTIONS = ["Exterior", "1st Floor", "2nd Floor", "3rd Floor", "Attic", "Basement", "Crawlspace"] as const;
 
 export interface InspectionTemplate extends BaseEntity {
   name: string;
@@ -170,6 +188,7 @@ export interface Finding extends BaseEntity {
   floorPlanY?: number | null;
   siteMapArrowStartX?: number | null;
   siteMapArrowStartY?: number | null;
+  siteMapLevel?: string | null;
 }
 
 export interface FindingPhoto extends BaseEntity {

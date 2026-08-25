@@ -283,6 +283,7 @@ model Finding {
   floorPlanY          Float? // site map arrow head (target location), normalized 0-1 within the property's site map image
   siteMapArrowStartX  Float? // site map arrow tail (label anchor), normalized 0-1; null means this finding isn't placed on the site map
   siteMapArrowStartY  Float?
+  siteMapLevel        String? // id of the SiteMapSketch level (see Property.siteMapSketch) this arrow was drawn on - only meaningful in grid/sketch mode, not photo mode
   deviceId       String? // v1.1 door-open
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt

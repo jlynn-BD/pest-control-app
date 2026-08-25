@@ -4,9 +4,9 @@ import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getCachedCustomer, getCachedProperty, getCachedTemplateSections } from "../../db/cache";
 import { getLocalInspectionDetail } from "../../db/inspectionStore";
 import { CHECKLIST_CATEGORY_LABEL, CHECKLIST_STATUS_LABEL, groupChecklistForDisplay } from "../../lib/checklist";
-import { parseSiteMapSketch } from "../../lib/siteMapSketch";
+import { buildSiteMapPanels, parseSiteMapSketch } from "../../lib/siteMapSketch";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
-import { SiteMapArrow, SiteMapCanvas } from "../../components/ArrowCanvas";
+import { SiteMapCanvas } from "../../components/ArrowCanvas";
 import { Badge, Card, colors } from "../../components/ui";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "LocalInspectionDetail">;
@@ -22,18 +22,8 @@ export default function LocalInspectionDetailScreen({ route }: Props) {
   const templateSections = detail.inspection.templateId ? getCachedTemplateSections(detail.inspection.templateId) : [];
   const checklistSections = groupChecklistForDisplay(templateSections, detail.checklistResponses);
   const siteMapImageUri = property?.siteMapLocalUri || property?.siteMapImageUrl || null;
-  const siteMapArrows: SiteMapArrow[] = detail.findings
-    .filter((f) => f.floorPlanX != null && f.floorPlanY != null && f.siteMapArrowStartX != null && f.siteMapArrowStartY != null)
-    .map((f) => ({
-      id: f.id,
-      startX: f.siteMapArrowStartX!,
-      startY: f.siteMapArrowStartY!,
-      endX: f.floorPlanX!,
-      endY: f.floorPlanY!,
-      label: f.areaLocation,
-      severity: f.severity,
-    }));
   const siteMapSketch = parseSiteMapSketch(property?.siteMapSketchJson);
+  const siteMapPanels = buildSiteMapPanels(siteMapImageUri, siteMapSketch, detail.findings);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -48,18 +38,12 @@ export default function LocalInspectionDetailScreen({ route }: Props) {
         <Badge label="Stored on this device — not yet synced" tone="warning" />
       )}
 
-      {siteMapImageUri || siteMapSketch.lines.length > 0 || siteMapArrows.length > 0 ? (
-        <>
-          <Text style={styles.sectionTitle}>Site Map</Text>
-          <SiteMapCanvas
-            imageUri={siteMapImageUri}
-            arrows={siteMapArrows}
-            savedLines={siteMapSketch.lines}
-            labels={siteMapSketch.labels}
-            mode="view"
-          />
-        </>
-      ) : null}
+      {siteMapPanels.map((panel, i) => (
+        <View key={i}>
+          <Text style={styles.sectionTitle}>{panel.title}</Text>
+          <SiteMapCanvas imageUri={panel.imageUri} arrows={panel.arrows} savedLines={panel.lines} labels={panel.labels} mode="view" />
+        </View>
+      ))}
 
       {checklistSections.map((section) => (
         <View key={section.category}>

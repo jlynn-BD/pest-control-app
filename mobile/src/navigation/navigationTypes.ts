@@ -23,6 +23,7 @@ export type InspectionsStackParamList = {
     arrowStartY?: number;
     arrowEndX?: number;
     arrowEndY?: number;
+    arrowLevel?: string;
   };
   RecommendationForm: { inspectionId: string };
   TreatmentForm: { inspectionId: string };

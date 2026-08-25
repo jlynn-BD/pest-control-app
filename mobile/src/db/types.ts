@@ -88,6 +88,7 @@ export interface LocalFinding {
   floorPlanY: number | null;
   siteMapArrowStartX: number | null;
   siteMapArrowStartY: number | null;
+  siteMapLevel: string | null;
   createdAt: string;
   updatedAt: string;
   syncStatus: "pending" | "synced";

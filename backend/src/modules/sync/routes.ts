@@ -42,7 +42,7 @@ const ALLOWED_FIELDS: Record<string, string[]> = {
   Finding: [
     "inspectionId", "pestTypeId", "pestTypeOther", "areaLocation", "locationDetail",
     "evidenceTypes", "severity", "riskFactors", "entryPoints", "description", "lat", "lng",
-    "floorPlanX", "floorPlanY", "siteMapArrowStartX", "siteMapArrowStartY",
+    "floorPlanX", "floorPlanY", "siteMapArrowStartX", "siteMapArrowStartY", "siteMapLevel",
   ],
   Recommendation: [
     "inspectionId", "findingId", "title", "description", "priority", "ownerType",

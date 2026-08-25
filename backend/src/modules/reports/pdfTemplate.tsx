@@ -37,7 +37,10 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   checklistPrompt: { fontSize: 9.5, flexGrow: 1, flexBasis: "60%", paddingRight: 8 },
-  siteMapBox: { width: "100%", height: 260, position: "relative", borderWidth: 1, borderColor: "#E1E6E3", borderRadius: 6, overflow: "hidden", backgroundColor: "#FFFFFF" },
+  // Fixed at 540x540pt (7.5in x 7.5in at 72pt/in) to match a real printed
+  // quad-ruled sketch page, not stretched to fill the column - see
+  // gridLines() below for the 13.5pt minor / 67.5pt major square spacing.
+  siteMapBox: { width: 540, height: 540, position: "relative", borderWidth: 1, borderColor: "#E1E6E3", borderRadius: 4, overflow: "hidden", backgroundColor: "#FFFFFF" },
   siteMapImage: { position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover" },
   siteMapLabel: {
     position: "absolute",
@@ -111,14 +114,26 @@ function arrowHeadPoints(start: { x: number; y: number }, end: { x: number; y: n
 // Graph-paper background for properties with no uploaded photo, so a
 // freehand structure sketch (walls drawn straight in the app) still reads
 // as a deliberate diagram rather than lines floating on blank white.
-function gridLines(divisions = 10): { x1: number; y1: number; x2: number; y2: number }[] {
-  const lines: { x1: number; y1: number; x2: number; y2: number }[] = [];
-  for (let i = 1; i < divisions; i++) {
-    const t = i / divisions;
-    lines.push({ x1: t, y1: 0, x2: t, y2: 1 });
-    lines.push({ x1: 0, y1: t, x2: 1, y2: t });
+//
+// Matches a real printed quad-ruled sketch page: the siteMapBox is a fixed
+// 540x540pt (7.5in x 7.5in). Minor squares are 13.5pt (3/16in) - 40 per
+// side - with every 5th line drawn heavier to form 67.5pt (15/16in, ~0.94in)
+// major squares, 8 per side. Lines are computed here in the same 0-1
+// normalized space as everything else in the Svg (viewBox="0 0 1 1"), so
+// 1/40 and 1/8 stand in for 13.5pt and 67.5pt respectively.
+const GRID_MINOR_DIVISIONS = 40;
+const GRID_MAJOR_EVERY = 5; // every 5th minor line is a major line (40/5 = 8 major squares/side)
+
+function gridLines(): { minor: { x1: number; y1: number; x2: number; y2: number }[]; major: { x1: number; y1: number; x2: number; y2: number }[] } {
+  const minor: { x1: number; y1: number; x2: number; y2: number }[] = [];
+  const major: { x1: number; y1: number; x2: number; y2: number }[] = [];
+  for (let i = 1; i < GRID_MINOR_DIVISIONS; i++) {
+    const t = i / GRID_MINOR_DIVISIONS;
+    const bucket = i % GRID_MAJOR_EVERY === 0 ? major : minor;
+    bucket.push({ x1: t, y1: 0, x2: t, y2: 1 });
+    bucket.push({ x1: 0, y1: t, x2: 1, y2: t });
   }
-  return lines;
+  return { minor, major };
 }
 
 export interface ReportChecklistItem {
@@ -154,7 +169,10 @@ export interface ReportSiteMapLabel {
   text: string;
 }
 
-export interface ReportSiteMap {
+// One per level in sketch mode ("Site Map — Exterior", "Site Map — 1st
+// Floor", ...), or a single panel titled "Site Map" in photo mode.
+export interface ReportSiteMapPanel {
+  title: string;
   imagePath: string | null;
   lines: ReportSiteMapLine[];
   labels: ReportSiteMapLabel[];
@@ -208,7 +226,7 @@ export interface ReportData {
   generalNotes: string | null;
   generatedAt: string;
   followUpDate: string | null;
-  siteMap: ReportSiteMap | null;
+  siteMapPanels: ReportSiteMapPanel[];
   checklistSections: ReportChecklistSection[];
   findings: ReportFinding[];
   recommendations: ReportRecommendation[];
@@ -256,59 +274,69 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
           ) : null}
         </View>
 
-        {data.siteMap ? (
-          <View style={styles.section} wrap={false}>
-            <Text style={styles.sectionTitle}>Site Map</Text>
-            <View style={styles.siteMapBox}>
-              {data.siteMap.imagePath ? <Image src={data.siteMap.imagePath} style={styles.siteMapImage} /> : null}
-              <Svg width="100%" height="100%" viewBox="0 0 1 1" preserveAspectRatio="none" style={{ position: "absolute", top: 0, left: 0 }}>
-                {!data.siteMap.imagePath
-                  ? gridLines().map((g, i) => <Line key={`grid-${i}`} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke="#DCE2DF" strokeWidth={0.002} />)
-                  : null}
-                {data.siteMap.lines.map((l, i) => (
-                  <Line key={`wall-${i}`} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke="#1A2421" strokeWidth={0.008} />
+        {data.siteMapPanels.map((panel, pi) => {
+          const grid = gridLines();
+          return (
+            <View style={styles.section} key={`site-map-${pi}`} wrap={false}>
+              <Text style={styles.sectionTitle}>{panel.title}</Text>
+              <View style={styles.siteMapBox}>
+                {panel.imagePath ? <Image src={panel.imagePath} style={styles.siteMapImage} /> : null}
+                <Svg width="100%" height="100%" viewBox="0 0 1 1" preserveAspectRatio="none" style={{ position: "absolute", top: 0, left: 0 }}>
+                  {!panel.imagePath ? (
+                    <>
+                      {grid.minor.map((g, i) => (
+                        <Line key={`grid-minor-${i}`} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke="#E1E6E3" strokeWidth={0.0007} />
+                      ))}
+                      {grid.major.map((g, i) => (
+                        <Line key={`grid-major-${i}`} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke="#B9C2BD" strokeWidth={0.0016} />
+                      ))}
+                    </>
+                  ) : null}
+                  {panel.lines.map((l, i) => (
+                    <Line key={`wall-${i}`} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke="#1A2421" strokeWidth={0.008} />
+                  ))}
+                  {panel.arrows.map((a, i) => {
+                    const start = { x: a.startX, y: a.startY };
+                    const end = { x: a.endX, y: a.endY };
+                    const color = SEVERITY_ARROW_COLOR[a.severity] ?? "#1A2421";
+                    return (
+                      <React.Fragment key={`arrow-${i}`}>
+                        <Line x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke={color} strokeWidth={0.006} />
+                        <Polygon points={arrowHeadPoints(start, end)} fill={color} />
+                      </React.Fragment>
+                    );
+                  })}
+                </Svg>
+                {panel.labels.map((l, i) => (
+                  <Text
+                    key={`structure-label-${i}`}
+                    style={[
+                      styles.siteMapStructureLabel,
+                      { left: `${Math.min(Math.max(l.x * 100 - 5, 1), 85)}%`, top: `${Math.min(Math.max(l.y * 100 - 3, 1), 94)}%` },
+                    ]}
+                  >
+                    {l.text}
+                  </Text>
                 ))}
-                {data.siteMap.arrows.map((a, i) => {
-                  const start = { x: a.startX, y: a.startY };
-                  const end = { x: a.endX, y: a.endY };
-                  const color = SEVERITY_ARROW_COLOR[a.severity] ?? "#1A2421";
-                  return (
-                    <React.Fragment key={`arrow-${i}`}>
-                      <Line x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke={color} strokeWidth={0.006} />
-                      <Polygon points={arrowHeadPoints(start, end)} fill={color} />
-                    </React.Fragment>
-                  );
-                })}
-              </Svg>
-              {data.siteMap.labels.map((l, i) => (
-                <Text
-                  key={`structure-label-${i}`}
-                  style={[
-                    styles.siteMapStructureLabel,
-                    { left: `${Math.min(Math.max(l.x * 100 - 5, 1), 85)}%`, top: `${Math.min(Math.max(l.y * 100 - 3, 1), 94)}%` },
-                  ]}
-                >
-                  {l.text}
-                </Text>
-              ))}
-              {data.siteMap.arrows.map((a, i) => (
-                <Text
-                  key={`arrow-label-${i}`}
-                  style={[
-                    styles.siteMapLabel,
-                    {
-                      left: `${Math.min(Math.max(a.startX * 100 - 15, 1), 78)}%`,
-                      top: `${Math.min(Math.max(a.startY * 100 - 4, 1), 92)}%`,
-                      borderColor: SEVERITY_ARROW_COLOR[a.severity] ?? "#1A2421",
-                    },
-                  ]}
-                >
-                  {a.label}
-                </Text>
-              ))}
+                {panel.arrows.map((a, i) => (
+                  <Text
+                    key={`arrow-label-${i}`}
+                    style={[
+                      styles.siteMapLabel,
+                      {
+                        left: `${Math.min(Math.max(a.startX * 100 - 15, 1), 78)}%`,
+                        top: `${Math.min(Math.max(a.startY * 100 - 4, 1), 92)}%`,
+                        borderColor: SEVERITY_ARROW_COLOR[a.severity] ?? "#1A2421",
+                      },
+                    ]}
+                  >
+                    {a.label}
+                  </Text>
+                ))}
+              </View>
             </View>
-          </View>
-        ) : null}
+          );
+        })}
 
         {data.checklistSections.map((section, si) => (
           <View style={styles.section} key={si}>

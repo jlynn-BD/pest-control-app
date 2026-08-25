@@ -20,7 +20,7 @@ type Props = NativeStackScreenProps<InspectionsStackParamList, "FindingForm">;
 const SEVERITY_OPTIONS = [Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL];
 
 export default function FindingFormScreen({ route, navigation }: Props) {
-  const { inspectionId, arrowStartX, arrowStartY, arrowEndX, arrowEndY } = route.params;
+  const { inspectionId, arrowStartX, arrowStartY, arrowEndX, arrowEndY, arrowLevel } = route.params;
   const hasSiteMapPosition = arrowStartX != null && arrowStartY != null && arrowEndX != null && arrowEndY != null;
   const pestTypes = useMemo(() => getCachedPestTypes(), []);
 
@@ -71,6 +71,7 @@ export default function FindingFormScreen({ route, navigation }: Props) {
       floorPlanY: hasSiteMapPosition ? arrowEndY! : null,
       siteMapArrowStartX: hasSiteMapPosition ? arrowStartX! : null,
       siteMapArrowStartY: hasSiteMapPosition ? arrowStartY! : null,
+      siteMapLevel: hasSiteMapPosition ? arrowLevel ?? null : null,
     });
     photos.forEach((uri, index) => {
       addLocalFindingPhoto(finding.id, { localUri: uri, caption: null, lat: coords?.lat ?? null, lng: coords?.lng ?? null, sortOrder: index });
