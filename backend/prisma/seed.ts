@@ -214,7 +214,11 @@ async function main() {
   // the per-level feature rather than a single flat drawing.
   const EXTERIOR_LEVEL_ID = "seed-level-exterior";
   const ATTIC_LEVEL_ID = "seed-level-attic";
-  if (!property.siteMapSketch) {
+  // Treat pre-levels sketch data (the flat { lines, labels } shape this
+  // used before levels existed) as missing too, so an earlier deploy's seed
+  // run gets migrated instead of staying stuck in the old format forever.
+  const existingSketch = property.siteMapSketch ? JSON.parse(property.siteMapSketch) : null;
+  if (!existingSketch || !Array.isArray(existingSketch.levels)) {
     await prisma.property.update({
       where: { id: property.id },
       data: {

@@ -80,7 +80,11 @@ async function buildReportData(inspectionId: string): Promise<ReportData> {
   } else if (inspection.property.siteMapSketch) {
     let sketch: { levels: { id: string; name: string; sortOrder: number; lines: unknown[]; labels: unknown[] }[] } = { levels: [] };
     try {
-      sketch = JSON.parse(inspection.property.siteMapSketch);
+      const parsed = JSON.parse(inspection.property.siteMapSketch);
+      // Guards against pre-levels sketch JSON (the flat { lines, labels }
+      // shape this endpoint used before levels existed) - old data just
+      // renders no site map rather than crashing report generation.
+      if (Array.isArray(parsed?.levels)) sketch = parsed;
     } catch {
       // Malformed sketch JSON shouldn't block report generation - render without it.
     }
