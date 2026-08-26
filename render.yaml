@@ -28,7 +28,11 @@ services:
     plan: free
     rootDir: .
     buildCommand: npm install && npm run prisma:generate -w backend
-    startCommand: npm run prisma:migrate:deploy -w backend && npm run start -w backend
+    # Shell/one-off jobs aren't available on Render's free plan, so the seed
+    # runs on every boot instead of as a manual step - it's fully idempotent
+    # (upserts / find-or-create throughout), so this is safe on every
+    # restart, not just the first one.
+    startCommand: npm run prisma:migrate:deploy -w backend && npm run seed -w backend && npm run start -w backend
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL

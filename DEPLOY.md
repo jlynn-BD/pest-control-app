@@ -16,13 +16,8 @@ This repo deploys as three pieces, all provisioned in one shot by `render.yaml`:
    ```
 2. **Create a free Render account** at https://render.com (sign in with GitHub is easiest — it also handles the repo-access step below).
 3. In the Render dashboard: **New → Blueprint**, connect the GitHub repo, and select it. Render reads `render.yaml` at the repo root and provisions all three services automatically — no manual field entry needed.
-4. Wait for all three services to finish their first deploy (a few minutes). Render will show you the live URLs for `pestapp-backend` and `pestapp-web`.
-5. **Seed demo data**: open the `pestapp-backend` service in the Render dashboard → **Shell** tab, and run:
-   ```bash
-   npm run seed -w backend
-   ```
-   This creates the demo login accounts and one fully populated example inspection (findings, checklist, site map sketch, treatment, signatures, follow-up) so there's something real to look at immediately. Safe to re-run any time — it only fills in what's missing.
-6. Send your boss the `pestapp-web` URL. Demo logins (all password `password123`):
+4. Wait for all three services to finish their first deploy (a few minutes). Render will show you the live URLs for `pestapp-backend` and `pestapp-web`. The backend's start command seeds demo data automatically on every boot (Shell/one-off jobs need a paid plan, and the seed script is idempotent, so this runs it instead of requiring a manual step) — no action needed here.
+5. Send your boss the `pestapp-web` URL. Demo logins (all password `password123`):
    - `admin@pestapp.dev` (admin)
    - `office@pestapp.dev` (office)
    - `tech@pestapp.dev` (technician — this is the one that sees the field/inspection workflow)
