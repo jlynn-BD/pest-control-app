@@ -52,11 +52,10 @@ services:
     name: pestapp-web
     runtime: static
     rootDir: .
-    buildCommand: npm install && EXPO_PUBLIC_API_URL=https://$RENDER_BACKEND_HOST npm run build:web -w mobile
+    # fromService's "host" property resolves to the bare service slug
+    # (e.g. "pestapp-backend"), not the public "pestapp-backend.onrender.com"
+    # hostname - that produced an unreachable https://pestapp-backend URL
+    # baked into the build. Hardcoding the known public URL instead; update
+    # this if pestapp-backend is ever renamed or given a custom domain.
+    buildCommand: npm install && EXPO_PUBLIC_API_URL=https://pestapp-backend.onrender.com npm run build:web -w mobile
     staticPublishPath: mobile/dist
-    envVars:
-      - key: RENDER_BACKEND_HOST
-        fromService:
-          type: web
-          name: pestapp-backend
-          property: host
