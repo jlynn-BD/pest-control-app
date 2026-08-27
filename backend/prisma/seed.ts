@@ -284,16 +284,107 @@ async function main() {
         { prompt: "Note moisture level", itemType: "TEXT", required: false },
       ],
     },
+    {
+      name: "General Interior",
+      category: "INTERIOR",
+      sortOrder: 4,
+      items: [
+        { prompt: "Interior free of visible pest activity (droppings, shed skins, nesting)", itemType: "CHECKBOX", required: true },
+        { prompt: "Baseboards intact, no gaps or damage", itemType: "CHECKBOX", required: false },
+        { prompt: "Wall voids/cracks checked for entry signs", itemType: "CHECKBOX", required: false },
+        { prompt: "Interior doors seal properly at thresholds", itemType: "CHECKBOX", required: false },
+        { prompt: "Flooring intact, no gaps at wall-floor junctions", itemType: "CHECKBOX", required: false },
+        { prompt: "Storage/closet areas checked for harborage", itemType: "CHECKBOX", required: false },
+      ],
+    },
+    {
+      name: "Kitchen & Plumbing",
+      category: "INTERIOR",
+      sortOrder: 5,
+      items: [
+        { prompt: "Under-sink cabinet and plumbing penetrations sealed", itemType: "CHECKBOX", required: true },
+        { prompt: "Behind/under major appliances checked (fridge, stove, dishwasher)", itemType: "CHECKBOX", required: true },
+        { prompt: "Pantry and dry food storage areas checked", itemType: "CHECKBOX", required: true },
+        { prompt: "No signs of moisture/leaks under sink or around dishwasher", itemType: "CHECKBOX", required: false },
+        { prompt: "Trash/recycling area checked and sanitary", itemType: "CHECKBOX", required: false },
+        { prompt: "Cabinet kick plates intact, no gaps", itemType: "CHECKBOX", required: false },
+        { prompt: "Record any pest evidence found", itemType: "PEST_FINDING", required: false },
+      ],
+    },
+    {
+      name: "Bathrooms",
+      category: "INTERIOR",
+      sortOrder: 6,
+      items: [
+        { prompt: "Under-sink cabinet and plumbing penetrations sealed", itemType: "CHECKBOX", required: true },
+        { prompt: "Tile grout and caulking intact around tub/shower", itemType: "CHECKBOX", required: false },
+        { prompt: "No signs of moisture damage or leaks", itemType: "CHECKBOX", required: false },
+        { prompt: "Toilet base sealed, no gaps", itemType: "CHECKBOX", required: false },
+        { prompt: "Exhaust fan vent screened", itemType: "CHECKBOX", required: false },
+      ],
+    },
+    {
+      name: "Utility & Mechanical",
+      category: "INTERIOR",
+      sortOrder: 7,
+      items: [
+        { prompt: "Water heater area checked", itemType: "CHECKBOX", required: false },
+        { prompt: "Furnace/HVAC unit area checked", itemType: "CHECKBOX", required: false },
+        { prompt: "Electrical panel area checked, no gaps in wall penetrations", itemType: "CHECKBOX", required: true },
+        { prompt: "Washer/dryer area checked, dryer vent connection sealed", itemType: "CHECKBOX", required: true },
+        { prompt: "Utility sink and plumbing penetrations sealed", itemType: "CHECKBOX", required: false },
+        { prompt: "Sump pump area checked (if present)", itemType: "CHECKBOX", required: false },
+      ],
+    },
+    {
+      name: "Garage",
+      category: "INTERIOR",
+      sortOrder: 8,
+      items: [
+        { prompt: "Interior garage walls free of gaps or penetrations", itemType: "CHECKBOX", required: true },
+        { prompt: "Firewall/sheetrock between garage and living space intact", itemType: "CHECKBOX", required: true },
+        { prompt: "Garage storage areas checked for harborage", itemType: "CHECKBOX", required: false },
+        { prompt: "Interior man door sweep intact", itemType: "CHECKBOX", required: false },
+        { prompt: "Garage floor drain screened (if present)", itemType: "CHECKBOX", required: false },
+      ],
+    },
+    {
+      name: "Basement",
+      category: "INTERIOR",
+      sortOrder: 9,
+      items: [
+        { prompt: "Foundation walls (interior side) free of cracks or gaps", itemType: "CHECKBOX", required: true },
+        { prompt: "Sump pump/drainage area checked", itemType: "CHECKBOX", required: false },
+        { prompt: "Storage areas checked for harborage and moisture", itemType: "CHECKBOX", required: false },
+        { prompt: "Utility penetrations through foundation sealed", itemType: "CHECKBOX", required: true },
+        { prompt: "Signs of moisture intrusion checked", itemType: "CHECKBOX", required: false },
+      ],
+    },
+    {
+      name: "Entry Points",
+      category: "INTERIOR",
+      sortOrder: 10,
+      items: [
+        { prompt: "Interior door thresholds sealed, no daylight visible", itemType: "CHECKBOX", required: true },
+        { prompt: "Baseboard gaps at exterior-facing walls sealed", itemType: "CHECKBOX", required: false },
+        { prompt: "Wall/floor penetrations behind appliances sealed", itemType: "CHECKBOX", required: false },
+        { prompt: "Expansion joints (interior slab) sealed", itemType: "CHECKBOX", required: false },
+        { prompt: "Record any interior entry point findings", itemType: "PEST_FINDING", required: false },
+      ],
+    },
   ];
 
   for (const s of CHECKLIST_SECTIONS) {
+    // Matched by (template, name, category) - some section names (e.g.
+    // "Entry Points") intentionally exist under both EXTERIOR and INTERIOR
+    // as distinct sections, so name alone isn't a safe match key.
     const section =
-      (await prisma.templateSection.findFirst({ where: { templateId: template.id, name: s.name } })) ??
+      (await prisma.templateSection.findFirst({ where: { templateId: template.id, name: s.name, category: s.category } })) ??
       (await prisma.templateSection.create({
         data: { id: uuidv4(), templateId: template.id, name: s.name, category: s.category, sortOrder: s.sortOrder },
       }));
-    if (section.category !== s.category || section.sortOrder !== s.sortOrder) {
-      await prisma.templateSection.update({ where: { id: section.id }, data: { category: s.category, sortOrder: s.sortOrder } });
+    if (section.sortOrder !== s.sortOrder) {
+      await prisma.templateSection.update({ where: { id: section.id }, data: { sortOrder: s.sortOrder } });
     }
     for (const [index, item] of s.items.entries()) {
       const existingItem = await prisma.templateItem.findFirst({ where: { sectionId: section.id, prompt: item.prompt } });
