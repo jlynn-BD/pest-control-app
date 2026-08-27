@@ -427,6 +427,15 @@ export function upsertLocalChecklistResponse(
   return response;
 }
 
+// Hard delete - unlike other entities, checklist responses have no
+// syncStatus="pending-delete" tombstone path (the generic sync engine only
+// pushes create/update). The caller is responsible for also firing a
+// best-effort remote delete since removing the local row here forfeits any
+// further chance to sync it.
+export function deleteLocalChecklistResponse(id: string): void {
+  getDb().runSync(`DELETE FROM checklist_responses WHERE id = ?`, [id]);
+}
+
 export function completeLocalInspection(inspectionId: string): void {
   const db = getDb();
   const now = nowIso();

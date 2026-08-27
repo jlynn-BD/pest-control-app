@@ -2,21 +2,19 @@ import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React, { useCallback, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { deleteChecklistResponse } from "../../api/inspections";
 import { getCachedTemplateSections } from "../../db/cache";
-import { getLocalInspectionDetail, upsertLocalChecklistResponse } from "../../db/inspectionStore";
+import {
+  deleteLocalChecklistResponse,
+  getLocalInspectionDetail,
+  upsertLocalChecklistResponse,
+} from "../../db/inspectionStore";
 import type { LocalChecklistResponse, LocalTemplateItem } from "../../db/types";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
-import { Badge, Card, Field, colors } from "../../components/ui";
-import { SegmentedControl } from "../../components/ChipMultiSelect";
+import { Badge, Card, Checkbox, Field, colors } from "../../components/ui";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "Checklist">;
 
-const STATUS_OPTIONS = ["SATISFACTORY", "NEEDS_ATTENTION", "NOT_APPLICABLE"] as const;
-const STATUS_LABEL: Record<string, string> = {
-  SATISFACTORY: "Satisfactory",
-  NEEDS_ATTENTION: "Needs Attention",
-  NOT_APPLICABLE: "N/A",
-};
 const CATEGORY_LABEL: Record<string, string> = {
   EXTERIOR: "Exterior Inspection Checklist",
   INTERIOR: "Interior Inspection Checklist",
@@ -55,22 +53,27 @@ export default function ChecklistScreen({ route }: Props) {
     return grouped;
   }, [sections]);
 
-  function handleUpdate(item: LocalTemplateItem, status: string, notes: string | null) {
-    upsertLocalChecklistResponse(inspectionId, item.id, status, notes);
-    setResponses((prev) => {
-      const next = prev.filter((r) => r.templateItemId !== item.id);
-      next.push({
-        id: prev.find((r) => r.templateItemId === item.id)?.id ?? item.id,
-        inspectionId,
-        templateItemId: item.id,
-        status,
-        notes,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        syncStatus: "pending",
-      });
-      return next;
-    });
+  function handleCheck(item: LocalTemplateItem, notes: string | null) {
+    const response = upsertLocalChecklistResponse(inspectionId, item.id, "SATISFACTORY", notes);
+    setResponses((prev) => [...prev.filter((r) => r.templateItemId !== item.id), response]);
+  }
+
+  function handleUncheck(item: LocalTemplateItem) {
+    const existing = responseByItem.get(item.id);
+    if (!existing) return;
+    deleteLocalChecklistResponse(existing.id);
+    setResponses((prev) => prev.filter((r) => r.templateItemId !== item.id));
+    // Best-effort - if this fails (offline, etc.) the local uncheck still
+    // stands; there's no retry/tombstone path for this since checklist
+    // deletes don't go through the generic sync engine (see inspectionStore).
+    deleteChecklistResponse(inspectionId, existing.id).catch(() => {});
+  }
+
+  function handleNotesChange(item: LocalTemplateItem, notes: string | null) {
+    const existing = responseByItem.get(item.id);
+    if (!existing) return;
+    const response = upsertLocalChecklistResponse(inspectionId, item.id, existing.status, notes);
+    setResponses((prev) => [...prev.filter((r) => r.templateItemId !== item.id), response]);
   }
 
   if (!templateId) {
@@ -86,20 +89,17 @@ export default function ChecklistScreen({ route }: Props) {
       {CATEGORY_ORDER.filter((c) => sectionsByCategory.has(c)).map((category) => {
         const categorySections = sectionsByCategory.get(category)!;
         const totalItems = categorySections.reduce((sum, s) => sum + s.items.length, 0);
-        const answered = categorySections.reduce(
+        const checkedCount = categorySections.reduce(
           (sum, s) => sum + s.items.filter((i) => responseByItem.has(i.id)).length,
           0
-        );
-        const needsAttention = categorySections.some((s) =>
-          s.items.some((i) => responseByItem.get(i.id)?.status === "NEEDS_ATTENTION")
         );
         return (
           <View key={category} style={styles.categoryBlock}>
             <View style={styles.categoryHeaderRow}>
               <Text style={styles.categoryTitle}>{CATEGORY_LABEL[category] ?? category}</Text>
               <Badge
-                label={`${answered}/${totalItems}`}
-                tone={needsAttention ? "danger" : answered === totalItems && totalItems > 0 ? "success" : "default"}
+                label={`${checkedCount}/${totalItems}`}
+                tone={checkedCount === totalItems && totalItems > 0 ? "success" : "default"}
               />
             </View>
             {categorySections.map((section) => (
@@ -111,9 +111,11 @@ export default function ChecklistScreen({ route }: Props) {
                     <ChecklistItemRow
                       key={item.id}
                       item={item}
-                      status={response?.status ?? null}
+                      checked={!!response}
                       notes={response?.notes ?? null}
-                      onChange={(status, notes) => handleUpdate(item, status, notes)}
+                      onCheck={(notes) => handleCheck(item, notes)}
+                      onUncheck={() => handleUncheck(item)}
+                      onNotesChange={(notes) => handleNotesChange(item, notes)}
                     />
                   );
                 })}
@@ -129,29 +131,28 @@ export default function ChecklistScreen({ route }: Props) {
 
 function ChecklistItemRow({
   item,
-  status,
+  checked,
   notes,
-  onChange,
+  onCheck,
+  onUncheck,
+  onNotesChange,
 }: {
   item: LocalTemplateItem;
-  status: string | null;
+  checked: boolean;
   notes: string | null;
-  onChange: (status: string, notes: string | null) => void;
+  onCheck: (notes: string | null) => void;
+  onUncheck: () => void;
+  onNotesChange: (notes: string | null) => void;
 }) {
   const [localNotes, setLocalNotes] = useState(notes ?? "");
 
   return (
     <Card style={styles.itemCard}>
-      <Text style={styles.itemPrompt}>
-        {item.prompt}
-        {item.required ? " *" : ""}
-      </Text>
-      <SegmentedControl
-        label=""
-        options={STATUS_OPTIONS}
-        labels={STATUS_LABEL}
-        value={status ?? ""}
-        onChange={(next) => onChange(next, localNotes.trim() || null)}
+      <Checkbox
+        label={item.prompt}
+        required={!!item.required}
+        checked={checked}
+        onChange={(next) => (next ? onCheck(localNotes.trim() || null) : onUncheck())}
       />
       <Field
         label="Notes"
@@ -159,7 +160,7 @@ function ChecklistItemRow({
         value={localNotes}
         onChangeText={setLocalNotes}
         onBlur={() => {
-          if (status) onChange(status, localNotes.trim() || null);
+          if (checked) onNotesChange(localNotes.trim() || null);
         }}
       />
     </Card>
@@ -176,5 +177,4 @@ const styles = StyleSheet.create({
   sectionBlock: { marginBottom: 12 },
   sectionName: { fontSize: 13, fontWeight: "600", color: colors.textMuted, marginBottom: 6, textTransform: "uppercase" },
   itemCard: { marginBottom: 8, gap: 4 },
-  itemPrompt: { fontSize: 14, fontWeight: "600", color: colors.text, marginBottom: 4 },
 });

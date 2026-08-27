@@ -108,6 +108,35 @@ export function Badge({ label, tone = "default" }: { label: string; tone?: "defa
   );
 }
 
+export function Checkbox({
+  label,
+  checked,
+  onChange,
+  required,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  required?: boolean;
+}) {
+  return (
+    <Pressable
+      style={styles.checkboxRow}
+      onPress={() => onChange(!checked)}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked }}
+    >
+      <View style={[styles.checkboxBox, checked && styles.checkboxBoxChecked]}>
+        {checked ? <Text style={styles.checkboxMark}>✓</Text> : null}
+      </View>
+      <Text style={styles.checkboxLabel}>
+        {label}
+        {required ? " *" : ""}
+      </Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   card: {
@@ -149,4 +178,18 @@ const styles = StyleSheet.create({
   badgeDanger: { backgroundColor: "#F8D7D3" },
   badgeSuccess: { backgroundColor: "#DBEFE4" },
   badgeText: { fontSize: 12, fontWeight: "600", color: colors.text },
+  checkboxRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 4 },
+  checkboxBox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+  },
+  checkboxBoxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+  checkboxMark: { color: "#fff", fontSize: 15, fontWeight: "700", lineHeight: 16 },
+  checkboxLabel: { flex: 1, fontSize: 14, fontWeight: "600", color: colors.text },
 });

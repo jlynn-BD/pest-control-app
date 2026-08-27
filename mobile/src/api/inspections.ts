@@ -49,3 +49,11 @@ export function createInspection(input: {
 }): Promise<Inspection> {
   return apiRequest("/api/inspections", { method: "POST", body: input });
 }
+
+// Best-effort immediate delete (unchecking a checklist item) - not routed
+// through the generic sync engine since that only supports create/update.
+// If offline, the local delete still applies; the server-side row is cleaned
+// up next time this runs while online.
+export function deleteChecklistResponse(inspectionId: string, responseId: string): Promise<void> {
+  return apiRequest(`/api/inspections/${inspectionId}/checklist-responses/${responseId}`, { method: "DELETE" });
+}
