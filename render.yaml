@@ -59,3 +59,18 @@ services:
     # this if pestapp-backend is ever renamed or given a custom domain.
     buildCommand: npm install && EXPO_PUBLIC_API_URL=https://pestapp-backend.onrender.com npm run build:web -w mobile
     staticPublishPath: mobile/dist
+    # expo-sqlite's web backend needs the page to be cross-origin isolated
+    # (SharedArrayBuffer) or openDatabaseSync() throws - without these,
+    # isLocalDbAvailable() is always false on the deployed site, so every
+    # screen that reads the offline cache (e.g. the New Inspection property
+    # picker) silently shows "nothing cached" no matter what's in the
+    # database. credentialless (not require-corp) so existing cross-origin
+    # <Image> loads from pestapp-backend keep working without needing a
+    # Cross-Origin-Resource-Policy header on every media response.
+    headers:
+      - path: /*
+        headers:
+          - name: Cross-Origin-Opener-Policy
+            value: same-origin
+          - name: Cross-Origin-Embedder-Policy
+            value: credentialless
