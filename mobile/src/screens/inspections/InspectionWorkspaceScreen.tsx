@@ -2,8 +2,13 @@ import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React, { useCallback, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { getCachedCustomer, getCachedProperty, getCachedTemplateSections } from "../../db/cache";
-import { completeLocalInspection, getLocalInspectionDetail, LocalInspectionDetail } from "../../db/inspectionStore";
+import { getCachedCustomer, getCachedProperty, getCachedTemplateSections, getCachedTemplates } from "../../db/cache";
+import {
+  completeLocalInspection,
+  getLocalInspectionDetail,
+  LocalInspectionDetail,
+  setLocalInspectionTemplate,
+} from "../../db/inspectionStore";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { Badge, Card, PrimaryButton, colors } from "../../components/ui";
 
@@ -31,10 +36,21 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
   const hasCustomerSignature = detail.signatures.some((s) => s.signerType === "CUSTOMER");
   const hasTechnicianSignature = detail.signatures.some((s) => s.signerType === "TECHNICIAN");
   const isCompleted = detail.inspection.status === "COMPLETED";
+  const availableTemplates = !detail.inspection.templateId ? getCachedTemplates() : [];
 
   function handleComplete() {
     completeLocalInspection(inspectionId);
     navigation.replace("LocalInspectionDetail", { inspectionId });
+  }
+
+  function handleAddChecklist(templateId: string) {
+    setLocalInspectionTemplate(inspectionId, templateId);
+    setDetail(getLocalInspectionDetail(inspectionId));
+  }
+
+  function handleRemoveChecklist() {
+    setLocalInspectionTemplate(inspectionId, null);
+    setDetail(getLocalInspectionDetail(inspectionId));
   }
 
   return (
@@ -47,22 +63,38 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
         <Badge label={isCompleted ? "Completed" : "In progress"} tone={isCompleted ? "success" : "warning"} />
       </View>
 
-      {templateSections.length > 0 ? (
-        <View style={styles.section}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Checklist</Text>
+      <View style={styles.section}>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Checklist</Text>
+          {detail.inspection.templateId ? (
             <Badge
               label={`${checklistAnsweredCount}/${checklistItemCount}`}
               tone={checklistAnsweredCount >= checklistItemCount && checklistItemCount > 0 ? "success" : "warning"}
             />
-          </View>
+          ) : null}
+        </View>
+        {detail.inspection.templateId ? (
           <Card style={styles.itemCard}>
             <Text style={styles.addLink} onPress={() => navigation.navigate("Checklist", { inspectionId })}>
               Open exterior/interior checklist
             </Text>
+            <Text style={styles.removeLink} onPress={handleRemoveChecklist}>
+              Remove checklist from this inspection
+            </Text>
           </Card>
-        </View>
-      ) : null}
+        ) : availableTemplates.length === 0 ? (
+          <Text style={styles.itemMeta}>No checklist templates available offline yet.</Text>
+        ) : (
+          availableTemplates.map((template) => (
+            <Card key={template.id} style={styles.itemCard}>
+              <Text style={styles.itemTitle}>{template.name}</Text>
+              <Text style={styles.addLink} onPress={() => handleAddChecklist(template.id)}>
+                + Add this checklist to the inspection
+              </Text>
+            </Card>
+          ))
+        )}
+      </View>
 
       <View style={styles.section}>
         <View style={styles.sectionHeaderRow}>
@@ -200,6 +232,7 @@ const styles = StyleSheet.create({
   sectionHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
   sectionTitle: { fontSize: 15, fontWeight: "700", color: colors.text },
   addLink: { color: colors.primary, fontWeight: "600", fontSize: 13 },
+  removeLink: { color: colors.textMuted, fontWeight: "500", fontSize: 12, marginTop: 6 },
   itemCard: { marginBottom: 6, gap: 2 },
   itemTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
   itemMeta: { fontSize: 12, color: colors.textMuted },

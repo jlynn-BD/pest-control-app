@@ -427,6 +427,19 @@ export function upsertLocalChecklistResponse(
   return response;
 }
 
+// Lets a technician attach or detach a checklist template on an
+// already-started inspection, not just at creation time (NewInspectionScreen).
+// Detaching only hides the checklist section - it doesn't delete any
+// checklist_responses rows, so re-attaching the same template later restores
+// the technician's prior answers instead of losing them.
+export function setLocalInspectionTemplate(inspectionId: string, templateId: string | null): void {
+  getDb().runSync(`UPDATE inspections SET templateId = ?, updatedAt = ?, syncStatus = 'pending' WHERE id = ?`, [
+    templateId,
+    nowIso(),
+    inspectionId,
+  ]);
+}
+
 // Hard delete - unlike other entities, checklist responses have no
 // syncStatus="pending-delete" tombstone path (the generic sync engine only
 // pushes create/update). The caller is responsible for also firing a
