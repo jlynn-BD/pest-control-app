@@ -69,7 +69,7 @@ templatesRouter.delete(
 
 const sectionSchema = z.object({
   name: z.string().min(1),
-  category: z.enum(["EXTERIOR", "INTERIOR", "OTHER"]).optional(),
+  category: z.enum(["EXTERIOR", "INTERIOR", "ATTIC", "CRAWLSPACE", "OTHER"]).optional(),
   sortOrder: z.number().int().optional(),
 });
 

@@ -45,7 +45,7 @@ async function buildReportData(inspectionId: string): Promise<ReportData> {
     items.push({ prompt: r.templateItem.prompt, status: r.status, notes: r.notes });
     checklistByCategory.set(category, items);
   }
-  const CATEGORY_ORDER = ["EXTERIOR", "INTERIOR", "OTHER"];
+  const CATEGORY_ORDER = ["EXTERIOR", "INTERIOR", "ATTIC", "CRAWLSPACE", "OTHER"];
   const checklistSections = CATEGORY_ORDER.filter((c) => checklistByCategory.has(c)).map((category) => ({
     category,
     items: checklistByCategory.get(category)!,

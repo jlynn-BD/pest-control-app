@@ -151,7 +151,7 @@ model TemplateSection {
   id         String @id
   templateId String
   name       String
-  category   String @default("OTHER") // EXTERIOR | INTERIOR | OTHER - groups sections into the exterior/interior checklists
+  category   String @default("OTHER") // EXTERIOR | INTERIOR | ATTIC | CRAWLSPACE | OTHER - groups sections into the checklist categories
   sortOrder  Int    @default(0)
 
   template InspectionTemplate @relation(fields: [templateId], references: [id])

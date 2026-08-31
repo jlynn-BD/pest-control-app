@@ -138,7 +138,7 @@ async function main() {
   // rather than duplicating rows or wiping an already-seeded dev database.
   const CHECKLIST_SECTIONS: Array<{
     name: string;
-    category: "EXTERIOR" | "INTERIOR" | "OTHER";
+    category: "EXTERIOR" | "INTERIOR" | "ATTIC" | "CRAWLSPACE" | "OTHER";
     sortOrder: number;
     items: Array<{ prompt: string; itemType: string; required: boolean }>;
   }> = [
@@ -276,15 +276,6 @@ async function main() {
       ],
     },
     {
-      name: "Attic / Crawlspace",
-      category: "INTERIOR",
-      sortOrder: 3,
-      items: [
-        { prompt: "Check insulation for nesting/droppings", itemType: "CHECKBOX", required: true },
-        { prompt: "Note moisture level", itemType: "TEXT", required: false },
-      ],
-    },
-    {
       name: "General Interior",
       category: "INTERIOR",
       sortOrder: 4,
@@ -372,7 +363,138 @@ async function main() {
         { prompt: "Record any interior entry point findings", itemType: "PEST_FINDING", required: false },
       ],
     },
+    {
+      name: "Attic Access",
+      category: "ATTIC",
+      sortOrder: 0,
+      items: [
+        { prompt: "Attic access point free of gaps or damage", itemType: "CHECKBOX", required: true },
+        { prompt: "Access hatch/door seals properly when closed", itemType: "CHECKBOX", required: false },
+        { prompt: "Pull-down stairs/ladder area checked for gaps", itemType: "CHECKBOX", required: false },
+      ],
+    },
+    {
+      name: "Insulation",
+      category: "ATTIC",
+      sortOrder: 1,
+      items: [
+        { prompt: "Insulation free of nesting material, droppings, or disturbance", itemType: "CHECKBOX", required: true },
+        { prompt: "Insulation depth/coverage adequate, no bare or compressed spots", itemType: "CHECKBOX", required: false },
+        { prompt: "No moisture staining or water damage in insulation", itemType: "CHECKBOX", required: false },
+      ],
+    },
+    {
+      name: "Roof Structure",
+      category: "ATTIC",
+      sortOrder: 2,
+      items: [
+        { prompt: "Roof sheathing and rafters free of daylight gaps", itemType: "CHECKBOX", required: true },
+        { prompt: "No visible rodent gnaw marks on structural wood", itemType: "CHECKBOX", required: false },
+        { prompt: "Ridge vent and roof penetrations sealed from inside", itemType: "CHECKBOX", required: false },
+      ],
+    },
+    {
+      name: "Vents & Openings",
+      category: "ATTIC",
+      sortOrder: 3,
+      items: [
+        { prompt: "Gable/soffit vents screened and intact from inside", itemType: "CHECKBOX", required: true },
+        { prompt: "Plumbing/exhaust vent stacks sealed at roof penetration", itemType: "CHECKBOX", required: false },
+        { prompt: "No gaps around HVAC ductwork penetrations", itemType: "CHECKBOX", required: false },
+      ],
+    },
+    {
+      name: "Pest Evidence",
+      category: "ATTIC",
+      sortOrder: 4,
+      items: [
+        { prompt: "Attic free of visible pest activity (droppings, nesting, shed skins)", itemType: "CHECKBOX", required: true },
+        { prompt: "Record any pest evidence found", itemType: "PEST_FINDING", required: false },
+      ],
+    },
+    {
+      name: "Crawl Space Access",
+      category: "CRAWLSPACE",
+      sortOrder: 0,
+      items: [
+        { prompt: "Crawl space access door/panel sealed and pest-proof", itemType: "CHECKBOX", required: true },
+        { prompt: "Access door closes and latches securely", itemType: "CHECKBOX", required: false },
+      ],
+    },
+    {
+      name: "Foundation",
+      category: "CRAWLSPACE",
+      sortOrder: 1,
+      items: [
+        { prompt: "Foundation walls (crawl space side) free of cracks or gaps", itemType: "CHECKBOX", required: true },
+        { prompt: "Sill plate and rim joist free of gaps or damage", itemType: "CHECKBOX", required: true },
+        { prompt: "Support piers checked, no wood-to-soil contact", itemType: "CHECKBOX", required: false },
+      ],
+    },
+    {
+      name: "Insulation",
+      category: "CRAWLSPACE",
+      sortOrder: 2,
+      items: [
+        { prompt: "Insulation free of nesting material, droppings, or disturbance", itemType: "CHECKBOX", required: true },
+        { prompt: "Vapor barrier intact, no tears or gaps", itemType: "CHECKBOX", required: false },
+      ],
+    },
+    {
+      name: "Plumbing & Utilities",
+      category: "CRAWLSPACE",
+      sortOrder: 3,
+      items: [
+        { prompt: "Plumbing penetrations through foundation/subfloor sealed", itemType: "CHECKBOX", required: true },
+        { prompt: "Utility line penetrations sealed", itemType: "CHECKBOX", required: false },
+      ],
+    },
+    {
+      name: "Vents & Openings",
+      category: "CRAWLSPACE",
+      sortOrder: 4,
+      items: [
+        { prompt: "Foundation/crawl space vents screened and intact", itemType: "CHECKBOX", required: true },
+        { prompt: "No gaps larger than 1/4 inch around vent openings", itemType: "CHECKBOX", required: false },
+      ],
+    },
+    {
+      name: "Moisture Conditions",
+      category: "CRAWLSPACE",
+      sortOrder: 5,
+      items: [
+        { prompt: "No standing water or excess moisture present", itemType: "CHECKBOX", required: true },
+        { prompt: "Ground cover/drainage adequate", itemType: "CHECKBOX", required: false },
+        { prompt: "Note moisture level", itemType: "TEXT", required: false },
+      ],
+    },
+    {
+      name: "Pest Evidence",
+      category: "CRAWLSPACE",
+      sortOrder: 6,
+      items: [
+        { prompt: "Crawl space free of visible pest activity (droppings, nesting, shed skins)", itemType: "CHECKBOX", required: true },
+        { prompt: "Record any pest evidence found", itemType: "PEST_FINDING", required: false },
+      ],
+    },
   ];
+
+  // The old combined "Attic / Crawlspace" INTERIOR section predates the
+  // dedicated ATTIC/CRAWLSPACE categories above and now duplicates their
+  // coverage - remove it (and its items/responses) rather than leaving a
+  // stale section sitting outside the categories CHECKLIST_SECTIONS manages.
+  // Idempotent: a no-op once it's gone from an earlier seed run.
+  const legacyAtticSection = await prisma.templateSection.findFirst({
+    where: { templateId: template.id, name: "Attic / Crawlspace", category: "INTERIOR" },
+  });
+  if (legacyAtticSection) {
+    const legacyItemIds = (
+      await prisma.templateItem.findMany({ where: { sectionId: legacyAtticSection.id }, select: { id: true } })
+    ).map((i) => i.id);
+    await prisma.checklistResponse.deleteMany({ where: { templateItemId: { in: legacyItemIds } } });
+    await prisma.templateItem.deleteMany({ where: { sectionId: legacyAtticSection.id } });
+    await prisma.templateSection.delete({ where: { id: legacyAtticSection.id } });
+  }
 
   for (const s of CHECKLIST_SECTIONS) {
     // Matched by (template, name, category) - some section names (e.g.

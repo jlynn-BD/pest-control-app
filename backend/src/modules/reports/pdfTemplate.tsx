@@ -90,6 +90,8 @@ function checklistStatusStyle(status: string) {
 const CHECKLIST_CATEGORY_LABEL: Record<string, string> = {
   EXTERIOR: "Exterior Inspection Checklist",
   INTERIOR: "Interior Inspection Checklist",
+  ATTIC: "Attic Inspection Checklist",
+  CRAWLSPACE: "Crawl Space Inspection Checklist",
   OTHER: "Additional Checklist Items",
 };
 

@@ -1,9 +1,11 @@
 export const CHECKLIST_CATEGORY_LABEL: Record<string, string> = {
   EXTERIOR: "Exterior Inspection Checklist",
   INTERIOR: "Interior Inspection Checklist",
+  ATTIC: "Attic Inspection Checklist",
+  CRAWLSPACE: "Crawl Space Inspection Checklist",
   OTHER: "Additional Checklist Items",
 };
-export const CHECKLIST_CATEGORY_ORDER = ["EXTERIOR", "INTERIOR", "OTHER"];
+export const CHECKLIST_CATEGORY_ORDER = ["EXTERIOR", "INTERIOR", "ATTIC", "CRAWLSPACE", "OTHER"];
 
 export const CHECKLIST_STATUS_LABEL: Record<string, string> = {
   SATISFACTORY: "Satisfactory",

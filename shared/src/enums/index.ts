@@ -135,6 +135,8 @@ export type DeviceStatus = (typeof DeviceStatus)[keyof typeof DeviceStatus];
 export const TemplateSectionCategory = {
   EXTERIOR: "EXTERIOR",
   INTERIOR: "INTERIOR",
+  ATTIC: "ATTIC",
+  CRAWLSPACE: "CRAWLSPACE",
   OTHER: "OTHER",
 } as const;
 export type TemplateSectionCategory = (typeof TemplateSectionCategory)[keyof typeof TemplateSectionCategory];
