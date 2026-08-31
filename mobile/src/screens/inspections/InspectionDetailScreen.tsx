@@ -4,7 +4,6 @@ import React, { useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { getInspection } from "../../api/inspections";
 import { generateReport, getReport } from "../../api/reports";
-import { draftEstimateFromInspection } from "../../api/estimates";
 import { ApiError } from "../../api/client";
 import { downloadAndShareReport } from "../../lib/report";
 import { CHECKLIST_CATEGORY_LABEL, CHECKLIST_STATUS_LABEL, groupChecklistForDisplay } from "../../lib/checklist";
@@ -15,7 +14,7 @@ import { Badge, Card, ErrorView, LoadingView, PrimaryButton, colors } from "../.
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "InspectionDetail">;
 
-export default function InspectionDetailScreen({ route, navigation }: Props) {
+export default function InspectionDetailScreen({ route }: Props) {
   const { inspectionId } = route.params;
   const queryClient = useQueryClient();
   const [reportError, setReportError] = useState<string | null>(null);
@@ -40,12 +39,6 @@ export default function InspectionDetailScreen({ route, navigation }: Props) {
       queryClient.invalidateQueries({ queryKey: ["reports", inspectionId] });
     },
     onError: (err) => setReportError(err instanceof ApiError ? err.message : "Failed to generate report"),
-  });
-
-  const estimateMutation = useMutation({
-    mutationFn: () => draftEstimateFromInspection(inspectionId),
-    onSuccess: (estimate) => navigation.navigate("EstimateForm", { estimateId: estimate.id }),
-    onError: (err) => setReportError(err instanceof ApiError ? err.message : "Failed to draft estimate"),
   });
 
   async function handleShare(reportId: string) {
@@ -95,17 +88,6 @@ export default function InspectionDetailScreen({ route, navigation }: Props) {
             <PrimaryButton title="Generate report" onPress={() => generateMutation.mutate()} loading={generateMutation.isPending} />
           )}
           {reportError ? <Text style={styles.errorText}>{reportError}</Text> : null}
-          <View style={styles.spacerSmall} />
-          <PrimaryButton
-            title="Schedule follow-up"
-            onPress={() => navigation.navigate("ScheduleFollowUp", { inspectionId })}
-          />
-          <View style={styles.spacerSmall} />
-          <PrimaryButton
-            title="Create estimate"
-            onPress={() => estimateMutation.mutate()}
-            loading={estimateMutation.isPending}
-          />
         </Card>
       ) : null}
 
