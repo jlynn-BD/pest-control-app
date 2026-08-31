@@ -68,41 +68,112 @@ async function cacheSiteMapImage(propertyId: string, remoteUrl: string): Promise
   }
 }
 
-// Pulls reference data (customers/properties/templates/pest types) down to
-// local SQLite so a technician can start and complete an inspection with
-// zero connectivity, as long as this has run at least once while online.
-export async function primeCache(): Promise<void> {
-  if (!isLocalDbAvailable()) return;
-  const db = getDb();
+// expo-sqlite's web backend (OPFS/SharedArrayBuffer) has proven unreliable
+// in this deployed environment - isLocalDbAvailable() is false without
+// cross-origin-isolation headers, and turning those on instead surfaced a
+// SQLITE_MISUSE crash from the library itself. Rather than depend on that
+// working, web keeps this same reference data in a plain in-memory cache
+// (reset on reload, fine since web isn't the offline-first target platform
+// anyway) - every getCached* function below falls back to it.
+let memCustomers: LocalCustomer[] = [];
+let memProperties: LocalProperty[] = [];
+let memTemplates: LocalTemplate[] = [];
+let memTemplateSections = new Map<string, (LocalTemplateSection & { items: LocalTemplateItem[] })[]>();
+let memPestTypes: LocalPestType[] = [];
 
+// Pulls reference data (customers/properties/templates/pest types) down so
+// a technician can start and complete an inspection with zero connectivity
+// on native, as long as this has run at least once while online. Always
+// populates the in-memory fallback too (see above) so web reads work even
+// though it can't rely on the SQLite write path.
+export async function primeCache(): Promise<void> {
   const [customers, templates, pestTypes] = await Promise.all([
     apiRequest<RemoteCustomer[]>("/api/customers"),
     apiRequest<RemoteTemplate[]>("/api/templates"),
     apiRequest<RemotePestType[]>("/api/pest-types"),
   ]);
 
+  const dbAvailable = isLocalDbAvailable();
+  const db = dbAvailable ? getDb() : null;
+  const properties = customers.flatMap((c) => c.properties);
+
   // Downloads happen outside the sync transaction below (SQLite transactions
   // here are synchronous). Only re-download when the remote URL actually
   // changed since the last prime, so re-uploading the same site map doesn't
-  // re-fetch it on every sync.
+  // re-fetch it on every sync. Native only - expo-file-system's downloader
+  // isn't part of the web fallback path.
   const siteMapLocalUris = new Map<string, string>();
-  const properties = customers.flatMap((c) => c.properties);
-  await Promise.all(
-    properties
-      .filter((p) => p.siteMapImageUrl)
-      .map(async (p) => {
-        const existing = db.getFirstSync<{ siteMapImageUrl: string | null; siteMapLocalUri: string | null }>(
-          `SELECT siteMapImageUrl, siteMapLocalUri FROM local_properties WHERE id = ?`,
-          [p.id]
-        );
-        if (existing?.siteMapImageUrl === p.siteMapImageUrl && existing.siteMapLocalUri) {
-          siteMapLocalUris.set(p.id, existing.siteMapLocalUri);
-          return;
-        }
-        const localUri = await cacheSiteMapImage(p.id, p.siteMapImageUrl!);
-        if (localUri) siteMapLocalUris.set(p.id, localUri);
-      })
+  if (db) {
+    await Promise.all(
+      properties
+        .filter((p) => p.siteMapImageUrl)
+        .map(async (p) => {
+          const existing = db.getFirstSync<{ siteMapImageUrl: string | null; siteMapLocalUri: string | null }>(
+            `SELECT siteMapImageUrl, siteMapLocalUri FROM local_properties WHERE id = ?`,
+            [p.id]
+          );
+          if (existing?.siteMapImageUrl === p.siteMapImageUrl && existing.siteMapLocalUri) {
+            siteMapLocalUris.set(p.id, existing.siteMapLocalUri);
+            return;
+          }
+          const localUri = await cacheSiteMapImage(p.id, p.siteMapImageUrl!);
+          if (localUri) siteMapLocalUris.set(p.id, localUri);
+        })
+    );
+  }
+
+  memCustomers = customers.map((c) => ({
+    id: c.id,
+    name: c.name,
+    type: c.type,
+    phone: c.phone,
+    email: c.email,
+    city: c.city,
+    state: c.state,
+  }));
+  memProperties = properties.map((p) => ({
+    id: p.id,
+    customerId: p.customerId,
+    label: p.label,
+    addressLine1: p.addressLine1,
+    city: p.city,
+    state: p.state,
+    postalCode: p.postalCode,
+    propertyType: p.propertyType,
+    accessNotes: p.accessNotes,
+    siteMapImageUrl: p.siteMapImageUrl,
+    siteMapLocalUri: siteMapLocalUris.get(p.id) ?? null,
+    siteMapSketchJson: p.siteMapSketch,
+    siteMapUpdatedAt: p.siteMapUpdatedAt,
+  }));
+  memTemplates = templates.map((t) => ({ id: t.id, name: t.name, description: t.description }));
+  memTemplateSections = new Map(
+    templates.map((t) => [
+      t.id,
+      [...t.sections]
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((s) => ({
+          id: s.id,
+          templateId: s.templateId,
+          name: s.name,
+          category: s.category,
+          sortOrder: s.sortOrder,
+          items: [...s.items]
+            .sort((a, b) => a.sortOrder - b.sortOrder)
+            .map((i) => ({
+              id: i.id,
+              sectionId: s.id,
+              prompt: i.prompt,
+              itemType: i.itemType,
+              sortOrder: i.sortOrder,
+              required: i.required ? 1 : 0,
+            })),
+        })),
+    ])
   );
+  memPestTypes = pestTypes.map((pt) => ({ id: pt.id, name: pt.name, category: pt.category }));
+
+  if (!db) return;
 
   db.withTransactionSync(() => {
     for (const c of customers) {
@@ -157,17 +228,23 @@ export async function primeCache(): Promise<void> {
 // Optimistic local update after a successful save, so the sketch reflects
 // immediately without waiting for the next primeCache round-trip.
 export function updateLocalPropertySiteMapSketch(propertyId: string, sketchJson: string): void {
-  if (!isLocalDbAvailable()) return;
+  if (!isLocalDbAvailable()) {
+    const p = memProperties.find((p) => p.id === propertyId);
+    if (p) p.siteMapSketchJson = sketchJson;
+    return;
+  }
   getDb().runSync(`UPDATE local_properties SET siteMapSketchJson = ? WHERE id = ?`, [sketchJson, propertyId]);
 }
 
 export function getCachedCustomers(): LocalCustomer[] {
-  if (!isLocalDbAvailable()) return [];
+  if (!isLocalDbAvailable()) return memCustomers;
   return getDb().getAllSync<LocalCustomer>(`SELECT * FROM local_customers ORDER BY name ASC`);
 }
 
 export function getCachedProperties(customerId?: string): LocalProperty[] {
-  if (!isLocalDbAvailable()) return [];
+  if (!isLocalDbAvailable()) {
+    return customerId ? memProperties.filter((p) => p.customerId === customerId) : memProperties;
+  }
   if (customerId) {
     return getDb().getAllSync<LocalProperty>(`SELECT * FROM local_properties WHERE customerId = ?`, [customerId]);
   }
@@ -175,22 +252,22 @@ export function getCachedProperties(customerId?: string): LocalProperty[] {
 }
 
 export function getCachedProperty(id: string): LocalProperty | null {
-  if (!isLocalDbAvailable()) return null;
+  if (!isLocalDbAvailable()) return memProperties.find((p) => p.id === id) ?? null;
   return getDb().getFirstSync<LocalProperty>(`SELECT * FROM local_properties WHERE id = ?`, [id]);
 }
 
 export function getCachedCustomer(id: string): LocalCustomer | null {
-  if (!isLocalDbAvailable()) return null;
+  if (!isLocalDbAvailable()) return memCustomers.find((c) => c.id === id) ?? null;
   return getDb().getFirstSync<LocalCustomer>(`SELECT * FROM local_customers WHERE id = ?`, [id]);
 }
 
 export function getCachedTemplates(): LocalTemplate[] {
-  if (!isLocalDbAvailable()) return [];
+  if (!isLocalDbAvailable()) return memTemplates;
   return getDb().getAllSync<LocalTemplate>(`SELECT * FROM local_templates ORDER BY name ASC`);
 }
 
 export function getCachedTemplateSections(templateId: string): (LocalTemplateSection & { items: LocalTemplateItem[] })[] {
-  if (!isLocalDbAvailable()) return [];
+  if (!isLocalDbAvailable()) return memTemplateSections.get(templateId) ?? [];
   const db = getDb();
   const sections = db.getAllSync<LocalTemplateSection>(
     `SELECT * FROM local_template_sections WHERE templateId = ? ORDER BY sortOrder ASC`,
@@ -203,6 +280,6 @@ export function getCachedTemplateSections(templateId: string): (LocalTemplateSec
 }
 
 export function getCachedPestTypes(): LocalPestType[] {
-  if (!isLocalDbAvailable()) return [];
+  if (!isLocalDbAvailable()) return memPestTypes;
   return getDb().getAllSync<LocalPestType>(`SELECT * FROM local_pest_types ORDER BY name ASC`);
 }
