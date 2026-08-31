@@ -1,7 +1,7 @@
 import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React, { useCallback, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getCachedCustomer, getCachedProperty, getCachedTemplateSections, getCachedTemplates } from "../../db/cache";
 import {
   completeLocalInspection,
@@ -84,6 +84,10 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
           </Card>
         ) : availableTemplates.length === 0 ? (
           <Text style={styles.itemMeta}>No checklist templates available offline yet.</Text>
+        ) : availableTemplates.length === 1 ? (
+          <Pressable style={styles.addButton} onPress={() => handleAddChecklist(availableTemplates[0].id)}>
+            <Text style={styles.addButtonText}>+ Add Checklist</Text>
+          </Pressable>
         ) : (
           availableTemplates.map((template) => (
             <Card key={template.id} style={styles.itemCard}>
@@ -233,6 +237,8 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 15, fontWeight: "700", color: colors.text },
   addLink: { color: colors.primary, fontWeight: "600", fontSize: 13 },
   removeLink: { color: colors.textMuted, fontWeight: "500", fontSize: 12, marginTop: 6 },
+  addButton: { alignSelf: "flex-start" },
+  addButtonText: { color: colors.primary, fontWeight: "600", fontSize: 15 },
   itemCard: { marginBottom: 6, gap: 2 },
   itemTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
   itemMeta: { fontSize: 12, color: colors.textMuted },
