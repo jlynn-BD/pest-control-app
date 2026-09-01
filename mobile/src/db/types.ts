@@ -65,6 +65,7 @@ export interface LocalInspection {
   completedAt: string | null;
   generalNotes: string | null;
   weatherConditions: string | null;
+  checklistCategories: string | null;
   createdAt: string;
   updatedAt: string;
   syncStatus: "pending" | "synced";

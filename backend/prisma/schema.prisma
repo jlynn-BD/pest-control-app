@@ -231,6 +231,7 @@ model Inspection {
   completedAt        DateTime?
   generalNotes       String?
   weatherConditions  String?
+  checklistCategories String? // JSON array of category codes (EXTERIOR/INTERIOR/ATTIC/CRAWLSPACE) the technician chose to include - null means "show every category" (all inspections created before this field existed)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
   deletedAt          DateTime?

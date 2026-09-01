@@ -163,7 +163,16 @@ export interface Inspection extends BaseEntity {
   completedAt?: string | null;
   generalNotes?: string | null;
   weatherConditions?: string | null;
+  // JSON-encoded array of category codes (see CHECKLIST_SELECTABLE_CATEGORIES)
+  // the technician chose to include - null means "show every category"
+  // (inspections created before this field existed).
+  checklistCategories?: string | null;
 }
+
+// The checklist categories a technician can opt into per inspection - OTHER
+// is excluded since it's a catch-all bucket, not a physical area of a
+// property a technician would deliberately include or skip.
+export const CHECKLIST_SELECTABLE_CATEGORIES = ["EXTERIOR", "INTERIOR", "ATTIC", "CRAWLSPACE"] as const;
 
 export interface PestType extends BaseEntity {
   name: string;

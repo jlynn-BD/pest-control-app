@@ -12,6 +12,7 @@ import {
 import type { LocalChecklistResponse, LocalTemplateItem } from "../../db/types";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { Badge, Card, Checkbox, Field, colors } from "../../components/ui";
+import { parseChecklistCategories } from "../../lib/checklist";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "Checklist">;
 
@@ -28,12 +29,16 @@ export default function ChecklistScreen({ route }: Props) {
   const { inspectionId } = route.params;
   const [responses, setResponses] = useState<LocalChecklistResponse[]>([]);
   const [templateId, setTemplateId] = useState<string | null>(null);
+  // OTHER always shows (it's not a category the technician chose to include
+  // or skip - see parseChecklistCategories/CHECKLIST_SELECTABLE_CATEGORIES).
+  const [activeCategories, setActiveCategories] = useState<string[]>([]);
 
   useFocusEffect(
     useCallback(() => {
       const detail = getLocalInspectionDetail(inspectionId);
       setResponses(detail?.checklistResponses ?? []);
       setTemplateId(detail?.inspection.templateId ?? null);
+      setActiveCategories(parseChecklistCategories(detail?.inspection.checklistCategories));
     }, [inspectionId])
   );
 
@@ -48,12 +53,13 @@ export default function ChecklistScreen({ route }: Props) {
   const sectionsByCategory = useMemo(() => {
     const grouped = new Map<string, typeof sections>();
     for (const section of sections) {
+      if (section.category !== "OTHER" && !activeCategories.includes(section.category)) continue;
       const list = grouped.get(section.category) ?? [];
       list.push(section);
       grouped.set(section.category, list);
     }
     return grouped;
-  }, [sections]);
+  }, [sections, activeCategories]);
 
   function handleCheck(item: LocalTemplateItem, notes: string | null) {
     const response = upsertLocalChecklistResponse(inspectionId, item.id, "SATISFACTORY", notes);

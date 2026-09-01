@@ -53,6 +53,7 @@ function inspectionToChange(i: LocalInspection): SyncChangePayload {
       completedAt: i.completedAt,
       generalNotes: i.generalNotes,
       weatherConditions: i.weatherConditions,
+      checklistCategories: i.checklistCategories,
     },
   };
 }

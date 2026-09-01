@@ -37,13 +37,14 @@ export function createLocalInspection(input: NewInspectionInput): LocalInspectio
     completedAt: null,
     generalNotes: null,
     weatherConditions: null,
+    checklistCategories: null,
     createdAt: now,
     updatedAt: now,
     syncStatus: "pending",
   };
   db.runSync(
-    `INSERT INTO inspections (id, propertyId, customerId, templateId, technicianId, status, scheduledAt, startedAt, completedAt, generalNotes, weatherConditions, createdAt, updatedAt, syncStatus)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO inspections (id, propertyId, customerId, templateId, technicianId, status, scheduledAt, startedAt, completedAt, generalNotes, weatherConditions, checklistCategories, createdAt, updatedAt, syncStatus)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       inspection.id,
       inspection.propertyId,
@@ -56,6 +57,7 @@ export function createLocalInspection(input: NewInspectionInput): LocalInspectio
       inspection.completedAt,
       inspection.generalNotes,
       inspection.weatherConditions,
+      inspection.checklistCategories,
       inspection.createdAt,
       inspection.updatedAt,
       inspection.syncStatus,
@@ -431,10 +433,26 @@ export function upsertLocalChecklistResponse(
 // already-started inspection, not just at creation time (NewInspectionScreen).
 // Detaching only hides the checklist section - it doesn't delete any
 // checklist_responses rows, so re-attaching the same template later restores
-// the technician's prior answers instead of losing them.
-export function setLocalInspectionTemplate(inspectionId: string, templateId: string | null): void {
-  getDb().runSync(`UPDATE inspections SET templateId = ?, updatedAt = ?, syncStatus = 'pending' WHERE id = ?`, [
-    templateId,
+// the technician's prior answers instead of losing them. `categories` is the
+// subset of EXTERIOR/INTERIOR/ATTIC/CRAWLSPACE the technician picked (e.g.
+// skipping Crawl Space on a slab-foundation house) - stored as JSON, null
+// when detaching.
+export function setLocalInspectionTemplate(
+  inspectionId: string,
+  templateId: string | null,
+  categories: string[] | null
+): void {
+  getDb().runSync(
+    `UPDATE inspections SET templateId = ?, checklistCategories = ?, updatedAt = ?, syncStatus = 'pending' WHERE id = ?`,
+    [templateId, categories ? JSON.stringify(categories) : null, nowIso(), inspectionId]
+  );
+}
+
+// Changes which categories show without touching the attached template or
+// any already-answered checklist_responses.
+export function setLocalInspectionChecklistCategories(inspectionId: string, categories: string[]): void {
+  getDb().runSync(`UPDATE inspections SET checklistCategories = ?, updatedAt = ?, syncStatus = 'pending' WHERE id = ?`, [
+    JSON.stringify(categories),
     nowIso(),
     inspectionId,
   ]);

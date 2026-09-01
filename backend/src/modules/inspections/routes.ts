@@ -33,6 +33,7 @@ const inspectionSchema = z.object({
   startedAt: z.string().datetime().optional().nullable(),
   generalNotes: z.string().optional().nullable(),
   weatherConditions: z.string().optional().nullable(),
+  checklistCategories: z.string().optional().nullable(),
 });
 
 inspectionsRouter.get(

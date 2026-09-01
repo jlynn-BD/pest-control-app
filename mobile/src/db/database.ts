@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS local_pest_types (
 CREATE TABLE IF NOT EXISTS inspections (
   id TEXT PRIMARY KEY, propertyId TEXT, customerId TEXT, templateId TEXT, technicianId TEXT,
   status TEXT, scheduledAt TEXT, startedAt TEXT, completedAt TEXT, generalNotes TEXT, weatherConditions TEXT,
+  checklistCategories TEXT,
   createdAt TEXT, updatedAt TEXT, syncStatus TEXT DEFAULT 'pending'
 );
 CREATE TABLE IF NOT EXISTS findings (

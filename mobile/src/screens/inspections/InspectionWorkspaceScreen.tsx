@@ -7,16 +7,24 @@ import {
   completeLocalInspection,
   getLocalInspectionDetail,
   LocalInspectionDetail,
+  setLocalInspectionChecklistCategories,
   setLocalInspectionTemplate,
 } from "../../db/inspectionStore";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
-import { Badge, Card, PrimaryButton, colors } from "../../components/ui";
+import { Badge, Card, Checkbox, PrimaryButton, colors } from "../../components/ui";
+import {
+  CHECKLIST_CATEGORY_SHORT_LABEL,
+  CHECKLIST_SELECTABLE_CATEGORIES,
+  parseChecklistCategories,
+} from "../../lib/checklist";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "InspectionWorkspace">;
 
 export default function InspectionWorkspaceScreen({ route, navigation }: Props) {
   const { inspectionId } = route.params;
   const [detail, setDetail] = useState<LocalInspectionDetail | null>(null);
+  const [draftCategories, setDraftCategories] = useState<string[]>(CHECKLIST_SELECTABLE_CATEGORIES);
+  const [editingCategories, setEditingCategories] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -28,9 +36,13 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
 
   const property = getCachedProperty(detail.inspection.propertyId);
   const customer = getCachedCustomer(detail.inspection.customerId);
-  const templateSections = detail.inspection.templateId ? getCachedTemplateSections(detail.inspection.templateId) : [];
+  const activeCategories = parseChecklistCategories(detail.inspection.checklistCategories);
+  const templateSections = detail.inspection.templateId
+    ? getCachedTemplateSections(detail.inspection.templateId).filter((s) => activeCategories.includes(s.category))
+    : [];
   const checklistItemCount = templateSections.reduce((sum, s) => sum + s.items.length, 0);
-  const checklistAnsweredCount = detail.checklistResponses.length;
+  const activeItemIds = new Set(templateSections.flatMap((s) => s.items.map((i) => i.id)));
+  const checklistAnsweredCount = detail.checklistResponses.filter((r) => activeItemIds.has(r.templateItemId)).length;
   const siteMapMarkerCount = detail.findings.filter((f) => f.floorPlanX != null).length;
   const hasSiteMapImage = Boolean(property?.siteMapLocalUri || property?.siteMapImageUrl);
   const hasCustomerSignature = detail.signatures.some((s) => s.signerType === "CUSTOMER");
@@ -43,13 +55,29 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
     navigation.replace("LocalInspectionDetail", { inspectionId });
   }
 
+  function toggleDraftCategory(code: string) {
+    setDraftCategories((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]));
+  }
+
   function handleAddChecklist(templateId: string) {
-    setLocalInspectionTemplate(inspectionId, templateId);
+    setLocalInspectionTemplate(inspectionId, templateId, draftCategories);
     setDetail(getLocalInspectionDetail(inspectionId));
   }
 
   function handleRemoveChecklist() {
-    setLocalInspectionTemplate(inspectionId, null);
+    setLocalInspectionTemplate(inspectionId, null, null);
+    setEditingCategories(false);
+    setDetail(getLocalInspectionDetail(inspectionId));
+  }
+
+  function handleStartEditingCategories() {
+    setDraftCategories(activeCategories);
+    setEditingCategories(true);
+  }
+
+  function handleSaveCategories() {
+    setLocalInspectionChecklistCategories(inspectionId, draftCategories);
+    setEditingCategories(false);
     setDetail(getLocalInspectionDetail(inspectionId));
   }
 
@@ -76,8 +104,34 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
         {detail.inspection.templateId ? (
           <Card style={styles.itemCard}>
             <Text style={styles.addLink} onPress={() => navigation.navigate("Checklist", { inspectionId })}>
-              Open exterior/interior checklist
+              Open checklist
             </Text>
+            <Text style={styles.itemMeta}>
+              Categories: {activeCategories.map((c) => CHECKLIST_CATEGORY_SHORT_LABEL[c] ?? c).join(", ")}
+            </Text>
+            {editingCategories ? (
+              <>
+                {CHECKLIST_SELECTABLE_CATEGORIES.map((code) => (
+                  <Checkbox
+                    key={code}
+                    label={CHECKLIST_CATEGORY_SHORT_LABEL[code]}
+                    checked={draftCategories.includes(code)}
+                    onChange={() => toggleDraftCategory(code)}
+                  />
+                ))}
+                <Pressable
+                  style={[styles.addButton, draftCategories.length === 0 && styles.addButtonDisabled]}
+                  onPress={handleSaveCategories}
+                  disabled={draftCategories.length === 0}
+                >
+                  <Text style={styles.addButtonText}>Save categories</Text>
+                </Pressable>
+              </>
+            ) : (
+              <Text style={styles.addLink} onPress={handleStartEditingCategories}>
+                Edit categories
+              </Text>
+            )}
             <Text style={styles.removeLink} onPress={handleRemoveChecklist}>
               Remove checklist from this inspection
             </Text>
@@ -85,9 +139,24 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
         ) : availableTemplates.length === 0 ? (
           <Text style={styles.itemMeta}>No checklist templates available offline yet.</Text>
         ) : availableTemplates.length === 1 ? (
-          <Pressable style={styles.addButton} onPress={() => handleAddChecklist(availableTemplates[0].id)}>
-            <Text style={styles.addButtonText}>+ Add Checklist</Text>
-          </Pressable>
+          <Card style={styles.itemCard}>
+            <Text style={styles.itemMeta}>Include:</Text>
+            {CHECKLIST_SELECTABLE_CATEGORIES.map((code) => (
+              <Checkbox
+                key={code}
+                label={CHECKLIST_CATEGORY_SHORT_LABEL[code]}
+                checked={draftCategories.includes(code)}
+                onChange={() => toggleDraftCategory(code)}
+              />
+            ))}
+            <Pressable
+              style={[styles.addButton, draftCategories.length === 0 && styles.addButtonDisabled]}
+              onPress={() => handleAddChecklist(availableTemplates[0].id)}
+              disabled={draftCategories.length === 0}
+            >
+              <Text style={styles.addButtonText}>+ Add Checklist</Text>
+            </Pressable>
+          </Card>
         ) : (
           availableTemplates.map((template) => (
             <Card key={template.id} style={styles.itemCard}>
@@ -237,7 +306,8 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 15, fontWeight: "700", color: colors.text },
   addLink: { color: colors.primary, fontWeight: "600", fontSize: 13 },
   removeLink: { color: colors.textMuted, fontWeight: "500", fontSize: 12, marginTop: 6 },
-  addButton: { alignSelf: "flex-start" },
+  addButton: { alignSelf: "flex-start", marginTop: 6 },
+  addButtonDisabled: { opacity: 0.4 },
   addButtonText: { color: colors.primary, fontWeight: "600", fontSize: 15 },
   itemCard: { marginBottom: 6, gap: 2 },
   itemTitle: { fontSize: 14, fontWeight: "600", color: colors.text },

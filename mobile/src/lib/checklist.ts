@@ -13,6 +13,30 @@ export const CHECKLIST_STATUS_LABEL: Record<string, string> = {
   NOT_APPLICABLE: "N/A",
 };
 
+// The categories a technician can opt into per inspection - e.g. skip Crawl
+// Space on a slab-foundation house. Excludes OTHER, a catch-all bucket
+// rather than a physical area someone would deliberately include/skip.
+export const CHECKLIST_SELECTABLE_CATEGORIES = ["EXTERIOR", "INTERIOR", "ATTIC", "CRAWLSPACE"];
+export const CHECKLIST_CATEGORY_SHORT_LABEL: Record<string, string> = {
+  EXTERIOR: "Exterior",
+  INTERIOR: "Interior",
+  ATTIC: "Attic",
+  CRAWLSPACE: "Crawl Space",
+};
+
+// Inspection.checklistCategories is JSON-encoded; null/empty/unparseable
+// means "show every category" (also covers inspections created before this
+// field existed).
+export function parseChecklistCategories(json: string | null | undefined): string[] {
+  if (!json) return CHECKLIST_SELECTABLE_CATEGORIES;
+  try {
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : CHECKLIST_SELECTABLE_CATEGORIES;
+  } catch {
+    return CHECKLIST_SELECTABLE_CATEGORIES;
+  }
+}
+
 export interface ChecklistDisplaySection {
   category: string;
   items: { prompt: string; status: string; notes: string | null }[];

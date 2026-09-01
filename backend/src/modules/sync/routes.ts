@@ -37,7 +37,7 @@ const DATE_FIELDS: Record<string, string[]> = {
 const ALLOWED_FIELDS: Record<string, string[]> = {
   Inspection: [
     "propertyId", "customerId", "templateId", "technicianId", "appointmentId",
-    "status", "scheduledAt", "startedAt", "completedAt", "generalNotes", "weatherConditions",
+    "status", "scheduledAt", "startedAt", "completedAt", "generalNotes", "weatherConditions", "checklistCategories",
   ],
   Finding: [
     "inspectionId", "pestTypeId", "pestTypeOther", "areaLocation", "locationDetail",
