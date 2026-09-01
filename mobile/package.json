@@ -29,10 +29,12 @@
     "react-native-screens": "~4.26.0",
     "react-native-svg": "15.15.4",
     "react-native-web": "^0.21.2",
+    "sql.js": "^1.14.2",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "@types/sql.js": "^1.4.11",
     "typescript": "~6.0.3"
   },
   "scripts": {

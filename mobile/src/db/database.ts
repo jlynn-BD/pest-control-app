@@ -1,6 +1,19 @@
 import * as SQLite from "expo-sqlite";
+import { Platform } from "react-native";
+import { isWebSqlReady, webSqlAdapter } from "./webSqlDatabase";
 
-let db: SQLite.SQLiteDatabase | null = null;
+// The small subset of expo-sqlite's SQLiteDatabase API this app actually
+// uses - lets web substitute a completely different backend (sql.js, see
+// webSqlDatabase.ts) without every call site caring which one is live.
+export interface LocalDb {
+  execSync(sql: string): void;
+  runSync(sql: string, params?: unknown[]): void;
+  getFirstSync<T>(sql: string, params?: unknown[]): T | null;
+  getAllSync<T>(sql: string, params?: unknown[]): T[];
+  withTransactionSync(fn: () => void): void;
+}
+
+let db: LocalDb | null = null;
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS local_customers (
@@ -67,21 +80,33 @@ CREATE TABLE IF NOT EXISTS sync_meta (
 );
 `;
 
-export function getDb(): SQLite.SQLiteDatabase {
+export function getDb(): LocalDb {
   if (!db) {
-    db = SQLite.openDatabaseSync("pestapp.db");
-    db.execSync(SCHEMA_SQL);
+    if (Platform.OS === "web") {
+      // Throws until initWebSqlDatabase() (called once at app startup on
+      // web, see App.tsx) has finished loading the sql.js WASM module.
+      if (!isWebSqlReady()) throw new Error("Web SQL database is not initialized yet");
+      db = webSqlAdapter;
+      db.execSync(SCHEMA_SQL);
+    } else {
+      const native = SQLite.openDatabaseSync("pestapp.db");
+      // Wrapped rather than assigned directly - expo-sqlite's runSync/
+      // getFirstSync/getAllSync are overloaded with a variadic form that
+      // doesn't structurally match LocalDb's simpler (sql, params?) shape.
+      const adapter: LocalDb = {
+        execSync: (sql) => native.execSync(sql),
+        runSync: (sql, params) => void native.runSync(sql, (params ?? []) as SQLite.SQLiteBindParams),
+        getFirstSync: <T,>(sql: string, params?: unknown[]) => native.getFirstSync<T>(sql, (params ?? []) as SQLite.SQLiteBindParams),
+        getAllSync: <T,>(sql: string, params?: unknown[]) => native.getAllSync<T>(sql, (params ?? []) as SQLite.SQLiteBindParams),
+        withTransactionSync: (fn) => native.withTransactionSync(fn),
+      };
+      adapter.execSync(SCHEMA_SQL);
+      db = adapter;
+    }
   }
   return db;
 }
 
-// expo-sqlite's web backend runs its synchronous API in a Worker
-// synchronized via SharedArrayBuffer, which browsers only expose on
-// cross-origin-isolated pages (COOP/COEP response headers). Expo's plain
-// `expo start --web` dev server doesn't set those, so openDatabaseSync
-// reliably throws there - screens must degrade gracefully when this
-// returns false. Native (Expo Go / a device build) has no such
-// restriction; this is a web-only limitation.
 export function isLocalDbAvailable(): boolean {
   try {
     getDb();
