@@ -58,6 +58,13 @@ export default function LocalInspectionDetailScreen({ route }: Props) {
                 />
               </View>
               {item.notes ? <Text style={styles.body}>{item.notes}</Text> : null}
+              {item.photos.length > 0 ? (
+                <View style={styles.photoRow}>
+                  {item.photos.map((p) => (
+                    <Image key={p.id} source={{ uri: p.localUri }} style={styles.photoThumb} />
+                  ))}
+                </View>
+              ) : null}
             </Card>
           ))}
         </View>

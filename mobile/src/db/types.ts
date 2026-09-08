@@ -173,3 +173,14 @@ export interface LocalChecklistResponse {
   updatedAt: string;
   syncStatus: "pending" | "synced";
 }
+
+export interface LocalChecklistResponsePhoto {
+  id: string;
+  checklistResponseId: string;
+  localUri: string;
+  remoteUrl: string | null;
+  caption: string | null;
+  takenAt: string | null;
+  sortOrder: number;
+  syncStatus: "pending" | "synced";
+}

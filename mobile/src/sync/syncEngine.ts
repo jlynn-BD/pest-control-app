@@ -7,8 +7,10 @@ import {
   getPendingInspections,
   getPendingRecommendations,
   getPendingTreatments,
+  getUploadableChecklistResponsePhotos,
   getUploadableFindingPhotos,
   getUploadableSignatures,
+  markChecklistResponsePhotoSynced,
   markFindingPhotoSynced,
   markSignatureSynced,
   markSynced,
@@ -223,6 +225,19 @@ export async function runSync(): Promise<SyncResult> {
         isFormData: true,
       });
       markFindingPhotoSynced(photo.id, created.fileUrl);
+      uploaded += 1;
+    }
+
+    for (const photo of getUploadableChecklistResponsePhotos()) {
+      const form = new FormData();
+      form.append("file", { uri: photo.localUri, name: `photo-${photo.id}.jpg`, type: "image/jpeg" } as unknown as Blob);
+      if (photo.caption) form.append("caption", photo.caption);
+      const created = await apiRequest<{ fileUrl: string }>(`/api/checklist-responses/${photo.checklistResponseId}/photos`, {
+        method: "POST",
+        body: form,
+        isFormData: true,
+      });
+      markChecklistResponsePhotoSynced(photo.id, created.fileUrl);
       uploaded += 1;
     }
 

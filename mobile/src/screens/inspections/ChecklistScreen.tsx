@@ -1,20 +1,24 @@
 import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React, { useCallback, useMemo, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { deleteChecklistResponse } from "../../api/inspections";
 import { getCachedTemplateSections } from "../../db/cache";
 import {
+  addLocalChecklistResponsePhoto,
   deleteLocalChecklistResponse,
   getLocalInspectionDetail,
   upsertLocalChecklistResponse,
 } from "../../db/inspectionStore";
-import type { LocalChecklistResponse, LocalTemplateItem } from "../../db/types";
+import type { LocalChecklistResponse, LocalChecklistResponsePhoto, LocalTemplateItem } from "../../db/types";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { Badge, Card, Checkbox, Field, colors } from "../../components/ui";
 import { parseChecklistCategories } from "../../lib/checklist";
+import { capturePhoto } from "../../lib/photo";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "Checklist">;
+
+type ResponseWithPhotos = LocalChecklistResponse & { photos: LocalChecklistResponsePhoto[] };
 
 const CATEGORY_LABEL: Record<string, string> = {
   EXTERIOR: "Exterior Inspection Checklist",
@@ -27,7 +31,7 @@ const CATEGORY_ORDER = ["EXTERIOR", "INTERIOR", "ATTIC", "CRAWLSPACE", "OTHER"];
 
 export default function ChecklistScreen({ route }: Props) {
   const { inspectionId } = route.params;
-  const [responses, setResponses] = useState<LocalChecklistResponse[]>([]);
+  const [responses, setResponses] = useState<ResponseWithPhotos[]>([]);
   const [templateId, setTemplateId] = useState<string | null>(null);
   // OTHER always shows (it's not a category the technician chose to include
   // or skip - see parseChecklistCategories/CHECKLIST_SELECTABLE_CATEGORIES).
@@ -43,7 +47,7 @@ export default function ChecklistScreen({ route }: Props) {
   );
 
   const responseByItem = useMemo(() => {
-    const map = new Map<string, LocalChecklistResponse>();
+    const map = new Map<string, ResponseWithPhotos>();
     for (const r of responses) map.set(r.templateItemId, r);
     return map;
   }, [responses]);
@@ -63,7 +67,8 @@ export default function ChecklistScreen({ route }: Props) {
 
   function handleCheck(item: LocalTemplateItem, notes: string | null) {
     const response = upsertLocalChecklistResponse(inspectionId, item.id, "SATISFACTORY", notes);
-    setResponses((prev) => [...prev.filter((r) => r.templateItemId !== item.id), response]);
+    const existingPhotos = responseByItem.get(item.id)?.photos ?? [];
+    setResponses((prev) => [...prev.filter((r) => r.templateItemId !== item.id), { ...response, photos: existingPhotos }]);
   }
 
   function handleUncheck(item: LocalTemplateItem) {
@@ -81,7 +86,23 @@ export default function ChecklistScreen({ route }: Props) {
     const existing = responseByItem.get(item.id);
     if (!existing) return;
     const response = upsertLocalChecklistResponse(inspectionId, item.id, existing.status, notes);
-    setResponses((prev) => [...prev.filter((r) => r.templateItemId !== item.id), response]);
+    setResponses((prev) => [...prev.filter((r) => r.templateItemId !== item.id), { ...response, photos: existing.photos }]);
+  }
+
+  // Taking a photo of a checklist point counts as having inspected it, so
+  // this creates the response (defaulting to Satisfactory, same as checking
+  // the box) if the item hadn't been touched yet - otherwise "+ Photo" on an
+  // unchecked item would be a dead tap.
+  async function handleAddPhoto(item: LocalTemplateItem) {
+    const uri = await capturePhoto();
+    if (!uri) return;
+    const existing = responseByItem.get(item.id);
+    const response = existing ?? { ...upsertLocalChecklistResponse(inspectionId, item.id, "SATISFACTORY", null), photos: [] };
+    const photo = addLocalChecklistResponsePhoto(response.id, { localUri: uri, caption: null, sortOrder: response.photos.length });
+    setResponses((prev) => [
+      ...prev.filter((r) => r.templateItemId !== item.id),
+      { ...response, photos: [...response.photos, photo] },
+    ]);
   }
 
   if (!templateId) {
@@ -121,9 +142,11 @@ export default function ChecklistScreen({ route }: Props) {
                       item={item}
                       checked={!!response}
                       notes={response?.notes ?? null}
+                      photos={response?.photos ?? []}
                       onCheck={(notes) => handleCheck(item, notes)}
                       onUncheck={() => handleUncheck(item)}
                       onNotesChange={(notes) => handleNotesChange(item, notes)}
+                      onAddPhoto={() => handleAddPhoto(item)}
                     />
                   );
                 })}
@@ -141,16 +164,20 @@ function ChecklistItemRow({
   item,
   checked,
   notes,
+  photos,
   onCheck,
   onUncheck,
   onNotesChange,
+  onAddPhoto,
 }: {
   item: LocalTemplateItem;
   checked: boolean;
   notes: string | null;
+  photos: LocalChecklistResponsePhoto[];
   onCheck: (notes: string | null) => void;
   onUncheck: () => void;
   onNotesChange: (notes: string | null) => void;
+  onAddPhoto: () => void;
 }) {
   const [localNotes, setLocalNotes] = useState(notes ?? "");
 
@@ -171,6 +198,14 @@ function ChecklistItemRow({
           if (checked) onNotesChange(localNotes.trim() || null);
         }}
       />
+      <View style={styles.photoRow}>
+        {photos.map((p) => (
+          <Image key={p.id} source={{ uri: p.localUri }} style={styles.photoThumb} />
+        ))}
+        <Text style={styles.addPhotoLink} onPress={onAddPhoto}>
+          + Photo
+        </Text>
+      </View>
     </Card>
   );
 }
@@ -185,4 +220,7 @@ const styles = StyleSheet.create({
   sectionBlock: { marginBottom: 12 },
   sectionName: { fontSize: 13, fontWeight: "600", color: colors.textMuted, marginBottom: 6, textTransform: "uppercase" },
   itemCard: { marginBottom: 8, gap: 4 },
+  photoRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 4 },
+  photoThumb: { width: 48, height: 48, borderRadius: 6 },
+  addPhotoLink: { color: colors.primary, fontWeight: "600", fontSize: 13 },
 });

@@ -288,6 +288,15 @@ export interface ChecklistResponse extends BaseEntity {
   templateItemId: string;
   status: ChecklistResponseStatus;
   notes?: string | null;
+  photos?: ChecklistResponsePhoto[];
+}
+
+export interface ChecklistResponsePhoto extends BaseEntity {
+  checklistResponseId: string;
+  fileUrl: string;
+  caption?: string | null;
+  takenAt?: string | null;
+  sortOrder: number;
 }
 
 export interface Estimate extends BaseEntity {

@@ -186,9 +186,24 @@ model ChecklistResponse {
 
   inspection   Inspection   @relation(fields: [inspectionId], references: [id])
   templateItem TemplateItem @relation(fields: [templateItemId], references: [id])
+  photos       ChecklistResponsePhoto[]
 
   @@unique([inspectionId, templateItemId])
   @@index([inspectionId])
+}
+
+model ChecklistResponsePhoto {
+  id                  String   @id
+  checklistResponseId String
+  fileUrl             String
+  caption             String?
+  takenAt             DateTime?
+  sortOrder           Int      @default(0)
+  createdAt           DateTime @default(now())
+
+  checklistResponse ChecklistResponse @relation(fields: [checklistResponseId], references: [id])
+
+  @@index([checklistResponseId])
 }
 
 model Appointment {

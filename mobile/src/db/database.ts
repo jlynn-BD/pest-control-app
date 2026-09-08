@@ -75,6 +75,10 @@ CREATE TABLE IF NOT EXISTS checklist_responses (
   id TEXT PRIMARY KEY, inspectionId TEXT, templateItemId TEXT, status TEXT, notes TEXT,
   createdAt TEXT, updatedAt TEXT, syncStatus TEXT DEFAULT 'pending'
 );
+CREATE TABLE IF NOT EXISTS checklist_response_photos (
+  id TEXT PRIMARY KEY, checklistResponseId TEXT, localUri TEXT, remoteUrl TEXT, caption TEXT, takenAt TEXT,
+  sortOrder INTEGER, syncStatus TEXT DEFAULT 'pending'
+);
 CREATE TABLE IF NOT EXISTS sync_meta (
   key TEXT PRIMARY KEY, value TEXT
 );

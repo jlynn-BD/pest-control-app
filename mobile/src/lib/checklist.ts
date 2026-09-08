@@ -37,9 +37,13 @@ export function parseChecklistCategories(json: string | null | undefined): strin
   }
 }
 
-export interface ChecklistDisplaySection {
+// Generic over the photo shape since local (LocalChecklistResponsePhoto,
+// keyed off localUri/remoteUrl) and remote (ChecklistResponsePhoto, keyed
+// off fileUrl) resolve a displayable URI differently - this just passes
+// whatever was given straight through for the caller to render.
+export interface ChecklistDisplaySection<P = unknown> {
   category: string;
-  items: { prompt: string; status: string; notes: string | null }[];
+  items: { prompt: string; status: string; notes: string | null; photos: P[] }[];
 }
 
 interface SectionLike {
@@ -47,10 +51,11 @@ interface SectionLike {
   sortOrder: number;
   items: { id: string; prompt: string }[];
 }
-interface ResponseLike {
+interface ResponseLike<P = unknown> {
   templateItemId: string;
   status: string;
   notes?: string | null;
+  photos?: P[];
 }
 
 // Joins template sections/items against an inspection's answered responses,
@@ -58,9 +63,12 @@ interface ResponseLike {
 // screens. Only answered items are shown - an inspection that never touched
 // a section (no template selected, or offline before the checklist screen
 // was opened) should show nothing rather than a wall of blanks.
-export function groupChecklistForDisplay(sections: SectionLike[], responses: ResponseLike[]): ChecklistDisplaySection[] {
+export function groupChecklistForDisplay<P = unknown>(
+  sections: SectionLike[],
+  responses: ResponseLike<P>[]
+): ChecklistDisplaySection<P>[] {
   const responseByItem = new Map(responses.map((r) => [r.templateItemId, r]));
-  const byCategory = new Map<string, ChecklistDisplaySection["items"]>();
+  const byCategory = new Map<string, ChecklistDisplaySection<P>["items"]>();
 
   const sorted = [...sections].sort((a, b) => a.sortOrder - b.sortOrder);
   for (const section of sorted) {
@@ -68,7 +76,7 @@ export function groupChecklistForDisplay(sections: SectionLike[], responses: Res
       const response = responseByItem.get(item.id);
       if (!response) continue;
       const list = byCategory.get(section.category) ?? [];
-      list.push({ prompt: item.prompt, status: response.status, notes: response.notes ?? null });
+      list.push({ prompt: item.prompt, status: response.status, notes: response.notes ?? null, photos: response.photos ?? [] });
       byCategory.set(section.category, list);
     }
   }

@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React, { useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getInspection } from "../../api/inspections";
+import { API_BASE_URL } from "../../api/config";
 import { generateReport, getReport } from "../../api/reports";
 import { ApiError } from "../../api/client";
 import { downloadAndShareReport } from "../../lib/report";
@@ -111,6 +112,13 @@ export default function InspectionDetailScreen({ route }: Props) {
                 />
               </View>
               {item.notes ? <Text style={styles.body}>{item.notes}</Text> : null}
+              {item.photos.length > 0 ? (
+                <View style={styles.photoRow}>
+                  {item.photos.map((p) => (
+                    <Image key={p.id} source={{ uri: `${API_BASE_URL}${p.fileUrl}` }} style={styles.photoThumb} />
+                  ))}
+                </View>
+              ) : null}
             </Card>
           ))}
         </View>
@@ -185,4 +193,6 @@ const styles = StyleSheet.create({
   buttonHalf: { flex: 1 },
   errorText: { color: colors.danger, fontSize: 12, marginTop: 6 },
   spacerSmall: { height: 8 },
+  photoRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
+  photoThumb: { width: 60, height: 60, borderRadius: 6 },
 });

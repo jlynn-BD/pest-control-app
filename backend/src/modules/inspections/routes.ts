@@ -19,7 +19,7 @@ const fullInclude = {
   signatures: true,
   report: true,
   followUpsFrom: true,
-  checklistResponses: { where: { deletedAt: null } },
+  checklistResponses: { where: { deletedAt: null }, include: { photos: { orderBy: { sortOrder: "asc" as const } } } },
 };
 
 const inspectionSchema = z.object({

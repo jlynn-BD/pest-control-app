@@ -2,6 +2,7 @@ import { getDb, isLocalDbAvailable } from "./database";
 import { generateId } from "../lib/uuid";
 import type {
   LocalChecklistResponse,
+  LocalChecklistResponsePhoto,
   LocalFinding,
   LocalFindingPhoto,
   LocalInspection,
@@ -90,7 +91,7 @@ export interface LocalInspectionDetail {
   recommendations: LocalRecommendation[];
   treatments: (LocalTreatmentRecord & { products: LocalTreatmentProduct[] })[];
   signatures: LocalSignature[];
-  checklistResponses: LocalChecklistResponse[];
+  checklistResponses: (LocalChecklistResponse & { photos: LocalChecklistResponsePhoto[] })[];
 }
 
 export function getLocalInspectionDetail(inspectionId: string): LocalInspectionDetail | null {
@@ -127,6 +128,13 @@ export function getLocalInspectionDetail(inspectionId: string): LocalInspectionD
     `SELECT * FROM checklist_responses WHERE inspectionId = ?`,
     [inspectionId]
   );
+  const checklistResponsesWithPhotos = checklistResponses.map((r) => ({
+    ...r,
+    photos: db.getAllSync<LocalChecklistResponsePhoto>(
+      `SELECT * FROM checklist_response_photos WHERE checklistResponseId = ? ORDER BY sortOrder ASC`,
+      [r.id]
+    ),
+  }));
 
   return {
     inspection,
@@ -134,7 +142,7 @@ export function getLocalInspectionDetail(inspectionId: string): LocalInspectionD
     recommendations,
     treatments: treatmentsWithProducts,
     signatures,
-    checklistResponses,
+    checklistResponses: checklistResponsesWithPhotos,
   };
 }
 
@@ -429,6 +437,29 @@ export function upsertLocalChecklistResponse(
   return response;
 }
 
+export function addLocalChecklistResponsePhoto(
+  checklistResponseId: string,
+  input: { localUri: string; caption: string | null; sortOrder: number }
+): LocalChecklistResponsePhoto {
+  const db = getDb();
+  const photo: LocalChecklistResponsePhoto = {
+    id: generateId(),
+    checklistResponseId,
+    localUri: input.localUri,
+    remoteUrl: null,
+    caption: input.caption,
+    takenAt: nowIso(),
+    sortOrder: input.sortOrder,
+    syncStatus: "pending",
+  };
+  db.runSync(
+    `INSERT INTO checklist_response_photos (id, checklistResponseId, localUri, remoteUrl, caption, takenAt, sortOrder, syncStatus)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [photo.id, photo.checklistResponseId, photo.localUri, photo.remoteUrl, photo.caption, photo.takenAt, photo.sortOrder, photo.syncStatus]
+  );
+  return photo;
+}
+
 // Lets a technician attach or detach a checklist template on an
 // already-started inspection, not just at creation time (NewInspectionScreen).
 // Detaching only hides the checklist section - it doesn't delete any
@@ -464,7 +495,14 @@ export function setLocalInspectionChecklistCategories(inspectionId: string, cate
 // best-effort remote delete since removing the local row here forfeits any
 // further chance to sync it.
 export function deleteLocalChecklistResponse(id: string): void {
-  getDb().runSync(`DELETE FROM checklist_responses WHERE id = ?`, [id]);
+  const db = getDb();
+  // Cascades to photos too - unchecking already silently discards notes
+  // (they live on this same row), so dropping photo evidence along with it
+  // is consistent rather than leaving orphaned local rows nothing can ever
+  // surface or sync (their JOIN in getUploadableChecklistResponsePhotos
+  // requires this parent row to exist).
+  db.runSync(`DELETE FROM checklist_response_photos WHERE checklistResponseId = ?`, [id]);
+  db.runSync(`DELETE FROM checklist_responses WHERE id = ?`, [id]);
 }
 
 export function completeLocalInspection(inspectionId: string): void {
@@ -535,6 +573,22 @@ export function markFindingPhotoSynced(id: string, remoteUrl: string): void {
   getDb().runSync(`UPDATE finding_photos SET syncStatus = 'synced', remoteUrl = ? WHERE id = ?`, [remoteUrl, id]);
 }
 
+// Checklist responses must exist server-side (synced) before their photos
+// can be uploaded, since the upload endpoint is nested under
+// /checklist-responses/:id/photos.
+export function getUploadableChecklistResponsePhotos(): (LocalChecklistResponsePhoto & { responseSyncStatus: string })[] {
+  if (!isLocalDbAvailable()) return [];
+  return getDb().getAllSync<LocalChecklistResponsePhoto & { responseSyncStatus: string }>(
+    `SELECT p.*, r.syncStatus as responseSyncStatus
+     FROM checklist_response_photos p
+     JOIN checklist_responses r ON r.id = p.checklistResponseId
+     WHERE p.syncStatus = 'pending' AND r.syncStatus = 'synced'`
+  );
+}
+export function markChecklistResponsePhotoSynced(id: string, remoteUrl: string): void {
+  getDb().runSync(`UPDATE checklist_response_photos SET syncStatus = 'synced', remoteUrl = ? WHERE id = ?`, [remoteUrl, id]);
+}
+
 // Signatures likewise need their parent inspection to exist server-side first.
 export function getUploadableSignatures(): (LocalSignature & { inspectionSyncStatus: string })[] {
   if (!isLocalDbAvailable()) return [];
@@ -552,7 +606,16 @@ export function markSignatureSynced(id: string, remoteUrl: string): void {
 export function countPendingSyncRows(): number {
   if (!isLocalDbAvailable()) return 0;
   const db = getDb();
-  const tables = ["inspections", "findings", "recommendations", "treatment_records", "finding_photos", "signatures", "checklist_responses"];
+  const tables = [
+    "inspections",
+    "findings",
+    "recommendations",
+    "treatment_records",
+    "finding_photos",
+    "signatures",
+    "checklist_responses",
+    "checklist_response_photos",
+  ];
   return tables.reduce((sum, table) => {
     const row = db.getFirstSync<{ count: number }>(`SELECT COUNT(*) as count FROM ${table} WHERE syncStatus = 'pending'`);
     return sum + (row?.count ?? 0);

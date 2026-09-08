@@ -10,7 +10,7 @@ import { templatesRouter } from "./modules/templates/routes";
 import { appointmentsRouter } from "./modules/appointments/routes";
 import { inspectionsRouter } from "./modules/inspections/routes";
 import { findingsOnInspectionRouter, findingsRouter } from "./modules/findings/routes";
-import { checklistResponsesOnInspectionRouter } from "./modules/checklist/routes";
+import { checklistResponsesOnInspectionRouter, checklistResponsesRouter } from "./modules/checklist/routes";
 import { estimateDraftOnInspectionRouter, estimatesRouter } from "./modules/estimates/routes";
 import { recommendationsOnInspectionRouter, recommendationsRouter } from "./modules/recommendations/routes";
 import { treatmentsOnInspectionRouter, treatmentsRouter } from "./modules/treatments/routes";
@@ -46,6 +46,7 @@ app.use("/api/inspections/:inspectionId/followups", followUpsOnInspectionRouter)
 app.use("/api/inspections", inspectionsRouter);
 app.use("/api", reportsRouter);
 app.use("/api/findings", findingsRouter);
+app.use("/api/checklist-responses", checklistResponsesRouter);
 app.use("/api/recommendations", recommendationsRouter);
 app.use("/api/treatments", treatmentsRouter);
 app.use("/api/followups", followUpsRouter);
