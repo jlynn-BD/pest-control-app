@@ -93,11 +93,19 @@ export default function InspectionListScreen({ navigation }: Props) {
           renderItem={({ item }) => (
             <Pressable
               style={styles.row}
-              onPress={() =>
-                item.kind === "local"
-                  ? navigation.navigate("LocalInspectionDetail", { inspectionId: item.id })
-                  : navigation.navigate("InspectionDetail", { inspectionId: item.id })
-              }
+              onPress={() => {
+                if (item.kind === "local" && item.status !== "COMPLETED") {
+                  // Unfinished - drop back into the editable workspace
+                  // (checklist, findings, signatures, etc.) instead of the
+                  // read-only summary, so leaving mid-inspection and coming
+                  // back later actually lets you continue it.
+                  navigation.navigate("InspectionWorkspace", { inspectionId: item.id });
+                } else if (item.kind === "local") {
+                  navigation.navigate("LocalInspectionDetail", { inspectionId: item.id });
+                } else {
+                  navigation.navigate("InspectionDetail", { inspectionId: item.id });
+                }
+              }}
             >
               <View style={styles.rowMain}>
                 <Text style={styles.customer}>{item.customerName}</Text>
