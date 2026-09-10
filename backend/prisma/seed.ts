@@ -132,10 +132,12 @@ async function main() {
       },
     }));
 
-  // Exterior/interior checklists, expressed as categorized template sections
-  // so the same schema drives both the mobile checklist screen and the PDF
-  // report. Idempotent: re-running the seed fills in anything missing
-  // rather than duplicating rows or wiping an already-seeded dev database.
+  // Simplified checklist structure (per Tate's feedback): each broad
+  // inspection area is a single check with notes/photo captured on that
+  // same item when something's found, instead of the old ~50-item-per-
+  // category granular breakdown. Idempotent: re-running the seed fills in
+  // anything missing rather than duplicating rows or wiping an already-
+  // seeded dev database.
   const CHECKLIST_SECTIONS: Array<{
     name: string;
     category: "EXTERIOR" | "INTERIOR" | "ATTIC" | "CRAWLSPACE" | "OTHER";
@@ -143,363 +145,163 @@ async function main() {
     items: Array<{ prompt: string; itemType: string; required: boolean }>;
   }> = [
     {
-      name: "Exterior Perimeter",
-      category: "EXTERIOR",
-      sortOrder: 0,
-      items: [
-        { prompt: "Check foundation for cracks/gaps", itemType: "CHECKBOX", required: true },
-        { prompt: "Inspect vegetation contact with structure", itemType: "CHECKBOX", required: false },
-        { prompt: "Check weep holes and utility line entry points", itemType: "CHECKBOX", required: true },
-        { prompt: "Inspect roofline, eaves, and soffits", itemType: "CHECKBOX", required: false },
-        { prompt: "Check for wood-to-ground contact", itemType: "CHECKBOX", required: false },
-        { prompt: "Inspect doors and windows for gaps/weatherstripping", itemType: "CHECKBOX", required: true },
-        { prompt: "Check drainage and standing water sources", itemType: "CHECKBOX", required: false },
-        { prompt: "Photo of exterior overview", itemType: "PHOTO", required: false },
-      ],
-    },
-    {
       name: "Foundation",
       category: "EXTERIOR",
-      sortOrder: 1,
-      items: [
-        { prompt: "Foundation walls free of cracks, gaps, or holes", itemType: "CHECKBOX", required: true },
-        { prompt: "Weep screed gap sealed / free of debris buildup", itemType: "CHECKBOX", required: true },
-        { prompt: "No gap at slab-to-wall transition", itemType: "CHECKBOX", required: false },
-        { prompt: "Foundation vents screened and intact", itemType: "CHECKBOX", required: true },
-        { prompt: "No wood-to-soil contact at foundation", itemType: "CHECKBOX", required: false },
-      ],
+      sortOrder: 0,
+      items: [{ prompt: "Foundation in good condition (no cracks, gaps, or wood-to-soil contact)", itemType: "CHECKBOX", required: true }],
     },
     {
-      name: "Exterior Structure",
+      name: "Exterior structure",
+      category: "EXTERIOR",
+      sortOrder: 1,
+      items: [{ prompt: "Exterior structure in good condition (siding, stucco/brick, wall penetrations sealed)", itemType: "CHECKBOX", required: true }],
+    },
+    {
+      name: "Entry points",
       category: "EXTERIOR",
       sortOrder: 2,
-      items: [
-        { prompt: "Siding intact, no gaps or damage", itemType: "CHECKBOX", required: true },
-        { prompt: "Stucco/brick veneer free of cracks and gaps", itemType: "CHECKBOX", required: false },
-        { prompt: "No gaps between trim and siding", itemType: "CHECKBOX", required: false },
-        { prompt: "Expansion joints sealed", itemType: "CHECKBOX", required: false },
-        { prompt: "Exterior wall penetrations (pipes, wires, conduit) sealed", itemType: "CHECKBOX", required: true },
-      ],
+      items: [{ prompt: "No unsealed entry points found (utility lines, pipes, conduits, gaps around structure)", itemType: "CHECKBOX", required: true }],
     },
     {
-      name: "Entry Points",
+      name: "Property conditions",
       category: "EXTERIOR",
       sortOrder: 3,
-      items: [
-        { prompt: "Utility line entry points sealed (electrical, cable, gas)", itemType: "CHECKBOX", required: true },
-        { prompt: "Pipe chases and conduits sealed", itemType: "CHECKBOX", required: true },
-        { prompt: "No visible rodent gnaw marks at potential entry points", itemType: "CHECKBOX", required: false },
-        { prompt: "Gaps around spigots/hose bibs sealed", itemType: "CHECKBOX", required: false },
-        { prompt: "No gaps larger than 1/4 inch anywhere around the structure", itemType: "CHECKBOX", required: true },
-        { prompt: "Record any entry point findings", itemType: "PEST_FINDING", required: false },
-      ],
+      items: [{ prompt: "Property conditions satisfactory (vegetation trimmed, no debris/wood piles, drainage OK)", itemType: "CHECKBOX", required: true }],
     },
     {
-      name: "Doors & Windows",
+      name: "Doors/windows",
       category: "EXTERIOR",
       sortOrder: 4,
-      items: [
-        { prompt: "Door sweeps intact and functional on all exterior doors", itemType: "CHECKBOX", required: true },
-        { prompt: "Weatherstripping intact on all doors", itemType: "CHECKBOX", required: false },
-        { prompt: "Window screens intact, no tears or gaps", itemType: "CHECKBOX", required: false },
-        { prompt: "Window frames sealed, no gaps", itemType: "CHECKBOX", required: false },
-        { prompt: "Garage man door sealed at threshold and side jambs", itemType: "CHECKBOX", required: true },
-      ],
+      items: [{ prompt: "Doors and windows sealed properly (sweeps, weatherstripping, screens intact)", itemType: "CHECKBOX", required: true }],
     },
     {
-      name: "Roofline & Eaves",
+      name: "Roofline/eaves",
       category: "EXTERIOR",
       sortOrder: 5,
-      items: [
-        { prompt: "Roof vents/jacks screened", itemType: "CHECKBOX", required: true },
-        { prompt: "No gaps at fascia or soffit", itemType: "CHECKBOX", required: true },
-        { prompt: "Eaves free of gaps between roof and wall", itemType: "CHECKBOX", required: false },
-        { prompt: "Roof-to-wall (rafter tail) gaps sealed", itemType: "CHECKBOX", required: false },
-        { prompt: "Roof pocket / valley areas checked and sealed", itemType: "CHECKBOX", required: false },
-        { prompt: "Gutters clear of debris", itemType: "CHECKBOX", required: false },
-      ],
+      items: [{ prompt: "Roofline and eaves sealed (vents screened, no gaps at fascia or soffit)", itemType: "CHECKBOX", required: true }],
     },
     {
-      name: "Vents & Utility Openings",
+      name: "Vents/openings",
       category: "EXTERIOR",
       sortOrder: 6,
-      items: [
-        { prompt: "Dryer vent screened / capped", itemType: "CHECKBOX", required: true },
-        { prompt: "Attic vents screened", itemType: "CHECKBOX", required: true },
-        { prompt: "Crawlspace vents screened and intact", itemType: "CHECKBOX", required: false },
-        { prompt: "HVAC line set penetration sealed", itemType: "CHECKBOX", required: false },
-        { prompt: "AC line / refrigerant line gap sealed", itemType: "CHECKBOX", required: true },
-      ],
+      items: [{ prompt: "Vents and utility openings screened and sealed (dryer, attic, crawlspace, HVAC)", itemType: "CHECKBOX", required: true }],
     },
     {
-      name: "Attached Structures",
+      name: "Garage",
       category: "EXTERIOR",
       sortOrder: 7,
-      items: [
-        { prompt: "Garage foundation vents checked", itemType: "CHECKBOX", required: false },
-        { prompt: "Garage man door gaps sealed", itemType: "CHECKBOX", required: false },
-        { prompt: "Garage overhead door seals intact", itemType: "CHECKBOX", required: true },
-        { prompt: "Porch/deck substructure free of pest harborage", itemType: "CHECKBOX", required: false },
-        { prompt: "Attached storage areas checked", itemType: "CHECKBOX", required: false },
-      ],
+      items: [{ prompt: "Garage sealed and pest-free (door seals, foundation vents, storage areas)", itemType: "CHECKBOX", required: true }],
     },
     {
-      name: "Property Conditions",
-      category: "EXTERIOR",
-      sortOrder: 8,
-      items: [
-        { prompt: "Vegetation trimmed back from structure (12+ inches)", itemType: "CHECKBOX", required: false },
-        { prompt: "No wood piles or debris stacked against structure", itemType: "CHECKBOX", required: true },
-        { prompt: "Standing water / drainage issues addressed", itemType: "CHECKBOX", required: false },
-        { prompt: "Trash/recycling bins stored away from structure", itemType: "CHECKBOX", required: false },
-        { prompt: "Mulch not in direct contact with siding", itemType: "CHECKBOX", required: false },
-      ],
+      name: "Kitchen & food storage",
+      category: "INTERIOR",
+      sortOrder: 0,
+      items: [{ prompt: "Kitchen and food storage areas free of pest activity and entry points (under sink, appliances, pantry)", itemType: "CHECKBOX", required: true }],
     },
     {
-      name: "Interior - Kitchen & Pantry",
+      name: "Bathrooms & utility rooms",
       category: "INTERIOR",
       sortOrder: 1,
-      items: [
-        { prompt: "Check under sink and appliances", itemType: "CHECKBOX", required: true },
-        { prompt: "Inspect pantry and food storage areas", itemType: "CHECKBOX", required: true },
-        { prompt: "Record pest evidence found", itemType: "PEST_FINDING", required: false },
-      ],
+      items: [{ prompt: "Bathrooms and utility/mechanical rooms free of pest activity and entry points", itemType: "CHECKBOX", required: true }],
     },
     {
-      name: "Interior - Bathrooms & Utility",
+      name: "Living areas",
       category: "INTERIOR",
       sortOrder: 2,
-      items: [
-        { prompt: "Check under bathroom sinks and around tile grout", itemType: "CHECKBOX", required: true },
-        { prompt: "Inspect utility/mechanical room", itemType: "CHECKBOX", required: false },
-        { prompt: "Check baseboards and visible wall voids", itemType: "CHECKBOX", required: false },
-      ],
-    },
-    {
-      name: "General Interior",
-      category: "INTERIOR",
-      sortOrder: 4,
-      items: [
-        { prompt: "Interior free of visible pest activity (droppings, shed skins, nesting)", itemType: "CHECKBOX", required: true },
-        { prompt: "Baseboards intact, no gaps or damage", itemType: "CHECKBOX", required: false },
-        { prompt: "Wall voids/cracks checked for entry signs", itemType: "CHECKBOX", required: false },
-        { prompt: "Interior doors seal properly at thresholds", itemType: "CHECKBOX", required: false },
-        { prompt: "Flooring intact, no gaps at wall-floor junctions", itemType: "CHECKBOX", required: false },
-        { prompt: "Storage/closet areas checked for harborage", itemType: "CHECKBOX", required: false },
-      ],
-    },
-    {
-      name: "Kitchen & Plumbing",
-      category: "INTERIOR",
-      sortOrder: 5,
-      items: [
-        { prompt: "Under-sink cabinet and plumbing penetrations sealed", itemType: "CHECKBOX", required: true },
-        { prompt: "Behind/under major appliances checked (fridge, stove, dishwasher)", itemType: "CHECKBOX", required: true },
-        { prompt: "Pantry and dry food storage areas checked", itemType: "CHECKBOX", required: true },
-        { prompt: "No signs of moisture/leaks under sink or around dishwasher", itemType: "CHECKBOX", required: false },
-        { prompt: "Trash/recycling area checked and sanitary", itemType: "CHECKBOX", required: false },
-        { prompt: "Cabinet kick plates intact, no gaps", itemType: "CHECKBOX", required: false },
-        { prompt: "Record any pest evidence found", itemType: "PEST_FINDING", required: false },
-      ],
-    },
-    {
-      name: "Bathrooms",
-      category: "INTERIOR",
-      sortOrder: 6,
-      items: [
-        { prompt: "Under-sink cabinet and plumbing penetrations sealed", itemType: "CHECKBOX", required: true },
-        { prompt: "Tile grout and caulking intact around tub/shower", itemType: "CHECKBOX", required: false },
-        { prompt: "No signs of moisture damage or leaks", itemType: "CHECKBOX", required: false },
-        { prompt: "Toilet base sealed, no gaps", itemType: "CHECKBOX", required: false },
-        { prompt: "Exhaust fan vent screened", itemType: "CHECKBOX", required: false },
-      ],
-    },
-    {
-      name: "Utility & Mechanical",
-      category: "INTERIOR",
-      sortOrder: 7,
-      items: [
-        { prompt: "Water heater area checked", itemType: "CHECKBOX", required: false },
-        { prompt: "Furnace/HVAC unit area checked", itemType: "CHECKBOX", required: false },
-        { prompt: "Electrical panel area checked, no gaps in wall penetrations", itemType: "CHECKBOX", required: true },
-        { prompt: "Washer/dryer area checked, dryer vent connection sealed", itemType: "CHECKBOX", required: true },
-        { prompt: "Utility sink and plumbing penetrations sealed", itemType: "CHECKBOX", required: false },
-        { prompt: "Sump pump area checked (if present)", itemType: "CHECKBOX", required: false },
-      ],
+      items: [{ prompt: "Living areas free of pest activity (baseboards, wall voids, flooring, thresholds)", itemType: "CHECKBOX", required: true }],
     },
     {
       name: "Garage",
       category: "INTERIOR",
-      sortOrder: 8,
-      items: [
-        { prompt: "Interior garage walls free of gaps or penetrations", itemType: "CHECKBOX", required: true },
-        { prompt: "Firewall/sheetrock between garage and living space intact", itemType: "CHECKBOX", required: true },
-        { prompt: "Garage storage areas checked for harborage", itemType: "CHECKBOX", required: false },
-        { prompt: "Interior man door sweep intact", itemType: "CHECKBOX", required: false },
-        { prompt: "Garage floor drain screened (if present)", itemType: "CHECKBOX", required: false },
-      ],
+      sortOrder: 3,
+      items: [{ prompt: "Interior garage sealed and pest-free (firewall, storage areas, man door)", itemType: "CHECKBOX", required: true }],
     },
     {
       name: "Basement",
       category: "INTERIOR",
-      sortOrder: 9,
-      items: [
-        { prompt: "Foundation walls (interior side) free of cracks or gaps", itemType: "CHECKBOX", required: true },
-        { prompt: "Sump pump/drainage area checked", itemType: "CHECKBOX", required: false },
-        { prompt: "Storage areas checked for harborage and moisture", itemType: "CHECKBOX", required: false },
-        { prompt: "Utility penetrations through foundation sealed", itemType: "CHECKBOX", required: true },
-        { prompt: "Signs of moisture intrusion checked", itemType: "CHECKBOX", required: false },
-      ],
+      sortOrder: 4,
+      items: [{ prompt: "Basement free of cracks, gaps, moisture, and pest activity", itemType: "CHECKBOX", required: true }],
     },
     {
-      name: "Entry Points",
+      name: "Entry points",
       category: "INTERIOR",
-      sortOrder: 10,
-      items: [
-        { prompt: "Interior door thresholds sealed, no daylight visible", itemType: "CHECKBOX", required: true },
-        { prompt: "Baseboard gaps at exterior-facing walls sealed", itemType: "CHECKBOX", required: false },
-        { prompt: "Wall/floor penetrations behind appliances sealed", itemType: "CHECKBOX", required: false },
-        { prompt: "Expansion joints (interior slab) sealed", itemType: "CHECKBOX", required: false },
-        { prompt: "Record any interior entry point findings", itemType: "PEST_FINDING", required: false },
-      ],
-    },
-    {
-      name: "Attic Access",
-      category: "ATTIC",
-      sortOrder: 0,
-      items: [
-        { prompt: "Attic access point free of gaps or damage", itemType: "CHECKBOX", required: true },
-        { prompt: "Access hatch/door seals properly when closed", itemType: "CHECKBOX", required: false },
-        { prompt: "Pull-down stairs/ladder area checked for gaps", itemType: "CHECKBOX", required: false },
-      ],
-    },
-    {
-      name: "Insulation",
-      category: "ATTIC",
-      sortOrder: 1,
-      items: [
-        { prompt: "Insulation free of nesting material, droppings, or disturbance", itemType: "CHECKBOX", required: true },
-        { prompt: "Insulation depth/coverage adequate, no bare or compressed spots", itemType: "CHECKBOX", required: false },
-        { prompt: "No moisture staining or water damage in insulation", itemType: "CHECKBOX", required: false },
-      ],
-    },
-    {
-      name: "Roof Structure",
-      category: "ATTIC",
-      sortOrder: 2,
-      items: [
-        { prompt: "Roof sheathing and rafters free of daylight gaps", itemType: "CHECKBOX", required: true },
-        { prompt: "No visible rodent gnaw marks on structural wood", itemType: "CHECKBOX", required: false },
-        { prompt: "Ridge vent and roof penetrations sealed from inside", itemType: "CHECKBOX", required: false },
-      ],
-    },
-    {
-      name: "Vents & Openings",
-      category: "ATTIC",
-      sortOrder: 3,
-      items: [
-        { prompt: "Gable/soffit vents screened and intact from inside", itemType: "CHECKBOX", required: true },
-        { prompt: "Plumbing/exhaust vent stacks sealed at roof penetration", itemType: "CHECKBOX", required: false },
-        { prompt: "No gaps around HVAC ductwork penetrations", itemType: "CHECKBOX", required: false },
-      ],
-    },
-    {
-      name: "Pest Evidence",
-      category: "ATTIC",
-      sortOrder: 4,
-      items: [
-        { prompt: "Attic free of visible pest activity (droppings, nesting, shed skins)", itemType: "CHECKBOX", required: true },
-        { prompt: "Record any pest evidence found", itemType: "PEST_FINDING", required: false },
-      ],
-    },
-    {
-      name: "Crawl Space Access",
-      category: "CRAWLSPACE",
-      sortOrder: 0,
-      items: [
-        { prompt: "Crawl space access door/panel sealed and pest-proof", itemType: "CHECKBOX", required: true },
-        { prompt: "Access door closes and latches securely", itemType: "CHECKBOX", required: false },
-      ],
-    },
-    {
-      name: "Foundation",
-      category: "CRAWLSPACE",
-      sortOrder: 1,
-      items: [
-        { prompt: "Foundation walls (crawl space side) free of cracks or gaps", itemType: "CHECKBOX", required: true },
-        { prompt: "Sill plate and rim joist free of gaps or damage", itemType: "CHECKBOX", required: true },
-        { prompt: "Support piers checked, no wood-to-soil contact", itemType: "CHECKBOX", required: false },
-      ],
-    },
-    {
-      name: "Insulation",
-      category: "CRAWLSPACE",
-      sortOrder: 2,
-      items: [
-        { prompt: "Insulation free of nesting material, droppings, or disturbance", itemType: "CHECKBOX", required: true },
-        { prompt: "Vapor barrier intact, no tears or gaps", itemType: "CHECKBOX", required: false },
-      ],
-    },
-    {
-      name: "Plumbing & Utilities",
-      category: "CRAWLSPACE",
-      sortOrder: 3,
-      items: [
-        { prompt: "Plumbing penetrations through foundation/subfloor sealed", itemType: "CHECKBOX", required: true },
-        { prompt: "Utility line penetrations sealed", itemType: "CHECKBOX", required: false },
-      ],
-    },
-    {
-      name: "Vents & Openings",
-      category: "CRAWLSPACE",
-      sortOrder: 4,
-      items: [
-        { prompt: "Foundation/crawl space vents screened and intact", itemType: "CHECKBOX", required: true },
-        { prompt: "No gaps larger than 1/4 inch around vent openings", itemType: "CHECKBOX", required: false },
-      ],
-    },
-    {
-      name: "Moisture Conditions",
-      category: "CRAWLSPACE",
       sortOrder: 5,
-      items: [
-        { prompt: "No standing water or excess moisture present", itemType: "CHECKBOX", required: true },
-        { prompt: "Ground cover/drainage adequate", itemType: "CHECKBOX", required: false },
-        { prompt: "Note moisture level", itemType: "TEXT", required: false },
-      ],
+      items: [{ prompt: "Interior entry points sealed (thresholds, baseboards, penetrations behind appliances)", itemType: "CHECKBOX", required: true }],
     },
     {
-      name: "Pest Evidence",
+      name: "Attic access",
+      category: "ATTIC",
+      sortOrder: 0,
+      items: [{ prompt: "Attic access point sealed and pest-proof", itemType: "CHECKBOX", required: true }],
+    },
+    {
+      name: "Insulation & structure",
+      category: "ATTIC",
+      sortOrder: 1,
+      items: [{ prompt: "Insulation and roof structure free of nesting, damage, or gaps", itemType: "CHECKBOX", required: true }],
+    },
+    {
+      name: "Vents/openings",
+      category: "ATTIC",
+      sortOrder: 2,
+      items: [{ prompt: "Attic vents and openings screened and sealed", itemType: "CHECKBOX", required: true }],
+    },
+    {
+      name: "Pest evidence",
+      category: "ATTIC",
+      sortOrder: 3,
+      items: [{ prompt: "Attic free of visible pest activity (droppings, nesting, shed skins)", itemType: "CHECKBOX", required: true }],
+    },
+    {
+      name: "Crawl space access",
       category: "CRAWLSPACE",
-      sortOrder: 6,
-      items: [
-        { prompt: "Crawl space free of visible pest activity (droppings, nesting, shed skins)", itemType: "CHECKBOX", required: true },
-        { prompt: "Record any pest evidence found", itemType: "PEST_FINDING", required: false },
-      ],
+      sortOrder: 0,
+      items: [{ prompt: "Crawl space access sealed and pest-proof", itemType: "CHECKBOX", required: true }],
+    },
+    {
+      name: "Foundation & structure",
+      category: "CRAWLSPACE",
+      sortOrder: 1,
+      items: [{ prompt: "Foundation, sill plate, and support piers free of cracks, gaps, and wood-to-soil contact", itemType: "CHECKBOX", required: true }],
+    },
+    {
+      name: "Vents/openings",
+      category: "CRAWLSPACE",
+      sortOrder: 2,
+      items: [{ prompt: "Crawl space vents screened and intact", itemType: "CHECKBOX", required: true }],
+    },
+    {
+      name: "Moisture & pest evidence",
+      category: "CRAWLSPACE",
+      sortOrder: 3,
+      items: [{ prompt: "No standing water or excess moisture; crawl space free of visible pest activity", itemType: "CHECKBOX", required: true }],
     },
   ];
 
-  // The old combined "Attic / Crawlspace" INTERIOR section predates the
-  // dedicated ATTIC/CRAWLSPACE categories above and now duplicates their
-  // coverage - remove it (and its items/responses) rather than leaving a
-  // stale section sitting outside the categories CHECKLIST_SECTIONS manages.
-  // Idempotent: a no-op once it's gone from an earlier seed run.
-  const legacyAtticSection = await prisma.templateSection.findFirst({
-    where: { templateId: template.id, name: "Attic / Crawlspace", category: "INTERIOR" },
+  // Remove every managed-category section that isn't part of the simplified
+  // structure above (this replaces both the old ~50-item breakdown and the
+  // one-off legacy "Attic / Crawlspace" cleanup that used to live here) -
+  // cascades to its items and any recorded checklist responses. Idempotent:
+  // a no-op once a given seed run has already migrated a database.
+  const keepSectionKeys = new Set(CHECKLIST_SECTIONS.map((s) => `${s.category}::${s.name}`));
+  const managedCategories = ["EXTERIOR", "INTERIOR", "ATTIC", "CRAWLSPACE"] as const;
+  const existingSections = await prisma.templateSection.findMany({
+    where: { templateId: template.id, category: { in: [...managedCategories] } },
   });
-  if (legacyAtticSection) {
-    const legacyItemIds = (
-      await prisma.templateItem.findMany({ where: { sectionId: legacyAtticSection.id }, select: { id: true } })
+  for (const existing of existingSections) {
+    if (keepSectionKeys.has(`${existing.category}::${existing.name}`)) continue;
+    const staleItemIds = (
+      await prisma.templateItem.findMany({ where: { sectionId: existing.id }, select: { id: true } })
     ).map((i) => i.id);
-    await prisma.checklistResponse.deleteMany({ where: { templateItemId: { in: legacyItemIds } } });
-    await prisma.templateItem.deleteMany({ where: { sectionId: legacyAtticSection.id } });
-    await prisma.templateSection.delete({ where: { id: legacyAtticSection.id } });
+    await prisma.checklistResponse.deleteMany({ where: { templateItemId: { in: staleItemIds } } });
+    await prisma.templateItem.deleteMany({ where: { sectionId: existing.id } });
+    await prisma.templateSection.delete({ where: { id: existing.id } });
   }
 
   for (const s of CHECKLIST_SECTIONS) {
     // Matched by (template, name, category) - some section names (e.g.
-    // "Entry Points") intentionally exist under both EXTERIOR and INTERIOR
-    // as distinct sections, so name alone isn't a safe match key.
+    // "Garage") intentionally exist under both EXTERIOR and INTERIOR as
+    // distinct sections, so name alone isn't a safe match key.
     const section =
       (await prisma.templateSection.findFirst({ where: { templateId: template.id, name: s.name, category: s.category } })) ??
       (await prisma.templateSection.create({
@@ -507,6 +309,16 @@ async function main() {
       }));
     if (section.sortOrder !== s.sortOrder) {
       await prisma.templateSection.update({ where: { id: section.id }, data: { sortOrder: s.sortOrder } });
+    }
+    // A section that already existed under the old granular structure (e.g.
+    // "Foundation", "Garage") may still carry its old multi-item breakdown -
+    // drop whatever isn't in the new, single-item list for it.
+    const keepPrompts = new Set(s.items.map((item) => item.prompt));
+    const staleItems = await prisma.templateItem.findMany({ where: { sectionId: section.id, prompt: { notIn: [...keepPrompts] } } });
+    if (staleItems.length > 0) {
+      const staleIds = staleItems.map((i) => i.id);
+      await prisma.checklistResponse.deleteMany({ where: { templateItemId: { in: staleIds } } });
+      await prisma.templateItem.deleteMany({ where: { id: { in: staleIds } } });
     }
     for (const [index, item] of s.items.entries()) {
       const existingItem = await prisma.templateItem.findFirst({ where: { sectionId: section.id, prompt: item.prompt } });
@@ -580,6 +392,7 @@ async function main() {
   const existingDemoInspection = await prisma.inspection.findFirst({
     where: { propertyId: property.id, generalNotes: { contains: "Seeded demo inspection" } },
   });
+  let demoInspectionId: string | null = existingDemoInspection?.id ?? null;
   if (!existingDemoInspection) {
     const roach = await prisma.pestType.findUnique({ where: { name: "German Cockroach" } });
     const now = new Date();
@@ -692,20 +505,6 @@ async function main() {
       });
     }
 
-    const sections = await prisma.templateSection.findMany({ where: { templateId: template.id }, include: { items: true } });
-    const sinkItem = sections.flatMap((s) => s.items).find((i) => i.prompt === "Check under sink and appliances");
-    const foundationItem = sections.flatMap((s) => s.items).find((i) => i.prompt === "Check foundation for cracks/gaps");
-    if (sinkItem) {
-      await prisma.checklistResponse.create({
-        data: { id: uuidv4(), inspectionId: inspection.id, templateItemId: sinkItem.id, status: "NEEDS_ATTENTION", notes: "Droppings observed under sink" },
-      });
-    }
-    if (foundationItem) {
-      await prisma.checklistResponse.create({
-        data: { id: uuidv4(), inspectionId: inspection.id, templateItemId: foundationItem.id, status: "SATISFACTORY", notes: null },
-      });
-    }
-
     await prisma.followUp.create({
       data: {
         id: uuidv4(),
@@ -717,7 +516,38 @@ async function main() {
       },
     });
 
+    demoInspectionId = inspection.id;
     console.log(`Seeded demo inspection: ${inspection.id}`);
+  }
+
+  // Runs whether the demo inspection is brand new or already existed - the
+  // checklist-simplification migration above deletes checklist responses
+  // tied to retired template items, so an already-seeded database also
+  // needs these two demo responses re-attached to their new item ids.
+  if (demoInspectionId) {
+    const sections = await prisma.templateSection.findMany({ where: { templateId: template.id }, include: { items: true } });
+    const sinkItem = sections
+      .flatMap((s) => s.items)
+      .find((i) => i.prompt === "Kitchen and food storage areas free of pest activity and entry points (under sink, appliances, pantry)");
+    const foundationItem = sections
+      .flatMap((s) => s.items)
+      .find((i) => i.prompt === "Foundation in good condition (no cracks, gaps, or wood-to-soil contact)");
+    if (sinkItem) {
+      const existingResponse = await prisma.checklistResponse.findFirst({ where: { inspectionId: demoInspectionId, templateItemId: sinkItem.id } });
+      if (!existingResponse) {
+        await prisma.checklistResponse.create({
+          data: { id: uuidv4(), inspectionId: demoInspectionId, templateItemId: sinkItem.id, status: "NEEDS_ATTENTION", notes: "Droppings observed under sink" },
+        });
+      }
+    }
+    if (foundationItem) {
+      const existingResponse = await prisma.checklistResponse.findFirst({ where: { inspectionId: demoInspectionId, templateItemId: foundationItem.id } });
+      if (!existingResponse) {
+        await prisma.checklistResponse.create({
+          data: { id: uuidv4(), inspectionId: demoInspectionId, templateItemId: foundationItem.id, status: "SATISFACTORY", notes: null },
+        });
+      }
+    }
   }
 
   console.log("Seed complete.");
