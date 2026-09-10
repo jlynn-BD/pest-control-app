@@ -25,7 +25,7 @@ function openSnapshotStore(): Promise<IDBDatabase> {
   });
 }
 
-async function loadSnapshot(): Promise<Uint8Array | null> {
+async function loadSnapshotUnbounded(): Promise<Uint8Array | null> {
   try {
     const idb = await openSnapshotStore();
     return await new Promise((resolve, reject) => {
@@ -38,6 +38,27 @@ async function loadSnapshot(): Promise<Uint8Array | null> {
     // fall back to starting fresh rather than blocking the app.
     return null;
   }
+}
+
+// IndexedDB has observably taken several seconds to respond in some
+// environments (slow first-open, disk contention, etc.) with no error - just
+// silence. Since this gates the whole app's startup screen (see App.tsx),
+// a slow/stuck IndexedDB must never turn into a slow/stuck app: give it a
+// budget, and start fresh (same as no persistence at all) if it blows past
+// that rather than leaving the technician staring at a spinner.
+function loadSnapshot(): Promise<Uint8Array | null> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: Uint8Array | null) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    setTimeout(() => finish(null), 2000);
+    loadSnapshotUnbounded()
+      .then(finish)
+      .catch(() => finish(null));
+  });
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
