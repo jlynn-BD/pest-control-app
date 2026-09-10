@@ -29,7 +29,7 @@ const CATEGORY_LABEL: Record<string, string> = {
 };
 const CATEGORY_ORDER = ["EXTERIOR", "INTERIOR", "ATTIC", "CRAWLSPACE", "OTHER"];
 
-export default function ChecklistScreen({ route }: Props) {
+export default function ChecklistScreen({ route, navigation }: Props) {
   const { inspectionId } = route.params;
   const [responses, setResponses] = useState<ResponseWithPhotos[]>([]);
   const [templateId, setTemplateId] = useState<string | null>(null);
@@ -89,20 +89,35 @@ export default function ChecklistScreen({ route }: Props) {
     setResponses((prev) => [...prev.filter((r) => r.templateItemId !== item.id), { ...response, photos: existing.photos }]);
   }
 
-  // Taking a photo of a checklist point counts as having inspected it, so
-  // this creates the response (defaulting to Satisfactory, same as checking
-  // the box) if the item hadn't been touched yet - otherwise "+ Photo" on an
-  // unchecked item would be a dead tap.
-  async function handleAddPhoto(item: LocalTemplateItem) {
+  // Persists whatever's currently in the (possibly unblurred) notes field
+  // and returns the up-to-date response - shared by +Photo and Add to Site
+  // Map so neither one silently drops notes the technician just typed but
+  // hadn't tabbed away from yet. Also creates the response (defaulting to
+  // Satisfactory, same as checking the box) if the item hadn't been touched
+  // yet, so neither action is ever a dead tap on an unchecked item.
+  function commitResponse(item: LocalTemplateItem, notes: string | null): ResponseWithPhotos {
+    const existing = responseByItem.get(item.id);
+    const status = existing?.status ?? "SATISFACTORY";
+    const updated = upsertLocalChecklistResponse(inspectionId, item.id, status, notes);
+    const response = { ...updated, photos: existing?.photos ?? [] };
+    setResponses((prev) => [...prev.filter((r) => r.templateItemId !== item.id), response]);
+    return response;
+  }
+
+  async function handleAddPhoto(item: LocalTemplateItem, notes: string | null) {
     const uri = await capturePhoto();
     if (!uri) return;
-    const existing = responseByItem.get(item.id);
-    const response = existing ?? { ...upsertLocalChecklistResponse(inspectionId, item.id, "SATISFACTORY", null), photos: [] };
+    const response = commitResponse(item, notes);
     const photo = addLocalChecklistResponsePhoto(response.id, { localUri: uri, caption: null, sortOrder: response.photos.length });
     setResponses((prev) => [
       ...prev.filter((r) => r.templateItemId !== item.id),
       { ...response, photos: [...response.photos, photo] },
     ]);
+  }
+
+  function handleAddToSiteMap(item: LocalTemplateItem, notes: string | null) {
+    const response = commitResponse(item, notes);
+    navigation.navigate("SiteMap", { inspectionId, fromChecklistResponseId: response.id });
   }
 
   if (!templateId) {
@@ -146,7 +161,8 @@ export default function ChecklistScreen({ route }: Props) {
                       onCheck={(notes) => handleCheck(item, notes)}
                       onUncheck={() => handleUncheck(item)}
                       onNotesChange={(notes) => handleNotesChange(item, notes)}
-                      onAddPhoto={() => handleAddPhoto(item)}
+                      onAddPhoto={(notes) => handleAddPhoto(item, notes)}
+                      onAddToSiteMap={(notes) => handleAddToSiteMap(item, notes)}
                     />
                   );
                 })}
@@ -169,6 +185,7 @@ function ChecklistItemRow({
   onUncheck,
   onNotesChange,
   onAddPhoto,
+  onAddToSiteMap,
 }: {
   item: LocalTemplateItem;
   checked: boolean;
@@ -177,7 +194,8 @@ function ChecklistItemRow({
   onCheck: (notes: string | null) => void;
   onUncheck: () => void;
   onNotesChange: (notes: string | null) => void;
-  onAddPhoto: () => void;
+  onAddPhoto: (notes: string | null) => void;
+  onAddToSiteMap: (notes: string | null) => void;
 }) {
   const [localNotes, setLocalNotes] = useState(notes ?? "");
 
@@ -202,8 +220,11 @@ function ChecklistItemRow({
         {photos.map((p) => (
           <Image key={p.id} source={{ uri: p.localUri }} style={styles.photoThumb} />
         ))}
-        <Text style={styles.addPhotoLink} onPress={onAddPhoto}>
+        <Text style={styles.addPhotoLink} onPress={() => onAddPhoto(localNotes.trim() || null)}>
           + Photo
+        </Text>
+        <Text style={styles.addPhotoLink} onPress={() => onAddToSiteMap(localNotes.trim() || null)}>
+          📍 Add to Site Map
         </Text>
       </View>
     </Card>

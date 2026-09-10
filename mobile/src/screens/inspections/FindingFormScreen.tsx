@@ -7,10 +7,11 @@ import {
 } from "@pest-app/shared";
 import React, { useMemo, useState } from "react";
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { getCachedPestTypes } from "../../db/cache";
-import { addLocalFinding, addLocalFindingPhoto } from "../../db/inspectionStore";
+import { getCachedPestTypes, getCachedTemplateSections } from "../../db/cache";
+import { addLocalFinding, addLocalFindingPhoto, getLocalInspectionDetail } from "../../db/inspectionStore";
 import { capturePhoto } from "../../lib/photo";
 import { getCurrentCoords } from "../../lib/location";
+import { findChecklistResponseSummary } from "../../lib/checklist";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { ChipMultiSelect, SegmentedControl } from "../../components/ChipMultiSelect";
 import { Badge, Field, PrimaryButton, colors } from "../../components/ui";
@@ -20,20 +21,32 @@ type Props = NativeStackScreenProps<InspectionsStackParamList, "FindingForm">;
 const SEVERITY_OPTIONS = [Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL];
 
 export default function FindingFormScreen({ route, navigation }: Props) {
-  const { inspectionId, arrowStartX, arrowStartY, arrowEndX, arrowEndY, arrowLevel } = route.params;
+  const { inspectionId, arrowStartX, arrowStartY, arrowEndX, arrowEndY, arrowLevel, fromChecklistResponseId } = route.params;
   const hasSiteMapPosition = arrowStartX != null && arrowStartY != null && arrowEndX != null && arrowEndY != null;
   const pestTypes = useMemo(() => getCachedPestTypes(), []);
 
+  // Pre-fills from an already-answered checklist item instead of making the
+  // technician retype what's already known (Tate's "don't do the same thing
+  // twice" workflow ask) - see ChecklistScreen's "Add to Site Map" action
+  // and SiteMapScreen, which is what routes here with this param set.
+  const checklistSummary = useMemo(() => {
+    if (!fromChecklistResponseId) return null;
+    const detail = getLocalInspectionDetail(inspectionId);
+    if (!detail) return null;
+    const sections = detail.inspection.templateId ? getCachedTemplateSections(detail.inspection.templateId) : [];
+    return findChecklistResponseSummary(fromChecklistResponseId, detail.checklistResponses, sections);
+  }, [inspectionId, fromChecklistResponseId]);
+
   const [pestTypeId, setPestTypeId] = useState<string | null>(null);
   const [pestTypeOther, setPestTypeOther] = useState("");
-  const [areaLocation, setAreaLocation] = useState("");
+  const [areaLocation, setAreaLocation] = useState(checklistSummary?.prompt ?? "");
   const [locationDetail, setLocationDetail] = useState("");
   const [evidenceTypes, setEvidenceTypes] = useState<string[]>([]);
   const [severity, setSeverity] = useState<string>(Severity.MEDIUM);
   const [riskFactors, setRiskFactors] = useState<string[]>([]);
   const [entryPoints, setEntryPoints] = useState<string[]>([]);
-  const [description, setDescription] = useState("");
-  const [photos, setPhotos] = useState<string[]>([]);
+  const [description, setDescription] = useState(checklistSummary?.notes ?? "");
+  const [photos, setPhotos] = useState<string[]>(checklistSummary?.photos.map((p) => p.localUri) ?? []);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,9 +94,10 @@ export default function FindingFormScreen({ route, navigation }: Props) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {hasSiteMapPosition ? (
+      {hasSiteMapPosition || checklistSummary ? (
         <View style={styles.siteMapBadgeRow}>
-          <Badge label="📍 Marked on site plan" tone="success" />
+          {hasSiteMapPosition ? <Badge label="📍 Marked on site plan" tone="success" /> : null}
+          {checklistSummary ? <Badge label="📋 Pre-filled from checklist" tone="default" /> : null}
         </View>
       ) : null}
       <Text style={styles.label}>Pest type</Text>
@@ -135,7 +149,7 @@ export default function FindingFormScreen({ route, navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 40 },
-  siteMapBadgeRow: { alignItems: "flex-start", marginBottom: 12 },
+  siteMapBadgeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "flex-start", marginBottom: 12 },
   label: { fontSize: 13, color: colors.textMuted, marginBottom: 8, fontWeight: "500" },
   pestRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 },
   pestChip: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },

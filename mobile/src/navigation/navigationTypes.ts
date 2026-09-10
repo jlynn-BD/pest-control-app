@@ -16,7 +16,11 @@ export type InspectionsStackParamList = {
   NewInspection: undefined;
   InspectionWorkspace: { inspectionId: string };
   Checklist: { inspectionId: string };
-  SiteMap: { inspectionId: string };
+  // fromChecklistResponseId: arriving here to place a marker for a checklist
+  // item that's already been answered - see ChecklistScreen's "Add to Site
+  // Map" action. Puts the screen straight into arrow-drawing mode instead
+  // of requiring a separate "+Marker" tap.
+  SiteMap: { inspectionId: string; fromChecklistResponseId?: string };
   FindingForm: {
     inspectionId: string;
     arrowStartX?: number;
@@ -24,6 +28,10 @@ export type InspectionsStackParamList = {
     arrowEndX?: number;
     arrowEndY?: number;
     arrowLevel?: string;
+    // Pre-fills area/description/photos from an already-answered checklist
+    // item instead of making the technician retype what's already known -
+    // see SiteMapScreen/ChecklistScreen.
+    fromChecklistResponseId?: string;
   };
   RecommendationForm: { inspectionId: string };
   TreatmentForm: { inspectionId: string };

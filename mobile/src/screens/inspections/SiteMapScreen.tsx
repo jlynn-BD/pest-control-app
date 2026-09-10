@@ -3,11 +3,12 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { SITE_MAP_LEVEL_SUGGESTIONS, SiteMapLevel, SiteMapSketchLabel, SiteMapSketchLine } from "@pest-app/shared";
 import React, { useCallback, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { getCachedProperty, updateLocalPropertySiteMapSketch } from "../../db/cache";
+import { getCachedProperty, getCachedTemplateSections, updateLocalPropertySiteMapSketch } from "../../db/cache";
 import { generateId } from "../../lib/uuid";
 import { getLocalInspectionDetail, LocalInspectionDetail } from "../../db/inspectionStore";
 import { saveSiteMapSketch, uploadSiteMap } from "../../api/properties";
 import { parseSiteMapSketch } from "../../lib/siteMapSketch";
+import { findChecklistResponseSummary } from "../../lib/checklist";
 import { capturePhoto } from "../../lib/photo";
 import { ApiError } from "../../api/client";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
@@ -18,7 +19,7 @@ import type { LocalProperty } from "../../db/types";
 type Props = NativeStackScreenProps<InspectionsStackParamList, "SiteMap">;
 
 export default function SiteMapScreen({ route, navigation }: Props) {
-  const { inspectionId } = route.params;
+  const { inspectionId, fromChecklistResponseId } = route.params;
   const [detail, setDetail] = useState<LocalInspectionDetail | null>(null);
   const [property, setProperty] = useState<LocalProperty | null>(null);
   const [selectedLevelId, setSelectedLevelId] = useState<string | null>(null);
@@ -52,12 +53,15 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   useFocusEffect(
     useCallback(() => {
       refresh();
-      setMode("view");
+      // Arriving here to place a marker for an already-answered checklist
+      // item (see ChecklistScreen's "Add to Site Map") skips the separate
+      // "+Marker" tap and drops straight into drawing mode.
+      setMode(fromChecklistResponseId ? "arrow" : "view");
       setPendingLines([]);
       setPendingLabels([]);
       setPendingLabelPoint(null);
       setAddingLevel(false);
-    }, [refresh])
+    }, [refresh, fromChecklistResponseId])
   );
 
   if (!detail) return null;
@@ -71,6 +75,13 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // Photo mode is one flat canvas (no levels); sketch mode needs a level
   // selected before anything can be drawn on it.
   const canDraw = isPhotoMode || Boolean(selectedLevel);
+  const checklistSummary = fromChecklistResponseId
+    ? findChecklistResponseSummary(
+        fromChecklistResponseId,
+        detail.checklistResponses,
+        detail.inspection.templateId ? getCachedTemplateSections(detail.inspection.templateId) : []
+      )
+    : null;
 
   const allArrows: SiteMapArrow[] = detail.findings
     .filter((f) => f.floorPlanX != null && f.floorPlanY != null && f.siteMapArrowStartX != null && f.siteMapArrowStartY != null)
@@ -175,6 +186,16 @@ export default function SiteMapScreen({ route, navigation }: Props) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {checklistSummary ? (
+        <Card style={styles.checklistBannerCard}>
+          <Text style={styles.checklistBannerLabel}>📋 Placing marker for checklist item:</Text>
+          <Text style={styles.checklistBannerPrompt}>{checklistSummary.prompt}</Text>
+          <Text style={styles.hint}>Draw an arrow on the map below to mark where this is.</Text>
+          <Text style={styles.dismissLink} onPress={() => navigation.goBack()}>
+            Cancel
+          </Text>
+        </Card>
+      ) : null}
       {!isPhotoMode ? (
         <>
           <Text style={styles.label}>Level</Text>
@@ -231,6 +252,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
             arrowEndX: end.x,
             arrowEndY: end.y,
             arrowLevel: isPhotoMode ? undefined : selectedLevelId ?? undefined,
+            fromChecklistResponseId: fromChecklistResponseId,
           });
         }}
         onWallDrawn={(start, end) => setPendingLines((prev) => [...prev, { x1: start.x, y1: start.y, x2: end.x, y2: end.y }])}
@@ -329,6 +351,9 @@ const styles = StyleSheet.create({
   levelChipAdd: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: 16, borderWidth: 1, borderColor: colors.primary, borderStyle: "dashed" },
   levelChipAddText: { fontSize: 13, color: colors.primary, fontWeight: "600" },
   addLevelCard: { marginBottom: 14, gap: 8 },
+  checklistBannerCard: { marginBottom: 14, gap: 4, borderColor: colors.primary, borderWidth: 2 },
+  checklistBannerLabel: { fontSize: 12, color: colors.textMuted, fontWeight: "600" },
+  checklistBannerPrompt: { fontSize: 15, fontWeight: "700", color: colors.text },
   toggleRow: { flexDirection: "row", gap: 10, marginTop: 14 },
   buttonThird: { flex: 1 },
   buttonHalf: { flex: 1 },

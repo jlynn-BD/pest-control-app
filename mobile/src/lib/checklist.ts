@@ -86,3 +86,27 @@ export function groupChecklistForDisplay<P = unknown>(
     items: byCategory.get(category)!,
   }));
 }
+
+export interface ChecklistResponseSummary {
+  id: string;
+  prompt: string;
+  notes: string | null;
+  photos: { localUri: string }[];
+}
+
+// Resolves an answered checklist response to what a technician would
+// recognize it by (its prompt text) plus whatever notes/photos already
+// exist for it - used to carry that data over onto a site-map finding
+// instead of making the technician retype it (see SiteMapScreen and
+// FindingFormScreen's fromChecklistResponseId param).
+export function findChecklistResponseSummary(
+  responseId: string,
+  responses: (ResponseLike<{ localUri: string }> & { id: string })[],
+  sections: SectionLike[]
+): ChecklistResponseSummary | null {
+  const response = responses.find((r) => r.id === responseId);
+  if (!response) return null;
+  const item = sections.flatMap((s) => s.items).find((i) => i.id === response.templateItemId);
+  if (!item) return null;
+  return { id: response.id, prompt: item.prompt, notes: response.notes ?? null, photos: response.photos ?? [] };
+}
