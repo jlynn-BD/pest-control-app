@@ -110,3 +110,27 @@ export function findChecklistResponseSummary(
   if (!item) return null;
   return { id: response.id, prompt: item.prompt, notes: response.notes ?? null, photos: response.photos ?? [] };
 }
+
+export interface ChecklistResponseListItem extends ChecklistResponseSummary {
+  category: string;
+}
+
+// Every answered checklist response as a flat, pickable list (category +
+// prompt + notes preview) - backs the "Copy from Checklist" action on a
+// site-map marker/finding, the reverse direction of
+// findChecklistResponseSummary above: instead of the checklist screen
+// handing off one specific response via a navigation param, this lets the
+// technician browse and pick one while already on the finding form.
+export function listChecklistResponseSummaries(
+  responses: (ResponseLike<{ localUri: string }> & { id: string })[],
+  sections: SectionLike[]
+): ChecklistResponseListItem[] {
+  const itemById = new Map(sections.flatMap((s) => s.items.map((i) => [i.id, { ...i, category: s.category }] as const)));
+  const list: ChecklistResponseListItem[] = [];
+  for (const r of responses) {
+    const item = itemById.get(r.templateItemId);
+    if (!item) continue;
+    list.push({ id: r.id, prompt: item.prompt, category: item.category, notes: r.notes ?? null, photos: r.photos ?? [] });
+  }
+  return list;
+}

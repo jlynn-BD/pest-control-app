@@ -18,7 +18,7 @@ import {
 import { deleteFinding } from "../../api/inspections";
 import { capturePhoto } from "../../lib/photo";
 import { getCurrentCoords } from "../../lib/location";
-import { findChecklistResponseSummary } from "../../lib/checklist";
+import { CHECKLIST_CATEGORY_SHORT_LABEL, findChecklistResponseSummary, listChecklistResponseSummaries } from "../../lib/checklist";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { ChipMultiSelect, SegmentedControl } from "../../components/ChipMultiSelect";
 import { Badge, Field, PrimaryButton, colors } from "../../components/ui";
@@ -60,6 +60,23 @@ export default function FindingFormScreen({ route, navigation }: Props) {
     return findChecklistResponseSummary(fromChecklistResponseId, detail.checklistResponses, sections);
   }, [inspectionId, fromChecklistResponseId, existingFinding]);
 
+  // Tate's "Copy/Paste from Checklist" ask - the reverse entry point from
+  // the pre-fill above: instead of jumping here FROM a checklist item, a
+  // technician who started a marker directly on the site map (or via
+  // "+ Add finding") can still pull an already-answered checklist item's
+  // notes/photos in, mid-form. Not offered while editing an existing
+  // finding (nothing to "start" from) or when already pre-filled via the
+  // other flow (redundant).
+  const availableChecklistItems = useMemo(() => {
+    if (existingFinding || fromChecklistResponseId) return [];
+    const detail = getLocalInspectionDetail(inspectionId);
+    if (!detail) return [];
+    const sections = detail.inspection.templateId ? getCachedTemplateSections(detail.inspection.templateId) : [];
+    return listChecklistResponseSummaries(detail.checklistResponses, sections);
+  }, [inspectionId, existingFinding, fromChecklistResponseId]);
+  const [showChecklistPicker, setShowChecklistPicker] = useState(false);
+  const [copiedFromChecklistPrompt, setCopiedFromChecklistPrompt] = useState<string | null>(null);
+
   const [pestTypeId, setPestTypeId] = useState<string | null>(existingFinding?.pestTypeId ?? null);
   const [pestTypeOther, setPestTypeOther] = useState(existingFinding?.pestTypeOther ?? "");
   const [areaLocation, setAreaLocation] = useState(existingFinding?.areaLocation ?? checklistSummary?.prompt ?? "");
@@ -80,6 +97,25 @@ export default function FindingFormScreen({ route, navigation }: Props) {
   async function handleAddPhoto() {
     const uri = await capturePhoto();
     if (uri) setPhotos((prev) => [...prev, uri]);
+  }
+
+  // Pulls a previously-answered checklist item's notes/photos into this
+  // form. Overwrites area/location (that's the whole point - identify the
+  // marker by the checklist item it came from) but only touches
+  // description/photos when the checklist item actually has something to
+  // add, so it never silently blanks out text the technician already typed.
+  function handleCopyFromChecklist(responseId: string) {
+    const detail = getLocalInspectionDetail(inspectionId);
+    if (!detail) return;
+    const sections = detail.inspection.templateId ? getCachedTemplateSections(detail.inspection.templateId) : [];
+    const summary = findChecklistResponseSummary(responseId, detail.checklistResponses, sections);
+    if (!summary) return;
+    setAreaLocation(summary.prompt);
+    if (summary.notes) setDescription(summary.notes);
+    const newUris = summary.photos.map((p) => p.localUri).filter((uri) => !photos.includes(uri));
+    if (newUris.length > 0) setPhotos((prev) => [...prev, ...newUris]);
+    setCopiedFromChecklistPrompt(summary.prompt);
+    setShowChecklistPicker(false);
   }
 
   async function handleCaptureLocation() {
@@ -146,12 +182,35 @@ export default function FindingFormScreen({ route, navigation }: Props) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {hasSiteMapPosition || checklistSummary ? (
+      {hasSiteMapPosition || checklistSummary || copiedFromChecklistPrompt ? (
         <View style={styles.siteMapBadgeRow}>
           {hasSiteMapPosition ? <Badge label="📍 Marked on site plan" tone="success" /> : null}
           {checklistSummary ? <Badge label="📋 Pre-filled from checklist" tone="default" /> : null}
+          {copiedFromChecklistPrompt ? <Badge label="📋 Copied from checklist" tone="default" /> : null}
         </View>
       ) : null}
+
+      {availableChecklistItems.length > 0 ? (
+        <>
+          <Text style={styles.dismissLink} onPress={() => setShowChecklistPicker((v) => !v)}>
+            {showChecklistPicker ? "Cancel" : "📋 Copy from Checklist"}
+          </Text>
+          {showChecklistPicker ? (
+            <View style={styles.checklistPickerCard}>
+              {availableChecklistItems.map((item) => (
+                <Pressable key={item.id} onPress={() => handleCopyFromChecklist(item.id)} style={styles.checklistPickerRow}>
+                  <Text style={styles.checklistPickerCategory}>{CHECKLIST_CATEGORY_SHORT_LABEL[item.category] ?? item.category}</Text>
+                  <Text style={styles.checklistPickerPrompt}>{item.prompt}</Text>
+                  <Text style={styles.checklistPickerNotes} numberOfLines={1}>
+                    {item.notes || "No notes yet"}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+        </>
+      ) : null}
+
       <Text style={styles.label}>Pest type</Text>
       <View style={styles.pestRow}>
         {pestTypes.slice(0, 8).map((pt) => (
@@ -222,6 +281,19 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 40 },
   siteMapBadgeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "flex-start", marginBottom: 12 },
+  checklistPickerCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    backgroundColor: colors.card,
+    marginBottom: 16,
+    overflow: "hidden",
+  },
+  checklistPickerRow: { paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
+  checklistPickerCategory: { fontSize: 11, color: colors.primary, fontWeight: "700", textTransform: "uppercase" },
+  checklistPickerPrompt: { fontSize: 14, fontWeight: "600", color: colors.text, marginTop: 2 },
+  checklistPickerNotes: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  dismissLink: { color: colors.primary, fontWeight: "600", fontSize: 13, marginBottom: 12 },
   label: { fontSize: 13, color: colors.textMuted, marginBottom: 8, fontWeight: "500" },
   pestRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 },
   pestChip: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
