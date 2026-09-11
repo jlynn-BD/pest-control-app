@@ -17,8 +17,16 @@ export function parseSiteMapSketch(json: string | null | undefined): SiteMapSket
         id: l.id,
         name: l.name,
         sortOrder: l.sortOrder ?? 0,
-        lines: Array.isArray(l.lines) ? l.lines : [],
-        labels: Array.isArray(l.labels) ? l.labels : [],
+        // Sketches saved before walls/labels had their own ids (needed for
+        // per-element edit/delete) get stable synthetic ones derived from
+        // position, so old data doesn't crash the editing UI - the first
+        // edit that resaves this level persists them as real ids.
+        lines: Array.isArray(l.lines)
+          ? l.lines.map((line, i) => ({ id: line.id ?? `${l.id}:line:${i}`, x1: line.x1, y1: line.y1, x2: line.x2, y2: line.y2 }))
+          : [],
+        labels: Array.isArray(l.labels)
+          ? l.labels.map((label, i) => ({ id: label.id ?? `${l.id}:label:${i}`, x: label.x, y: label.y, text: label.text }))
+          : [],
       })),
     };
   } catch {

@@ -5,10 +5,17 @@ import {
   RISK_FACTOR_OPTIONS,
   Severity,
 } from "@pest-app/shared";
-import React, { useMemo, useState } from "react";
+import React, { useLayoutEffect, useMemo, useState } from "react";
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getCachedPestTypes, getCachedTemplateSections } from "../../db/cache";
-import { addLocalFinding, addLocalFindingPhoto, getLocalInspectionDetail } from "../../db/inspectionStore";
+import {
+  addLocalFinding,
+  addLocalFindingPhoto,
+  deleteLocalFinding,
+  getLocalInspectionDetail,
+  updateLocalFinding,
+} from "../../db/inspectionStore";
+import { deleteFinding } from "../../api/inspections";
 import { capturePhoto } from "../../lib/photo";
 import { getCurrentCoords } from "../../lib/location";
 import { findChecklistResponseSummary } from "../../lib/checklist";
@@ -21,35 +28,54 @@ type Props = NativeStackScreenProps<InspectionsStackParamList, "FindingForm">;
 const SEVERITY_OPTIONS = [Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL];
 
 export default function FindingFormScreen({ route, navigation }: Props) {
-  const { inspectionId, arrowStartX, arrowStartY, arrowEndX, arrowEndY, arrowLevel, fromChecklistResponseId } = route.params;
+  const { inspectionId, arrowStartX, arrowStartY, arrowEndX, arrowEndY, arrowLevel, fromChecklistResponseId, editingFindingId } =
+    route.params;
   const hasSiteMapPosition = arrowStartX != null && arrowStartY != null && arrowEndX != null && arrowEndY != null;
   const pestTypes = useMemo(() => getCachedPestTypes(), []);
+
+  // Editing an existing marker/finding (from the site map's detail card, or
+  // the workspace Findings list) - Tate's feedback was that markers placed
+  // by mistake or needing correction had no way to be fixed. Pre-fills
+  // every field from the finding being edited; handleSave below updates it
+  // in place instead of inserting a new row.
+  const existingFinding = useMemo(() => {
+    if (!editingFindingId) return null;
+    return getLocalInspectionDetail(inspectionId)?.findings.find((f) => f.id === editingFindingId) ?? null;
+  }, [inspectionId, editingFindingId]);
+  const existingPhotoUris = useMemo(() => existingFinding?.photos.map((p) => p.localUri) ?? [], [existingFinding]);
+
+  useLayoutEffect(() => {
+    if (existingFinding) navigation.setOptions({ title: "Edit Finding" });
+  }, [existingFinding, navigation]);
 
   // Pre-fills from an already-answered checklist item instead of making the
   // technician retype what's already known (Tate's "don't do the same thing
   // twice" workflow ask) - see ChecklistScreen's "Add to Site Map" action
   // and SiteMapScreen, which is what routes here with this param set.
   const checklistSummary = useMemo(() => {
-    if (!fromChecklistResponseId) return null;
+    if (!fromChecklistResponseId || existingFinding) return null;
     const detail = getLocalInspectionDetail(inspectionId);
     if (!detail) return null;
     const sections = detail.inspection.templateId ? getCachedTemplateSections(detail.inspection.templateId) : [];
     return findChecklistResponseSummary(fromChecklistResponseId, detail.checklistResponses, sections);
-  }, [inspectionId, fromChecklistResponseId]);
+  }, [inspectionId, fromChecklistResponseId, existingFinding]);
 
-  const [pestTypeId, setPestTypeId] = useState<string | null>(null);
-  const [pestTypeOther, setPestTypeOther] = useState("");
-  const [areaLocation, setAreaLocation] = useState(checklistSummary?.prompt ?? "");
-  const [locationDetail, setLocationDetail] = useState("");
-  const [evidenceTypes, setEvidenceTypes] = useState<string[]>([]);
-  const [severity, setSeverity] = useState<string>(Severity.MEDIUM);
-  const [riskFactors, setRiskFactors] = useState<string[]>([]);
-  const [entryPoints, setEntryPoints] = useState<string[]>([]);
-  const [description, setDescription] = useState(checklistSummary?.notes ?? "");
-  const [photos, setPhotos] = useState<string[]>(checklistSummary?.photos.map((p) => p.localUri) ?? []);
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [pestTypeId, setPestTypeId] = useState<string | null>(existingFinding?.pestTypeId ?? null);
+  const [pestTypeOther, setPestTypeOther] = useState(existingFinding?.pestTypeOther ?? "");
+  const [areaLocation, setAreaLocation] = useState(existingFinding?.areaLocation ?? checklistSummary?.prompt ?? "");
+  const [locationDetail, setLocationDetail] = useState(existingFinding?.locationDetail ?? "");
+  const [evidenceTypes, setEvidenceTypes] = useState<string[]>(existingFinding ? JSON.parse(existingFinding.evidenceTypes) : []);
+  const [severity, setSeverity] = useState<string>(existingFinding?.severity ?? Severity.MEDIUM);
+  const [riskFactors, setRiskFactors] = useState<string[]>(existingFinding ? JSON.parse(existingFinding.riskFactors) : []);
+  const [entryPoints, setEntryPoints] = useState<string[]>(existingFinding ? JSON.parse(existingFinding.entryPoints) : []);
+  const [description, setDescription] = useState(existingFinding?.description ?? checklistSummary?.notes ?? "");
+  const [photos, setPhotos] = useState<string[]>(existingPhotoUris.length > 0 ? existingPhotoUris : checklistSummary?.photos.map((p) => p.localUri) ?? []);
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
+    existingFinding?.lat != null && existingFinding?.lng != null ? { lat: existingFinding.lat, lng: existingFinding.lng } : null
+  );
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   async function handleAddPhoto() {
     const uri = await capturePhoto();
@@ -68,7 +94,7 @@ export default function FindingFormScreen({ route, navigation }: Props) {
       setError("Area / location is required");
       return;
     }
-    const finding = addLocalFinding(inspectionId, {
+    const input = {
       pestTypeId,
       pestTypeOther: pestTypeOther.trim() || null,
       areaLocation: areaLocation.trim(),
@@ -80,15 +106,41 @@ export default function FindingFormScreen({ route, navigation }: Props) {
       description: description.trim() || null,
       lat: coords?.lat ?? null,
       lng: coords?.lng ?? null,
-      floorPlanX: hasSiteMapPosition ? arrowEndX! : null,
-      floorPlanY: hasSiteMapPosition ? arrowEndY! : null,
-      siteMapArrowStartX: hasSiteMapPosition ? arrowStartX! : null,
-      siteMapArrowStartY: hasSiteMapPosition ? arrowStartY! : null,
-      siteMapLevel: hasSiteMapPosition ? arrowLevel ?? null : null,
-    });
-    photos.forEach((uri, index) => {
-      addLocalFindingPhoto(finding.id, { localUri: uri, caption: null, lat: coords?.lat ?? null, lng: coords?.lng ?? null, sortOrder: index });
-    });
+    };
+    if (existingFinding) {
+      // Map position is left untouched on edit - moving a marker is a
+      // redraw action on the site map itself, not something this form does.
+      updateLocalFinding(existingFinding.id, input);
+      const newUris = photos.filter((uri) => !existingPhotoUris.includes(uri));
+      newUris.forEach((uri, index) => {
+        addLocalFindingPhoto(existingFinding.id, {
+          localUri: uri,
+          caption: null,
+          lat: coords?.lat ?? null,
+          lng: coords?.lng ?? null,
+          sortOrder: existingPhotoUris.length + index,
+        });
+      });
+    } else {
+      const finding = addLocalFinding(inspectionId, {
+        ...input,
+        floorPlanX: hasSiteMapPosition ? arrowEndX! : null,
+        floorPlanY: hasSiteMapPosition ? arrowEndY! : null,
+        siteMapArrowStartX: hasSiteMapPosition ? arrowStartX! : null,
+        siteMapArrowStartY: hasSiteMapPosition ? arrowStartY! : null,
+        siteMapLevel: hasSiteMapPosition ? arrowLevel ?? null : null,
+      });
+      photos.forEach((uri, index) => {
+        addLocalFindingPhoto(finding.id, { localUri: uri, caption: null, lat: coords?.lat ?? null, lng: coords?.lng ?? null, sortOrder: index });
+      });
+    }
+    navigation.goBack();
+  }
+
+  function handleDelete() {
+    if (!existingFinding) return;
+    deleteLocalFinding(existingFinding.id);
+    deleteFinding(existingFinding.id).catch(() => {});
     navigation.goBack();
   }
 
@@ -141,7 +193,27 @@ export default function FindingFormScreen({ route, navigation }: Props) {
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <View style={styles.spacer} />
-      <PrimaryButton title="Save finding" onPress={handleSave} />
+      <PrimaryButton title={existingFinding ? "Save changes" : "Save finding"} onPress={handleSave} />
+
+      {existingFinding ? (
+        confirmingDelete ? (
+          <View style={styles.deleteConfirmRow}>
+            <Text style={styles.deleteConfirmText}>Delete this finding? This can't be undone.</Text>
+            <View style={styles.buttonRow}>
+              <Pressable onPress={handleDelete} style={styles.deleteConfirmButton}>
+                <Text style={styles.deleteConfirmButtonText}>Delete</Text>
+              </Pressable>
+              <Pressable onPress={() => setConfirmingDelete(false)} style={styles.cancelConfirmButton}>
+                <Text style={styles.cancelConfirmButtonText}>Cancel</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          <Text style={styles.deleteLink} onPress={() => setConfirmingDelete(true)}>
+            🗑 Delete finding
+          </Text>
+        )
+      ) : null}
     </ScrollView>
   );
 }
@@ -181,4 +253,20 @@ const styles = StyleSheet.create({
   addPhotoText: { fontSize: 12, color: colors.primary, fontWeight: "600", textAlign: "center" },
   error: { color: colors.danger, marginBottom: 12, textAlign: "center" },
   spacer: { height: 8 },
+  deleteLink: { color: colors.danger, fontWeight: "600", fontSize: 13, textAlign: "center", marginTop: 16 },
+  deleteConfirmRow: { marginTop: 16, gap: 8 },
+  deleteConfirmText: { color: colors.text, fontSize: 13, textAlign: "center" },
+  buttonRow: { flexDirection: "row", gap: 10 },
+  deleteConfirmButton: { flex: 1, backgroundColor: colors.danger, borderRadius: 8, paddingVertical: 12, alignItems: "center" },
+  deleteConfirmButtonText: { color: "#fff", fontWeight: "600" },
+  cancelConfirmButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  cancelConfirmButtonText: { color: colors.text, fontWeight: "600" },
 });

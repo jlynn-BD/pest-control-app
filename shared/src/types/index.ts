@@ -81,6 +81,7 @@ export interface Property extends BaseEntity {
 }
 
 export interface SiteMapSketchLine {
+  id: string;
   x1: number;
   y1: number;
   x2: number;
@@ -88,6 +89,7 @@ export interface SiteMapSketchLine {
 }
 
 export interface SiteMapSketchLabel {
+  id: string;
   x: number;
   y: number;
   text: string;

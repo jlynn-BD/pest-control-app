@@ -32,6 +32,11 @@ export type InspectionsStackParamList = {
     // item instead of making the technician retype what's already known -
     // see SiteMapScreen/ChecklistScreen.
     fromChecklistResponseId?: string;
+    // Editing an existing finding (from the site map's marker detail card,
+    // or the workspace Findings list) instead of creating a new one - loads
+    // and pre-fills every field from this finding, and Save updates it in
+    // place rather than inserting a second row.
+    editingFindingId?: string;
   };
   RecommendationForm: { inspectionId: string };
   TreatmentForm: { inspectionId: string };

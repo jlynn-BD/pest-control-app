@@ -57,3 +57,13 @@ export function createInspection(input: {
 export function deleteChecklistResponse(inspectionId: string, responseId: string): Promise<void> {
   return apiRequest(`/api/inspections/${inspectionId}/checklist-responses/${responseId}`, { method: "DELETE" });
 }
+
+// Best-effort immediate delete for a finding removed from the site map or
+// findings list (see SiteMapScreen/InspectionWorkspaceScreen). Same
+// reasoning as deleteChecklistResponse above: if offline, the local delete
+// still applies and the server-side row is soft-deleted next time this runs
+// while online - a finding that was never synced in the first place simply
+// 404s here, which is fine since there's nothing server-side to remove.
+export function deleteFinding(findingId: string): Promise<void> {
+  return apiRequest(`/api/findings/${findingId}`, { method: "DELETE" });
+}

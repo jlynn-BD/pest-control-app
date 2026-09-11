@@ -72,6 +72,7 @@ export interface SiteMapArrow {
 }
 
 export interface SiteMapLabel {
+  id: string;
   x: number;
   y: number;
   text: string;
@@ -95,6 +96,8 @@ export function SiteMapCanvas({
   onWallDrawn,
   onLabelTap,
   onArrowPress,
+  onLabelPress,
+  selectedLabelId = null,
   height = 320,
 }: {
   imageUri: string | null;
@@ -107,6 +110,8 @@ export function SiteMapCanvas({
   onWallDrawn?: (start: Point, end: Point) => void;
   onLabelTap?: (point: Point) => void;
   onArrowPress?: (arrowId: string) => void;
+  onLabelPress?: (labelId: string) => void;
+  selectedLabelId?: string | null;
   height?: number;
 }) {
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -207,18 +212,20 @@ export function SiteMapCanvas({
         </Svg>
       ) : null}
       {size.width > 0
-        ? labels.map((l, i) => (
-            <View
-              key={`label-${i}`}
+        ? labels.map((l) => (
+            <Pressable
+              key={`label-${l.id}`}
+              onPress={() => onLabelPress?.(l.id)}
               style={[
                 styles.structureLabel,
+                l.id === selectedLabelId && styles.structureLabelSelected,
                 { left: Math.min(Math.max(l.x * size.width - 6, 4), size.width - 100), top: Math.min(Math.max(l.y * size.height - 10, 4), size.height - 22) },
               ]}
             >
               <Text style={styles.structureLabelText} numberOfLines={1}>
                 {l.text}
               </Text>
-            </View>
+            </Pressable>
           ))
         : null}
       {size.width > 0
@@ -279,6 +286,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   structureLabelText: { fontSize: 11, fontWeight: "700", color: colors.primary },
+  structureLabelSelected: { borderWidth: 2, borderColor: colors.danger },
   hintBanner: {
     position: "absolute",
     bottom: 0,

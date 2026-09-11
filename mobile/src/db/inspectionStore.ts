@@ -222,6 +222,74 @@ export function addLocalFinding(inspectionId: string, input: NewFindingInput): L
   return finding;
 }
 
+// Partial update - only fields present in `input` are changed, so callers
+// like the site-map marker edit flow (which only touches location/severity)
+// don't need to round-trip every other field. Bumping updatedAt + flipping
+// syncStatus back to 'pending' is what gets the edit picked up by the next
+// sync push (same last-write-wins path a brand-new finding already goes
+// through - see syncEngine's findingToChange).
+export function updateLocalFinding(id: string, input: Partial<NewFindingInput>): void {
+  const db = getDb();
+  const existing = db.getFirstSync<LocalFinding>(`SELECT * FROM findings WHERE id = ?`, [id]);
+  if (!existing) return;
+  const merged: LocalFinding = {
+    ...existing,
+    ...(input.pestTypeId !== undefined ? { pestTypeId: input.pestTypeId } : {}),
+    ...(input.pestTypeOther !== undefined ? { pestTypeOther: input.pestTypeOther } : {}),
+    ...(input.areaLocation !== undefined ? { areaLocation: input.areaLocation } : {}),
+    ...(input.locationDetail !== undefined ? { locationDetail: input.locationDetail } : {}),
+    ...(input.evidenceTypes !== undefined ? { evidenceTypes: JSON.stringify(input.evidenceTypes) } : {}),
+    ...(input.severity !== undefined ? { severity: input.severity } : {}),
+    ...(input.riskFactors !== undefined ? { riskFactors: JSON.stringify(input.riskFactors) } : {}),
+    ...(input.entryPoints !== undefined ? { entryPoints: JSON.stringify(input.entryPoints) } : {}),
+    ...(input.description !== undefined ? { description: input.description } : {}),
+    ...(input.lat !== undefined ? { lat: input.lat } : {}),
+    ...(input.lng !== undefined ? { lng: input.lng } : {}),
+    ...(input.floorPlanX !== undefined ? { floorPlanX: input.floorPlanX } : {}),
+    ...(input.floorPlanY !== undefined ? { floorPlanY: input.floorPlanY } : {}),
+    ...(input.siteMapArrowStartX !== undefined ? { siteMapArrowStartX: input.siteMapArrowStartX } : {}),
+    ...(input.siteMapArrowStartY !== undefined ? { siteMapArrowStartY: input.siteMapArrowStartY } : {}),
+    ...(input.siteMapLevel !== undefined ? { siteMapLevel: input.siteMapLevel } : {}),
+    updatedAt: nowIso(),
+    syncStatus: "pending",
+  };
+  db.runSync(
+    `UPDATE findings SET pestTypeId = ?, pestTypeOther = ?, areaLocation = ?, locationDetail = ?, evidenceTypes = ?, severity = ?, riskFactors = ?, entryPoints = ?, description = ?, lat = ?, lng = ?, floorPlanX = ?, floorPlanY = ?, siteMapArrowStartX = ?, siteMapArrowStartY = ?, siteMapLevel = ?, updatedAt = ?, syncStatus = 'pending'
+     WHERE id = ?`,
+    [
+      merged.pestTypeId,
+      merged.pestTypeOther,
+      merged.areaLocation,
+      merged.locationDetail,
+      merged.evidenceTypes,
+      merged.severity,
+      merged.riskFactors,
+      merged.entryPoints,
+      merged.description,
+      merged.lat,
+      merged.lng,
+      merged.floorPlanX,
+      merged.floorPlanY,
+      merged.siteMapArrowStartX,
+      merged.siteMapArrowStartY,
+      merged.siteMapLevel,
+      merged.updatedAt,
+      id,
+    ]
+  );
+  touchInspection(merged.inspectionId);
+}
+
+// Hard delete, mirroring deleteLocalChecklistResponse - the caller is
+// responsible for also firing a best-effort remote delete (see
+// api/inspections.ts's deleteFinding) since removing the local row here
+// forfeits any further chance to sync it.
+export function deleteLocalFinding(id: string): void {
+  const db = getDb();
+  db.runSync(`DELETE FROM finding_photos WHERE findingId = ?`, [id]);
+  db.runSync(`DELETE FROM findings WHERE id = ?`, [id]);
+}
+
 export function addLocalFindingPhoto(
   findingId: string,
   input: { localUri: string; caption: string | null; lat: number | null; lng: number | null; sortOrder: number }

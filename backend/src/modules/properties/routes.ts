@@ -127,8 +127,8 @@ const siteMapSketchSchema = z.object({
       id: z.string().min(1),
       name: z.string().min(1),
       sortOrder: z.number().int(),
-      lines: z.array(z.object({ x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number() })),
-      labels: z.array(z.object({ x: z.number(), y: z.number(), text: z.string().min(1) })),
+      lines: z.array(z.object({ id: z.string().min(1), x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number() })),
+      labels: z.array(z.object({ id: z.string().min(1), x: z.number(), y: z.number(), text: z.string().min(1) })),
     })
   ),
 });
