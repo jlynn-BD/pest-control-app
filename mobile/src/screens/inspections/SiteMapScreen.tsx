@@ -38,6 +38,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   const [selectedArrowId, setSelectedArrowId] = useState<string | null>(null);
   const [confirmingDeleteFinding, setConfirmingDeleteFinding] = useState(false);
   const [editingLabel, setEditingLabel] = useState<{ id: string; text: string; isPending: boolean } | null>(null);
+  const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [addingLevelSaving, setAddingLevelSaving] = useState(false);
@@ -68,6 +69,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       setPendingLabelPoint(null);
       setAddingLevel(false);
       setEditingLabel(null);
+      setSelectedWallId(null);
     }, [refresh, fromChecklistResponseId])
   );
 
@@ -110,18 +112,13 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   const visibleArrows = isPhotoMode ? allArrows : allArrows.filter((a) => detail.findings.find((f) => f.id === a.id)?.siteMapLevel === selectedLevelId);
 
   const selectedFinding = selectedArrowId ? detail.findings.find((f) => f.id === selectedArrowId) ?? null : null;
-
-  // Saved walls come from the persisted level; pending ones are still local
-  // to this editing session - combined into one list (each row tagged with
-  // where it lives) so Delete can be offered for either kind in one place.
-  const wallRows = [
-    ...(selectedLevel?.lines ?? []).map((line) => ({ line, isPending: false })),
-    ...pendingLines.map((line) => ({ line, isPending: true })),
-  ];
+  const wallCount = (selectedLevel?.lines.length ?? 0) + pendingLines.length;
+  const selectedWallIsPending = selectedWallId ? pendingLines.some((l) => l.id === selectedWallId) : false;
 
   function toggleMode(next: SiteMapMode) {
     setMode((current) => (current === next ? "view" : next));
     setPendingLabelPoint(null);
+    setSelectedWallId(null);
   }
 
   async function handleUpload() {
@@ -210,6 +207,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     setPendingHistory([]);
     setPendingLabelPoint(null);
     setMode("view");
+    setSelectedWallId(null);
   }
 
   // Pops whichever wall or label was added most recently in this editing
@@ -218,6 +216,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // back out short of discarding the whole session.
   function handleUndo() {
     setPendingHistory((prev) => prev.slice(0, -1));
+    setSelectedWallId(null);
   }
 
   function handleDeletePendingItem(id: string) {
@@ -226,6 +225,20 @@ export default function SiteMapScreen({ route, navigation }: Props) {
 
   function handleDeleteSavedWall(id: string) {
     persistSelectedLevel((l) => ({ ...l, lines: l.lines.filter((line) => line.id !== id) }));
+  }
+
+  // Tapping a wall directly on the canvas (view mode only) selects it and
+  // shows a small Delete action right there, instead of a separate list of
+  // every wall segment sitting permanently below the map.
+  function handleWallPress(id: string) {
+    setSelectedWallId(id);
+  }
+
+  function handleDeleteSelectedWall() {
+    if (!selectedWallId) return;
+    if (selectedWallIsPending) handleDeletePendingItem(selectedWallId);
+    else handleDeleteSavedWall(selectedWallId);
+    setSelectedWallId(null);
   }
 
   function handleConfirmLabel() {
@@ -287,6 +300,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     setSelectedLevelId(levelId);
     setMode("view");
     setEditingLabel(null);
+    setSelectedWallId(null);
   }
 
   function handleEditFinding() {
@@ -363,7 +377,9 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         mode={canDraw ? mode : "view"}
         onArrowPress={(id) => setSelectedArrowId(id)}
         onLabelPress={handleLabelPress}
+        onWallPress={handleWallPress}
         selectedLabelId={editingLabel?.id ?? null}
+        selectedWallId={selectedWallId}
         onArrowDrawn={(start, end) => {
           setMode("view");
           navigation.navigate("FindingForm", {
@@ -430,6 +446,20 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         </Card>
       ) : null}
 
+      {selectedWallId ? (
+        <Card style={styles.labelPromptCard}>
+          <Text style={styles.detailTitle}>Wall segment{selectedWallIsPending ? " (unsaved)" : ""}</Text>
+          <View style={styles.buttonRow}>
+            <View style={styles.buttonHalf}>
+              <PrimaryButton title="Delete" onPress={handleDeleteSelectedWall} loading={!selectedWallIsPending && saving} />
+            </View>
+            <View style={styles.buttonHalf}>
+              <PrimaryButton title="Cancel" onPress={() => setSelectedWallId(null)} />
+            </View>
+          </View>
+        </Card>
+      ) : null}
+
       {canDraw ? (
         <View style={styles.toggleRow}>
           <View style={styles.buttonThird}>
@@ -461,29 +491,10 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <Text style={styles.hint}>
-        {visibleArrows.length} marker(s) · {wallRows.length} wall segment(s)
+        {visibleArrows.length} marker(s) · {wallCount} wall segment(s)
         {isPhotoMode ? "" : selectedLevel ? ` on ${selectedLevel.name}` : ""}
+        {wallCount > 0 && mode === "view" ? " · tap a wall to delete it" : ""}
       </Text>
-
-      {wallRows.length > 0 ? (
-        <Card style={styles.wallListCard}>
-          <Text style={styles.label}>Walls</Text>
-          {wallRows.map(({ line, isPending }, index) => (
-            <View key={line.id} style={styles.wallRow}>
-              <Text style={styles.wallRowText}>
-                Wall {index + 1}
-                {isPending ? " (unsaved)" : ""}
-              </Text>
-              <Text
-                style={styles.deleteLink}
-                onPress={() => (isPending ? handleDeletePendingItem(line.id) : handleDeleteSavedWall(line.id))}
-              >
-                🗑 Delete
-              </Text>
-            </View>
-          ))}
-        </Card>
-      ) : null}
 
       {!imageUri ? (
         <View style={styles.uploadRow}>
@@ -554,9 +565,6 @@ const styles = StyleSheet.create({
   hint: { fontSize: 12, color: colors.textMuted, textAlign: "center", marginTop: 10 },
   uploadRow: { marginTop: 14 },
   labelPromptCard: { marginTop: 12, gap: 4 },
-  wallListCard: { marginTop: 14, gap: 4 },
-  wallRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6 },
-  wallRowText: { fontSize: 13, color: colors.text },
   detailCard: { marginTop: 16, gap: 6 },
   detailHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   detailTitle: { fontSize: 15, fontWeight: "700", color: colors.text },

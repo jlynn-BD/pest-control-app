@@ -78,6 +78,24 @@ export interface SiteMapLabel {
   text: string;
 }
 
+type WallLine = Line & { id: string };
+
+// A wall is a thin line, too small a target to tap accurately on a touch
+// screen - this expands it to a padded rectangle around its bounding box for
+// the invisible hit-area Pressable rendered alongside it.
+function wallHitRect(l: WallLine, width: number, height: number, pad = 14) {
+  const x1 = l.x1 * width;
+  const y1 = l.y1 * height;
+  const x2 = l.x2 * width;
+  const y2 = l.y2 * height;
+  return {
+    left: Math.min(x1, x2) - pad,
+    top: Math.min(y1, y2) - pad,
+    width: Math.abs(x2 - x1) + pad * 2,
+    height: Math.abs(y2 - y1) + pad * 2,
+  };
+}
+
 const SEVERITY_COLOR: Record<string, string> = {
   LOW: colors.primary,
   MEDIUM: colors.warning,
@@ -97,13 +115,15 @@ export function SiteMapCanvas({
   onLabelTap,
   onArrowPress,
   onLabelPress,
+  onWallPress,
   selectedLabelId = null,
+  selectedWallId = null,
   height = 320,
 }: {
   imageUri: string | null;
   arrows: SiteMapArrow[];
-  savedLines?: Line[];
-  pendingLines?: Line[];
+  savedLines?: WallLine[];
+  pendingLines?: WallLine[];
   labels?: SiteMapLabel[];
   mode?: SiteMapMode;
   onArrowDrawn?: (start: Point, end: Point) => void;
@@ -111,7 +131,9 @@ export function SiteMapCanvas({
   onLabelTap?: (point: Point) => void;
   onArrowPress?: (arrowId: string) => void;
   onLabelPress?: (labelId: string) => void;
+  onWallPress?: (wallId: string) => void;
   selectedLabelId?: string | null;
+  selectedWallId?: string | null;
   height?: number;
 }) {
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -162,26 +184,26 @@ export function SiteMapCanvas({
                 );
               })()
             : null}
-          {savedLines.map((l, i) => (
+          {savedLines.map((l) => (
             <SvgLine
-              key={`wall-${i}`}
+              key={`wall-${l.id}`}
               x1={l.x1 * size.width}
               y1={l.y1 * size.height}
               x2={l.x2 * size.width}
               y2={l.y2 * size.height}
-              stroke={colors.text}
-              strokeWidth={3}
+              stroke={l.id === selectedWallId ? colors.danger : colors.text}
+              strokeWidth={l.id === selectedWallId ? 5 : 3}
             />
           ))}
-          {pendingLines.map((l, i) => (
+          {pendingLines.map((l) => (
             <SvgLine
-              key={`pending-wall-${i}`}
+              key={`pending-wall-${l.id}`}
               x1={l.x1 * size.width}
               y1={l.y1 * size.height}
               x2={l.x2 * size.width}
               y2={l.y2 * size.height}
-              stroke={colors.primary}
-              strokeWidth={3}
+              stroke={l.id === selectedWallId ? colors.danger : colors.primary}
+              strokeWidth={l.id === selectedWallId ? 5 : 3}
             />
           ))}
           {arrows.map((a) => {
@@ -211,6 +233,15 @@ export function SiteMapCanvas({
           ) : null}
         </Svg>
       ) : null}
+      {size.width > 0 && mode === "view"
+        ? [...savedLines, ...pendingLines].map((l) => (
+            <Pressable
+              key={`wall-hit-${l.id}`}
+              onPress={() => onWallPress?.(l.id)}
+              style={[styles.wallHitArea, wallHitRect(l, size.width, size.height)]}
+            />
+          ))
+        : null}
       {size.width > 0
         ? labels.map((l) => (
             <Pressable
@@ -287,6 +318,7 @@ const styles = StyleSheet.create({
   },
   structureLabelText: { fontSize: 11, fontWeight: "700", color: colors.primary },
   structureLabelSelected: { borderWidth: 2, borderColor: colors.danger },
+  wallHitArea: { position: "absolute" },
   hintBanner: {
     position: "absolute",
     bottom: 0,
