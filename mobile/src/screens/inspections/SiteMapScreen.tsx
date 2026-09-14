@@ -5,8 +5,7 @@ import React, { useCallback, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getCachedProperty, getCachedTemplateSections, updateLocalPropertySiteMapSketch } from "../../db/cache";
 import { generateId } from "../../lib/uuid";
-import { deleteFinding } from "../../api/inspections";
-import { deleteLocalFinding, getLocalInspectionDetail, LocalInspectionDetail } from "../../db/inspectionStore";
+import { getLocalInspectionDetail, LocalInspectionDetail } from "../../db/inspectionStore";
 import { saveSiteMapSketch, uploadSiteMap } from "../../api/properties";
 import { parseSiteMapSketch } from "../../lib/siteMapSketch";
 import { findChecklistResponseSummary } from "../../lib/checklist";
@@ -14,8 +13,10 @@ import { capturePhoto } from "../../lib/photo";
 import { ApiError } from "../../api/client";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { SiteMapArrow, SiteMapCanvas, SiteMapMode } from "../../components/ArrowCanvas";
+import { FindingEditorForm } from "../../components/FindingEditorForm";
 import { Badge, Card, Field, PrimaryButton, colors } from "../../components/ui";
 import type { LocalProperty } from "../../db/types";
+import type { Point } from "../../lib/arrowGeometry";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "SiteMap">;
 
@@ -35,8 +36,12 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   const [pendingHistory, setPendingHistory] = useState<PendingEntry[]>([]);
   const [pendingLabelPoint, setPendingLabelPoint] = useState<{ x: number; y: number } | null>(null);
   const [labelText, setLabelText] = useState("");
-  const [selectedArrowId, setSelectedArrowId] = useState<string | null>(null);
-  const [confirmingDeleteFinding, setConfirmingDeleteFinding] = useState(false);
+  // A just-drawn, not-yet-saved marker position - opens the inline finding
+  // editor below the canvas instead of navigating away (Tate: "keep the map
+  // visible while entering/editing findings"). Editing an existing marker
+  // works the same way, via editingFindingId.
+  const [draftArrow, setDraftArrow] = useState<{ start: Point; end: Point } | null>(null);
+  const [editingFindingId, setEditingFindingId] = useState<string | null>(null);
   const [editingLabel, setEditingLabel] = useState<{ id: string; text: string; isPending: boolean } | null>(null);
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -70,6 +75,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       setAddingLevel(false);
       setEditingLabel(null);
       setSelectedWallId(null);
+      setDraftArrow(null);
+      setEditingFindingId(null);
     }, [refresh, fromChecklistResponseId])
   );
 
@@ -88,6 +95,13 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // Photo mode is one flat canvas (no levels); sketch mode needs a level
   // selected before anything can be drawn on it.
   const canDraw = isPhotoMode || Boolean(selectedLevel);
+  // The finding editor is open (drafting a new marker or editing an
+  // existing one) - every other map-editing affordance (drawing walls,
+  // placing labels, switching levels) is hidden while it's open, so the
+  // technician's attention and the map's state stay on the one thing
+  // they're doing, and so a stray tap elsewhere can't swap out the form
+  // mid-edit and lose what they've typed.
+  const editorOpen = Boolean(draftArrow) || Boolean(editingFindingId);
   const checklistSummary = fromChecklistResponseId
     ? findChecklistResponseSummary(
         fromChecklistResponseId,
@@ -111,7 +125,6 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // in photo mode every arrow shares the one flat canvas.
   const visibleArrows = isPhotoMode ? allArrows : allArrows.filter((a) => detail.findings.find((f) => f.id === a.id)?.siteMapLevel === selectedLevelId);
 
-  const selectedFinding = selectedArrowId ? detail.findings.find((f) => f.id === selectedArrowId) ?? null : null;
   const wallCount = (selectedLevel?.lines.length ?? 0) + pendingLines.length;
   const selectedWallIsPending = selectedWallId ? pendingLines.some((l) => l.id === selectedWallId) : false;
 
@@ -231,6 +244,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // shows a small Delete action right there, instead of a separate list of
   // every wall segment sitting permanently below the map.
   function handleWallPress(id: string) {
+    if (editorOpen) return;
     setSelectedWallId(id);
   }
 
@@ -255,6 +269,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // Tate suggested double-clicking on desktop, but a tap is the equivalent
   // touch gesture and matches how markers are already selected on this map.
   function handleLabelPress(id: string) {
+    if (editorOpen) return;
     const pending = pendingLabels.find((l) => l.id === id);
     if (pending) {
       setEditingLabel({ id, text: pending.text, isPending: true });
@@ -296,30 +311,16 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   }
 
   function handleSelectLevel(levelId: string) {
-    if (hasPendingChanges) return; // avoid silently dropping unsaved wall/label edits on level switch
+    if (hasPendingChanges || editorOpen) return; // avoid silently dropping unsaved wall/label/finding edits on level switch
     setSelectedLevelId(levelId);
     setMode("view");
     setEditingLabel(null);
     setSelectedWallId(null);
   }
 
-  function handleEditFinding() {
-    if (!selectedFinding) return;
-    navigation.navigate("FindingForm", { inspectionId, editingFindingId: selectedFinding.id });
-  }
-
-  function handleDeleteFinding() {
-    if (!selectedFinding) return;
-    deleteLocalFinding(selectedFinding.id);
-    deleteFinding(selectedFinding.id).catch(() => {});
-    setSelectedArrowId(null);
-    setConfirmingDeleteFinding(false);
-    refresh();
-  }
-
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {checklistSummary ? (
+      {checklistSummary && !draftArrow ? (
         <Card style={styles.checklistBannerCard}>
           <Text style={styles.checklistBannerLabel}>📋 Placing marker for checklist item:</Text>
           <Text style={styles.checklistBannerPrompt}>{checklistSummary.prompt}</Text>
@@ -342,9 +343,11 @@ export default function SiteMapScreen({ route, navigation }: Props) {
                 <Text style={[styles.levelChipText, level.id === selectedLevelId && styles.levelChipTextActive]}>{level.name}</Text>
               </Pressable>
             ))}
-            <Pressable onPress={() => setAddingLevel((v) => !v)} style={styles.levelChipAdd}>
-              <Text style={styles.levelChipAddText}>+ Add level</Text>
-            </Pressable>
+            {!editorOpen ? (
+              <Pressable onPress={() => setAddingLevel((v) => !v)} style={styles.levelChipAdd}>
+                <Text style={styles.levelChipAddText}>+ Add level</Text>
+              </Pressable>
+            ) : null}
           </View>
 
           {addingLevel ? (
@@ -374,23 +377,18 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         savedLines={selectedLevel?.lines ?? []}
         pendingLines={pendingLines}
         labels={[...(selectedLevel?.labels ?? []), ...pendingLabels]}
-        mode={canDraw ? mode : "view"}
-        onArrowPress={(id) => setSelectedArrowId(id)}
+        mode={canDraw && !editorOpen ? mode : "view"}
+        onArrowPress={(id) => {
+          if (editorOpen) return;
+          setEditingFindingId(id);
+        }}
         onLabelPress={handleLabelPress}
         onWallPress={handleWallPress}
         selectedLabelId={editingLabel?.id ?? null}
         selectedWallId={selectedWallId}
         onArrowDrawn={(start, end) => {
           setMode("view");
-          navigation.navigate("FindingForm", {
-            inspectionId,
-            arrowStartX: start.x,
-            arrowStartY: start.y,
-            arrowEndX: end.x,
-            arrowEndY: end.y,
-            arrowLevel: isPhotoMode ? undefined : selectedLevelId ?? undefined,
-            fromChecklistResponseId: fromChecklistResponseId,
-          });
+          setDraftArrow({ start, end });
         }}
         onWallDrawn={(start, end) =>
           setPendingHistory((prev) => [
@@ -403,6 +401,50 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           setLabelText("");
         }}
       />
+
+      {/* Drawing a marker or tapping an existing one opens this editor right
+          here, below the still-visible map, instead of navigating to a
+          separate screen - Tate's "keep the map visible" feedback. */}
+      {draftArrow ? (
+        <Card style={styles.editorCard}>
+          <Text style={styles.editorTitle}>New marker</Text>
+          <FindingEditorForm
+            inspectionId={inspectionId}
+            arrowStartX={draftArrow.start.x}
+            arrowStartY={draftArrow.start.y}
+            arrowEndX={draftArrow.end.x}
+            arrowEndY={draftArrow.end.y}
+            arrowLevel={isPhotoMode ? undefined : selectedLevelId ?? undefined}
+            fromChecklistResponseId={fromChecklistResponseId}
+            onSaved={() => {
+              setDraftArrow(null);
+              refresh();
+              // Clears the checklist-linked route param once it's been used,
+              // so the "placing marker for..." banner and auto-arrow-mode
+              // don't come right back for a checklist item that already has
+              // its marker (they'd otherwise reappear on every refocus,
+              // since useFocusEffect re-derives mode from this param).
+              if (fromChecklistResponseId) navigation.setParams({ fromChecklistResponseId: undefined });
+            }}
+            onCancel={() => setDraftArrow(null)}
+          />
+        </Card>
+      ) : null}
+
+      {editingFindingId ? (
+        <Card style={styles.editorCard}>
+          <Text style={styles.editorTitle}>Edit marker</Text>
+          <FindingEditorForm
+            inspectionId={inspectionId}
+            editingFindingId={editingFindingId}
+            onSaved={() => {
+              setEditingFindingId(null);
+              refresh();
+            }}
+            onCancel={() => setEditingFindingId(null)}
+          />
+        </Card>
+      ) : null}
 
       {pendingLabelPoint ? (
         <Card style={styles.labelPromptCard}>
@@ -448,7 +490,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
 
       {selectedWallId ? (
         <Card style={styles.labelPromptCard}>
-          <Text style={styles.detailTitle}>Wall segment{selectedWallIsPending ? " (unsaved)" : ""}</Text>
+          <Text style={styles.editorTitle}>Wall segment{selectedWallIsPending ? " (unsaved)" : ""}</Text>
           <View style={styles.buttonRow}>
             <View style={styles.buttonHalf}>
               <PrimaryButton title="Delete" onPress={handleDeleteSelectedWall} loading={!selectedWallIsPending && saving} />
@@ -460,7 +502,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         </Card>
       ) : null}
 
-      {canDraw ? (
+      {canDraw && !editorOpen ? (
         <View style={styles.toggleRow}>
           <View style={styles.buttonThird}>
             <PrimaryButton title={mode === "arrow" ? "Cancel" : "+ Marker"} onPress={() => toggleMode("arrow")} />
@@ -474,7 +516,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         </View>
       ) : null}
 
-      {hasPendingChanges ? (
+      {hasPendingChanges && !editorOpen ? (
         <View style={styles.toggleRow}>
           <View style={styles.buttonThird}>
             <PrimaryButton title="Save structure" onPress={handleSaveStructure} loading={saving} />
@@ -493,50 +535,32 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       <Text style={styles.hint}>
         {visibleArrows.length} marker(s) · {wallCount} wall segment(s)
         {isPhotoMode ? "" : selectedLevel ? ` on ${selectedLevel.name}` : ""}
-        {wallCount > 0 && mode === "view" ? " · tap a wall to delete it" : ""}
+        {wallCount > 0 && mode === "view" && !editorOpen ? " · tap a wall to delete it" : ""}
       </Text>
 
-      {!imageUri ? (
+      {!imageUri && !editorOpen ? (
         <View style={styles.uploadRow}>
           <PrimaryButton title="Upload a site plan photo instead" onPress={handleUpload} loading={uploading} />
         </View>
       ) : null}
 
-      {selectedFinding ? (
-        <Card style={styles.detailCard}>
-          <View style={styles.detailHeaderRow}>
-            <Text style={styles.detailTitle}>{selectedFinding.areaLocation}</Text>
-            <Badge
-              label={selectedFinding.severity}
-              tone={selectedFinding.severity === "CRITICAL" || selectedFinding.severity === "HIGH" ? "danger" : "warning"}
-            />
-          </View>
-          {selectedFinding.description ? <Text style={styles.detailBody}>{selectedFinding.description}</Text> : null}
-          {confirmingDeleteFinding ? (
-            <View style={styles.deleteConfirmRow}>
-              <Text style={styles.deleteConfirmText}>Delete this marker/finding? This can't be undone.</Text>
-              <View style={styles.buttonRow}>
-                <View style={styles.buttonHalf}>
-                  <PrimaryButton title="Delete" onPress={handleDeleteFinding} />
-                </View>
-                <View style={styles.buttonHalf}>
-                  <PrimaryButton title="Cancel" onPress={() => setConfirmingDeleteFinding(false)} />
-                </View>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.detailActionsRow}>
-              <Text style={styles.dismissLink} onPress={handleEditFinding}>
-                ✎ Edit
+      {/* Existing findings placed on this level/map, listed alongside the
+          canvas so a technician can jump straight into editing one without
+          having to precisely tap its small arrow label - Tate's "Site Map +
+          Existing Findings + Finding Editor, all in one workspace" ask. */}
+      {visibleArrows.length > 0 && !editorOpen ? (
+        <Card style={styles.findingsListCard}>
+          <Text style={styles.label}>
+            Findings {isPhotoMode ? "on this map" : selectedLevel ? `on ${selectedLevel.name}` : ""} ({visibleArrows.length})
+          </Text>
+          {visibleArrows.map((a) => (
+            <Pressable key={a.id} onPress={() => setEditingFindingId(a.id)} style={styles.findingsListRow}>
+              <Text style={styles.findingsListRowTitle} numberOfLines={1}>
+                {a.label}
               </Text>
-              <Text style={styles.deleteLink} onPress={() => setConfirmingDeleteFinding(true)}>
-                🗑 Delete
-              </Text>
-              <Text style={styles.dismissLink} onPress={() => setSelectedArrowId(null)}>
-                Close
-              </Text>
-            </View>
-          )}
+              <Badge label={a.severity} tone={a.severity === "CRITICAL" || a.severity === "HIGH" ? "danger" : "warning"} />
+            </Pressable>
+          ))}
         </Card>
       ) : null}
     </ScrollView>
@@ -565,14 +589,19 @@ const styles = StyleSheet.create({
   hint: { fontSize: 12, color: colors.textMuted, textAlign: "center", marginTop: 10 },
   uploadRow: { marginTop: 14 },
   labelPromptCard: { marginTop: 12, gap: 4 },
-  detailCard: { marginTop: 16, gap: 6 },
-  detailHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  detailTitle: { fontSize: 15, fontWeight: "700", color: colors.text },
-  detailBody: { fontSize: 14, color: colors.text },
-  detailActionsRow: { flexDirection: "row", gap: 16, marginTop: 4 },
+  editorCard: { marginTop: 14, gap: 4, borderColor: colors.primary, borderWidth: 2 },
+  editorTitle: { fontSize: 15, fontWeight: "700", color: colors.text, marginBottom: 4 },
   dismissLink: { color: colors.primary, fontWeight: "600", fontSize: 13, marginTop: 4 },
-  deleteLink: { color: colors.danger, fontWeight: "600", fontSize: 13, marginTop: 4 },
-  deleteConfirmRow: { marginTop: 8, gap: 8 },
-  deleteConfirmText: { color: colors.text, fontSize: 13 },
   error: { color: colors.danger, textAlign: "center", marginTop: 10 },
+  findingsListCard: { marginTop: 16, gap: 4 },
+  findingsListRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: 8,
+  },
+  findingsListRowTitle: { fontSize: 14, fontWeight: "600", color: colors.text, flex: 1 },
 });
