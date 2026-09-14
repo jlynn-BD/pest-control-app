@@ -41,18 +41,12 @@ export type InspectionsStackParamList = {
   RecommendationForm: { inspectionId: string };
   TreatmentForm: { inspectionId: string };
   SignatureCapture: { inspectionId: string; signerType: "CUSTOMER" | "TECHNICIAN" };
-  ScheduleFollowUp: { inspectionId: string };
   EstimateDetail: { estimateId: string };
   EstimateForm: { estimateId: string };
 };
 
 export type ScheduleStackParamList = {
   Schedule: undefined;
-};
-
-export type FollowUpsStackParamList = {
-  FollowUpList: undefined;
-  FollowUpDetail: { followUpId: string };
 };
 
 export type SettingsStackParamList = {

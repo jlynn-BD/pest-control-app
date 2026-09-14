@@ -9,7 +9,6 @@ import InspectionWorkspaceScreen from "../screens/inspections/InspectionWorkspac
 import LocalInspectionDetailScreen from "../screens/inspections/LocalInspectionDetailScreen";
 import NewInspectionScreen from "../screens/inspections/NewInspectionScreen";
 import RecommendationFormScreen from "../screens/inspections/RecommendationFormScreen";
-import ScheduleFollowUpScreen from "../screens/inspections/ScheduleFollowUpScreen";
 import EstimateDetailScreen from "../screens/estimates/EstimateDetailScreen";
 import EstimateFormScreen from "../screens/estimates/EstimateFormScreen";
 import SignatureCaptureScreen from "../screens/inspections/SignatureCaptureScreen";
@@ -33,7 +32,6 @@ export default function InspectionsNavigator() {
       <Stack.Screen name="RecommendationForm" component={RecommendationFormScreen} options={{ title: "New Recommendation" }} />
       <Stack.Screen name="TreatmentForm" component={TreatmentFormScreen} options={{ title: "New Treatment" }} />
       <Stack.Screen name="SignatureCapture" component={SignatureCaptureScreen} options={{ title: "Signature" }} />
-      <Stack.Screen name="ScheduleFollowUp" component={ScheduleFollowUpScreen} options={{ title: "Schedule Follow-up" }} />
       <Stack.Screen name="EstimateDetail" component={EstimateDetailScreen} options={{ title: "Estimate" }} />
       <Stack.Screen name="EstimateForm" component={EstimateFormScreen} options={{ title: "Edit Estimate" }} />
     </Stack.Navigator>

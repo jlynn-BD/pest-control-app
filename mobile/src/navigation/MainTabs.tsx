@@ -3,7 +3,6 @@ import React from "react";
 import { Text } from "react-native";
 import CustomersNavigator from "./CustomersNavigator";
 import InspectionsNavigator from "./InspectionsNavigator";
-import FollowUpsNavigator from "./FollowUpsNavigator";
 import ScheduleScreen from "../screens/schedule/ScheduleScreen";
 import SettingsScreen from "../screens/settings/SettingsScreen";
 import { colors } from "../components/ui";
@@ -14,7 +13,6 @@ const ICONS: Record<string, string> = {
   Schedule: "\u{1F4C5}",
   Customers: "\u{1F465}",
   Inspections: "\u{1F50D}",
-  FollowUps: "\u{23F0}",
   Settings: "\u{2699}",
 };
 
@@ -32,7 +30,6 @@ export default function MainTabs() {
       <Tab.Screen name="Schedule" component={ScheduleScreen} />
       <Tab.Screen name="Customers" component={CustomersNavigator} options={{ headerShown: false }} />
       <Tab.Screen name="Inspections" component={InspectionsNavigator} options={{ headerShown: false }} />
-      <Tab.Screen name="FollowUps" component={FollowUpsNavigator} options={{ headerShown: false, tabBarLabel: "Follow-ups" }} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>
   );
