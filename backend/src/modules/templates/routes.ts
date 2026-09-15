@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { TemplateSectionCategory } from "@pest-app/shared";
 import { prisma } from "../../lib/prisma";
 import { generateId } from "../../lib/id";
 import { asyncHandler, HttpError } from "../../middleware/error-handler";
@@ -67,9 +68,10 @@ templatesRouter.delete(
   })
 );
 
+const CATEGORY_VALUES = Object.values(TemplateSectionCategory) as [string, ...string[]];
 const sectionSchema = z.object({
   name: z.string().min(1),
-  category: z.enum(["EXTERIOR", "INTERIOR", "ATTIC", "CRAWLSPACE", "OTHER"]).optional(),
+  category: z.enum(CATEGORY_VALUES).optional(),
   sortOrder: z.number().int().optional(),
 });
 

@@ -10,34 +10,46 @@ import {
   upsertLocalChecklistResponse,
 } from "../db/inspectionStore";
 import type { LocalChecklistResponse, LocalChecklistResponsePhoto, LocalTemplateItem } from "../db/types";
-import { parseChecklistCategories } from "../lib/checklist";
+import { CHECKLIST_CATEGORY_DISPLAY_ORDER, CHECKLIST_CATEGORY_LABEL } from "../lib/checklist";
 import { capturePhoto } from "../lib/photo";
 import { Badge, Card, Checkbox, Field, colors } from "./ui";
 
 type ResponseWithPhotos = LocalChecklistResponse & { photos: LocalChecklistResponsePhoto[] };
 type TemplateSection = ReturnType<typeof getCachedTemplateSections>[number];
 
-const CATEGORY_LABEL: Record<string, string> = {
-  EXTERIOR: "Exterior Inspection Checklist",
-  INTERIOR: "Interior Inspection Checklist",
-  ATTIC: "Attic Inspection Checklist",
-  CRAWLSPACE: "Crawl Space Inspection Checklist",
-  OTHER: "Additional Checklist Items",
-};
-const CATEGORY_ORDER = ["EXTERIOR", "INTERIOR", "ATTIC", "CRAWLSPACE", "OTHER"];
-
 // The actual checklist UI (search, collapsible categories/sections, items),
-// factored out of ChecklistScreen so it can be rendered two ways: as that
-// screen's full-page body, and embedded directly on SiteMapScreen - Tate's
-// "Site Map + Checklist + Finding Editor, all in one workspace" ask, so a
-// technician never has to leave the map to consult or update the checklist.
-// `onAddToSiteMap` is the one behavioral difference between the two hosts:
-// ChecklistScreen navigates to a separate SiteMap route, while SiteMapScreen
-// (already showing the map) just updates its own route param in place.
-export function ChecklistPanel({ inspectionId, onAddToSiteMap }: { inspectionId: string; onAddToSiteMap: (responseId: string) => void }) {
+// factored out of ChecklistScreen so it can be rendered several ways: as
+// that screen's full-page review body, embedded directly on SiteMapScreen
+// (Tate's "Site Map + Checklist + Finding Editor, all in one workspace"
+// ask), and one-category-at-a-time inside the mandatory checklist wizard
+// (Matt's ask - see InspectionWizardScreen). `onAddToSiteMap` is the one
+// behavioral difference between the navigate-away hosts and the embedded
+// ones: ChecklistScreen navigates to a separate SiteMap route, while
+// SiteMapScreen/the wizard (already showing the map, or driving their own
+// navigation) just update state in place.
+export function ChecklistPanel({
+  inspectionId,
+  onAddToSiteMap,
+  categoryFilter,
+  hideCategoryHeader,
+  allowedCategories,
+}: {
+  inspectionId: string;
+  onAddToSiteMap: (responseId: string) => void;
+  // Show only this one category (the wizard, scoped to its current step).
+  categoryFilter?: string;
+  // Skip the collapsible category header/badge row - pairs with
+  // categoryFilter so a single-step view isn't wrapped in redundant chrome.
+  hideCategoryHeader?: boolean;
+  // Restrict which categories are visible at all (OTHER is always exempt,
+  // same as before) without narrowing to just one - used by ChecklistScreen
+  // and SiteMapScreen to show every category the wizard has unlocked so
+  // far, so a technician can review/edit anything already reached but can't
+  // answer a category out of sequence from these entry points.
+  allowedCategories?: string[];
+}) {
   const [responses, setResponses] = useState<ResponseWithPhotos[]>([]);
   const [templateId, setTemplateId] = useState<string | null>(null);
-  const [activeCategories, setActiveCategories] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
@@ -47,7 +59,6 @@ export function ChecklistPanel({ inspectionId, onAddToSiteMap }: { inspectionId:
       const detail = getLocalInspectionDetail(inspectionId);
       setResponses(detail?.checklistResponses ?? []);
       setTemplateId(detail?.inspection.templateId ?? null);
-      setActiveCategories(parseChecklistCategories(detail?.inspection.checklistCategories));
     }, [inspectionId])
   );
 
@@ -62,13 +73,17 @@ export function ChecklistPanel({ inspectionId, onAddToSiteMap }: { inspectionId:
   const sectionsByCategory = useMemo(() => {
     const grouped = new Map<string, TemplateSection[]>();
     for (const section of sections) {
-      if (section.category !== "OTHER" && !activeCategories.includes(section.category)) continue;
+      if (categoryFilter) {
+        if (section.category !== categoryFilter) continue;
+      } else if (allowedCategories && section.category !== "OTHER" && !allowedCategories.includes(section.category)) {
+        continue;
+      }
       const list = grouped.get(section.category) ?? [];
       list.push(section);
       grouped.set(section.category, list);
     }
     return grouped;
-  }, [sections, activeCategories]);
+  }, [sections, categoryFilter, allowedCategories]);
 
   const query = search.trim().toLowerCase();
   const isSearching = query.length > 0;
@@ -77,7 +92,7 @@ export function ChecklistPanel({ inspectionId, onAddToSiteMap }: { inspectionId:
     return (
       item.prompt.toLowerCase().includes(query) ||
       section.name.toLowerCase().includes(query) ||
-      (CATEGORY_LABEL[category] ?? category).toLowerCase().includes(query)
+      (CHECKLIST_CATEGORY_LABEL[category] ?? category).toLowerCase().includes(query)
     );
   }
 
@@ -149,7 +164,7 @@ export function ChecklistPanel({ inspectionId, onAddToSiteMap }: { inspectionId:
     return <Text style={styles.emptyText}>This inspection has no template assigned, so there's no checklist to fill out.</Text>;
   }
 
-  const visibleCategories = CATEGORY_ORDER.filter((c) => sectionsByCategory.has(c));
+  const visibleCategories = CHECKLIST_CATEGORY_DISPLAY_ORDER.filter((c) => sectionsByCategory.has(c));
   let anyMatches = false;
 
   return (
@@ -174,19 +189,21 @@ export function ChecklistPanel({ inspectionId, onAddToSiteMap }: { inspectionId:
         if (isSearching && visibleSections.length === 0) return null;
         if (isSearching) anyMatches = true;
 
-        const categoryExpanded = isSearching || expandedCategories.has(category);
+        const categoryExpanded = hideCategoryHeader || isSearching || expandedCategories.has(category);
 
         return (
           <View key={category} style={styles.categoryBlock}>
-            <Pressable style={styles.categoryHeaderRow} onPress={() => toggleCategory(category)}>
-              <Text style={styles.categoryTitle}>
-                {categoryExpanded ? "▾" : "▸"} {CATEGORY_LABEL[category] ?? category}
-              </Text>
-              <Badge
-                label={`${checkedCount}/${totalItems}`}
-                tone={checkedCount === totalItems && totalItems > 0 ? "success" : "default"}
-              />
-            </Pressable>
+            {!hideCategoryHeader ? (
+              <Pressable style={styles.categoryHeaderRow} onPress={() => toggleCategory(category)}>
+                <Text style={styles.categoryTitle}>
+                  {categoryExpanded ? "▾" : "▸"} {CHECKLIST_CATEGORY_LABEL[category] ?? category}
+                </Text>
+                <Badge
+                  label={`${checkedCount}/${totalItems}`}
+                  tone={checkedCount === totalItems && totalItems > 0 ? "success" : "default"}
+                />
+              </Pressable>
+            ) : null}
             {categoryExpanded
               ? visibleSections.map(({ section, items }) => {
                   const sectionChecked = section.items.filter((i) => responseByItem.has(i.id)).length;

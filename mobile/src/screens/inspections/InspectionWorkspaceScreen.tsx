@@ -2,31 +2,24 @@ import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React, { useCallback, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { getWizardStepStatus } from "@pest-app/shared";
 import { getCachedCustomer, getCachedProperty, getCachedTemplateSections, getCachedTemplates } from "../../db/cache";
 import {
   completeLocalInspection,
   deleteLocalInspection,
   getLocalInspectionDetail,
   LocalInspectionDetail,
-  setLocalInspectionChecklistCategories,
   setLocalInspectionTemplate,
 } from "../../db/inspectionStore";
 import { deleteInspection } from "../../api/inspections";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
-import { Badge, Card, Checkbox, PrimaryButton, colors } from "../../components/ui";
-import {
-  CHECKLIST_CATEGORY_SHORT_LABEL,
-  CHECKLIST_SELECTABLE_CATEGORIES,
-  parseChecklistCategories,
-} from "../../lib/checklist";
+import { Badge, Card, PrimaryButton, colors } from "../../components/ui";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "InspectionWorkspace">;
 
 export default function InspectionWorkspaceScreen({ route, navigation }: Props) {
   const { inspectionId } = route.params;
   const [detail, setDetail] = useState<LocalInspectionDetail | null>(null);
-  const [draftCategories, setDraftCategories] = useState<string[]>(CHECKLIST_SELECTABLE_CATEGORIES);
-  const [editingCategories, setEditingCategories] = useState(false);
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
 
   useFocusEffect(
@@ -39,13 +32,15 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
 
   const property = getCachedProperty(detail.inspection.propertyId);
   const customer = getCachedCustomer(detail.inspection.customerId);
-  const activeCategories = parseChecklistCategories(detail.inspection.checklistCategories);
-  const templateSections = detail.inspection.templateId
-    ? getCachedTemplateSections(detail.inspection.templateId).filter((s) => activeCategories.includes(s.category))
-    : [];
-  const checklistItemCount = templateSections.reduce((sum, s) => sum + s.items.length, 0);
-  const activeItemIds = new Set(templateSections.flatMap((s) => s.items.map((i) => i.id)));
-  const checklistAnsweredCount = detail.checklistResponses.filter((r) => activeItemIds.has(r.templateItemId)).length;
+  // Every section, unfiltered - the wizard (not a category subset the
+  // technician opted into) determines what's relevant, from the template's
+  // full section list crossed with the property's applicability flags.
+  const templateSections = detail.inspection.templateId ? getCachedTemplateSections(detail.inspection.templateId) : [];
+  const wizardStatus = detail.inspection.templateId
+    ? getWizardStepStatus(templateSections, detail.checklistResponses, property ?? undefined)
+    : null;
+  const resolvedStepCount = wizardStatus ? wizardStatus.steps.filter((s) => s.resolved).length : 0;
+  const checklistResolved = !detail.inspection.templateId || Boolean(wizardStatus?.canComplete);
   const siteMapMarkerCount = detail.findings.filter((f) => f.floorPlanX != null).length;
   const hasSiteMapImage = Boolean(property?.siteMapLocalUri || property?.siteMapImageUrl);
   const hasCustomerSignature = detail.signatures.some((s) => s.signerType === "CUSTOMER");
@@ -68,29 +63,8 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
     navigation.popToTop();
   }
 
-  function toggleDraftCategory(code: string) {
-    setDraftCategories((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]));
-  }
-
   function handleAddChecklist(templateId: string) {
-    setLocalInspectionTemplate(inspectionId, templateId, draftCategories);
-    setDetail(getLocalInspectionDetail(inspectionId));
-  }
-
-  function handleRemoveChecklist() {
-    setLocalInspectionTemplate(inspectionId, null, null);
-    setEditingCategories(false);
-    setDetail(getLocalInspectionDetail(inspectionId));
-  }
-
-  function handleStartEditingCategories() {
-    setDraftCategories(activeCategories);
-    setEditingCategories(true);
-  }
-
-  function handleSaveCategories() {
-    setLocalInspectionChecklistCategories(inspectionId, draftCategories);
-    setEditingCategories(false);
+    setLocalInspectionTemplate(inspectionId, templateId);
     setDetail(getLocalInspectionDetail(inspectionId));
   }
 
@@ -107,68 +81,38 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
       <View style={styles.section}>
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Checklist</Text>
-          {detail.inspection.templateId ? (
+          {wizardStatus ? (
             <Badge
-              label={`${checklistAnsweredCount}/${checklistItemCount}`}
-              tone={checklistAnsweredCount >= checklistItemCount && checklistItemCount > 0 ? "success" : "warning"}
+              label={`${resolvedStepCount}/${wizardStatus.steps.length} steps`}
+              tone={wizardStatus.canComplete ? "success" : "warning"}
             />
           ) : null}
         </View>
-        {detail.inspection.templateId ? (
+        {detail.inspection.templateId && wizardStatus ? (
           <Card style={styles.itemCard}>
-            <Text style={styles.addLink} onPress={() => navigation.navigate("Checklist", { inspectionId })}>
-              Open checklist
+            <View style={styles.wizardStepChipRow}>
+              {wizardStatus.steps.map((s) => (
+                <View key={s.category} style={[styles.wizardStepChip, s.resolved && styles.wizardStepChipResolved]}>
+                  <Text style={[styles.wizardStepChipText, s.resolved && styles.wizardStepChipTextResolved]}>{s.shortLabel}</Text>
+                </View>
+              ))}
+            </View>
+            <Text style={styles.addLink} onPress={() => navigation.navigate("InspectionWizard", { inspectionId })}>
+              {resolvedStepCount === 0 ? "Start checklist" : wizardStatus.canComplete ? "Review checklist" : "Continue checklist"}
             </Text>
-            <Text style={styles.itemMeta}>
-              Categories: {activeCategories.map((c) => CHECKLIST_CATEGORY_SHORT_LABEL[c] ?? c).join(", ")}
-            </Text>
-            {editingCategories ? (
-              <>
-                {CHECKLIST_SELECTABLE_CATEGORIES.map((code) => (
-                  <Checkbox
-                    key={code}
-                    label={CHECKLIST_CATEGORY_SHORT_LABEL[code]}
-                    checked={draftCategories.includes(code)}
-                    onChange={() => toggleDraftCategory(code)}
-                  />
-                ))}
-                <Pressable
-                  style={[styles.addButton, draftCategories.length === 0 && styles.addButtonDisabled]}
-                  onPress={handleSaveCategories}
-                  disabled={draftCategories.length === 0}
-                >
-                  <Text style={styles.addButtonText}>Save categories</Text>
-                </Pressable>
-              </>
-            ) : (
-              <Text style={styles.addLink} onPress={handleStartEditingCategories}>
-                Edit categories
+            {resolvedStepCount > 0 ? (
+              <Text style={styles.secondaryLink} onPress={() => navigation.navigate("Checklist", { inspectionId })}>
+                View full checklist
               </Text>
-            )}
-            <Text style={styles.removeLink} onPress={handleRemoveChecklist}>
-              Remove checklist from this inspection
-            </Text>
+            ) : null}
           </Card>
         ) : availableTemplates.length === 0 ? (
           <Text style={styles.itemMeta}>No checklist templates available offline yet.</Text>
         ) : availableTemplates.length === 1 ? (
           <Card style={styles.itemCard}>
-            <Text style={styles.itemMeta}>Include:</Text>
-            {CHECKLIST_SELECTABLE_CATEGORIES.map((code) => (
-              <Checkbox
-                key={code}
-                label={CHECKLIST_CATEGORY_SHORT_LABEL[code]}
-                checked={draftCategories.includes(code)}
-                onChange={() => toggleDraftCategory(code)}
-              />
-            ))}
-            <Pressable
-              style={[styles.addButton, draftCategories.length === 0 && styles.addButtonDisabled]}
-              onPress={() => handleAddChecklist(availableTemplates[0].id)}
-              disabled={draftCategories.length === 0}
-            >
-              <Text style={styles.addButtonText}>+ Add Checklist</Text>
-            </Pressable>
+            <Text style={styles.addLink} onPress={() => handleAddChecklist(availableTemplates[0].id)}>
+              + Add Checklist
+            </Text>
           </Card>
         ) : (
           availableTemplates.map((template) => (
@@ -257,12 +201,14 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
         <PrimaryButton
           title="Complete inspection"
           onPress={handleComplete}
-          disabled={!hasCustomerSignature || !hasTechnicianSignature}
+          disabled={!hasCustomerSignature || !hasTechnicianSignature || !checklistResolved}
         />
       ) : (
         <Badge label="Inspection completed" tone="success" />
       )}
-      {!isCompleted && (!hasCustomerSignature || !hasTechnicianSignature) ? (
+      {!isCompleted && !checklistResolved ? (
+        <Text style={styles.hint}>Finish the checklist before completing this inspection.</Text>
+      ) : !isCompleted && (!hasCustomerSignature || !hasTechnicianSignature) ? (
         <Text style={styles.hint}>Both signatures are required to complete the inspection.</Text>
       ) : null}
 
@@ -338,11 +284,20 @@ const styles = StyleSheet.create({
   sectionHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
   sectionTitle: { fontSize: 15, fontWeight: "700", color: colors.text },
   addLink: { color: colors.primary, fontWeight: "600", fontSize: 13 },
-  removeLink: { color: colors.textMuted, fontWeight: "500", fontSize: 12, marginTop: 6 },
-  addButton: { alignSelf: "flex-start", marginTop: 6 },
-  addButtonDisabled: { opacity: 0.4 },
-  addButtonText: { color: colors.primary, fontWeight: "600", fontSize: 15 },
+  secondaryLink: { color: colors.textMuted, fontWeight: "500", fontSize: 12, marginTop: 4 },
   itemCard: { marginBottom: 6, gap: 2 },
+  wizardStepChipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 },
+  wizardStepChip: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
+  },
+  wizardStepChipResolved: { backgroundColor: colors.primary, borderColor: colors.primary },
+  wizardStepChipText: { fontSize: 11, fontWeight: "600", color: colors.textMuted },
+  wizardStepChipTextResolved: { color: "#fff" },
   itemTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
   itemMeta: { fontSize: 12, color: colors.textMuted },
   signatureRow: { flexDirection: "row", gap: 10, marginTop: 4 },

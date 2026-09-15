@@ -6,6 +6,7 @@
 // checking); ReportData below stays fully typed and is what callers rely on.
 import { Document, Image, Line, Page, Polygon, Rect, StyleSheet, Svg, Text, View } from "@react-pdf/renderer";
 import React from "react";
+import { CHECKLIST_CATEGORY_LABEL } from "@pest-app/shared";
 
 const styles = StyleSheet.create({
   page: { padding: 32, fontSize: 10, fontFamily: "Helvetica", color: "#1A2421" },
@@ -87,13 +88,6 @@ function checklistStatusStyle(status: string) {
   return styles.severityLow;
 }
 
-const CHECKLIST_CATEGORY_LABEL: Record<string, string> = {
-  EXTERIOR: "Exterior Inspection Checklist",
-  INTERIOR: "Interior Inspection Checklist",
-  ATTIC: "Attic Inspection Checklist",
-  CRAWLSPACE: "Crawl Space Inspection Checklist",
-  OTHER: "Additional Checklist Items",
-};
 
 const SEVERITY_ARROW_COLOR: Record<string, string> = {
   LOW: "#1F7A5C",

@@ -1,0 +1,210 @@
+import { useFocusEffect } from "@react-navigation/native";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { getWizardStepStatus, WIZARD_STEPS, WizardStatus } from "@pest-app/shared";
+import React, { useCallback, useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { patchPropertyApplicability } from "../../api/properties";
+import { ChecklistPanel } from "../../components/ChecklistPanel";
+import { Card, PrimaryButton, colors } from "../../components/ui";
+import { getCachedProperty, getCachedTemplateSections, updateLocalPropertyApplicability } from "../../db/cache";
+import { getLocalInspectionDetail } from "../../db/inspectionStore";
+import type { LocalProperty } from "../../db/types";
+import { InspectionsStackParamList } from "../../navigation/navigationTypes";
+
+type Props = NativeStackScreenProps<InspectionsStackParamList, "InspectionWizard">;
+
+// Matt's ask: every technician walks Exterior -> First Floor -> Second Floor
+// (if applicable) -> Third Floor (if applicable) -> Basement (if applicable)
+// -> Crawl Space (if applicable) -> Attic, in that fixed order, every time -
+// no picking which sections to bother with. A step can only be reached once
+// every step before it is resolved (see getWizardStepStatus); a conditional
+// step resolves either by answering it or by explicitly marking the
+// property as not having that area - never by silently leaving it blank.
+export default function InspectionWizardScreen({ route, navigation }: Props) {
+  const { inspectionId } = route.params;
+  const [property, setProperty] = useState<LocalProperty | null>(null);
+  const [status, setStatus] = useState<WizardStatus | null>(null);
+  const [stepIndex, setStepIndex] = useState(0);
+  const [confirmingNotApplicable, setConfirmingNotApplicable] = useState(false);
+  const [savingApplicability, setSavingApplicability] = useState(false);
+
+  const refresh = useCallback(() => {
+    const detail = getLocalInspectionDetail(inspectionId);
+    if (!detail?.inspection.templateId) return;
+    const p = getCachedProperty(detail.inspection.propertyId);
+    setProperty(p);
+    const sections = getCachedTemplateSections(detail.inspection.templateId);
+    const next = getWizardStepStatus(sections, detail.checklistResponses, p ?? undefined);
+    setStatus(next);
+    return next;
+  }, [inspectionId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const next = refresh();
+      // Drop the technician at wherever they need to continue each time
+      // this screen is (re)focused - manual Back/chip taps within a single
+      // visit aren't affected, only re-entering the wizard fresh.
+      if (next) setStepIndex(next.furthestUnlockedIndex);
+      setConfirmingNotApplicable(false);
+    }, [refresh])
+  );
+
+  if (!status || !property) return null;
+
+  const step = status.steps[stepIndex];
+  const stepDef = WIZARD_STEPS[stepIndex];
+  const canGoNext = step.resolved;
+  const isLastStep = stepIndex === status.steps.length - 1;
+
+  function goToStep(index: number) {
+    if (index > status!.furthestUnlockedIndex) return;
+    setConfirmingNotApplicable(false);
+    setStepIndex(index);
+  }
+
+  function handleNext() {
+    if (!canGoNext) return;
+    if (isLastStep) {
+      navigation.goBack();
+      return;
+    }
+    goToStep(stepIndex + 1);
+  }
+
+  async function handleConfirmNotApplicable() {
+    if (!stepDef.applicabilityField) return;
+    setSavingApplicability(true);
+    updateLocalPropertyApplicability(property!.id, { [stepDef.applicabilityField]: 0 });
+    patchPropertyApplicability(property!.id, { [stepDef.applicabilityField]: false }).catch(() => {});
+    refresh();
+    setConfirmingNotApplicable(false);
+    setSavingApplicability(false);
+  }
+
+  // Lets a technician undo a mistaken "not applicable" without leaving the
+  // wizard - flips the property flag back to unknown so the step re-opens
+  // for answering (a false "true" isn't meaningful the other direction:
+  // answering the step's items is itself what marks it applicable).
+  function handleUndoNotApplicable() {
+    if (!stepDef.applicabilityField) return;
+    updateLocalPropertyApplicability(property!.id, { [stepDef.applicabilityField]: null });
+    patchPropertyApplicability(property!.id, { [stepDef.applicabilityField]: null }).catch(() => {});
+    refresh();
+  }
+
+  return (
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <View style={styles.progressRow}>
+        {status.steps.map((s, index) => {
+          const reachable = index <= status.furthestUnlockedIndex;
+          const active = index === stepIndex;
+          return (
+            <Pressable
+              key={s.category}
+              disabled={!reachable}
+              onPress={() => goToStep(index)}
+              style={[styles.stepChip, s.resolved && styles.stepChipResolved, active && styles.stepChipActive, !reachable && styles.stepChipLocked]}
+            >
+              <Text style={[styles.stepChipText, s.resolved && styles.stepChipTextResolved, active && styles.stepChipTextActive]}>{s.shortLabel}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <Text style={styles.stepTitle}>{step.label}</Text>
+      {!step.required ? (
+        <Text style={styles.stepHint}>
+          {step.applicable === false
+            ? `Marked as not applicable to ${property.addressLine1}.`
+            : "If this property doesn't have this area, you can mark it not applicable instead of answering it."}
+        </Text>
+      ) : null}
+
+      {!step.required && step.applicable === false ? (
+        <Card style={styles.naCard}>
+          <Text style={styles.naText}>This property doesn't have a {step.shortLabel.toLowerCase()}.</Text>
+          <Text style={styles.secondaryLink} onPress={handleUndoNotApplicable}>
+            Actually, it does - let me answer this
+          </Text>
+        </Card>
+      ) : (
+        <>
+          <ChecklistPanel
+            inspectionId={inspectionId}
+            categoryFilter={step.category}
+            hideCategoryHeader
+            onAddToSiteMap={(responseId) => navigation.navigate("SiteMap", { inspectionId, fromChecklistResponseId: responseId })}
+          />
+          {!step.required ? (
+            confirmingNotApplicable ? (
+              <Card style={styles.naConfirmCard}>
+                <Text style={styles.naConfirmText}>
+                  This will be remembered for {property.addressLine1} on future inspections too - you can change it later.
+                </Text>
+                <View style={styles.buttonRow}>
+                  <View style={styles.buttonHalf}>
+                    <PrimaryButton title="Confirm" onPress={handleConfirmNotApplicable} loading={savingApplicability} />
+                  </View>
+                  <View style={styles.buttonHalf}>
+                    <PrimaryButton title="Cancel" onPress={() => setConfirmingNotApplicable(false)} />
+                  </View>
+                </View>
+              </Card>
+            ) : (
+              <Text style={styles.secondaryLink} onPress={() => setConfirmingNotApplicable(true)}>
+                This property doesn't have a {step.shortLabel.toLowerCase()}
+              </Text>
+            )
+          ) : null}
+        </>
+      )}
+
+      {!canGoNext ? (
+        <Text style={styles.blockedHint}>
+          {step.itemsTotal - step.itemsAnswered} of {step.itemsTotal} required item(s) still need an answer.
+        </Text>
+      ) : null}
+
+      <View style={styles.footerRow}>
+        <View style={styles.buttonHalf}>
+          <PrimaryButton title="Back" onPress={() => goToStep(stepIndex - 1)} disabled={stepIndex === 0} />
+        </View>
+        <View style={styles.buttonHalf}>
+          <PrimaryButton title={isLastStep ? "Finish" : "Next"} onPress={handleNext} disabled={!canGoNext} />
+        </View>
+      </View>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
+  content: { padding: 16, paddingBottom: 40 },
+  progressRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 16 },
+  stepChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  stepChipResolved: { backgroundColor: colors.chip, borderColor: colors.primary },
+  stepChipActive: { borderColor: colors.primary, borderWidth: 2 },
+  stepChipLocked: { opacity: 0.4 },
+  stepChipText: { fontSize: 12, fontWeight: "600", color: colors.textMuted },
+  stepChipTextResolved: { color: colors.primary },
+  stepChipTextActive: { color: colors.text },
+  stepTitle: { fontSize: 18, fontWeight: "700", color: colors.text, marginBottom: 4 },
+  stepHint: { fontSize: 12, color: colors.textMuted, marginBottom: 12 },
+  naCard: { gap: 8, marginBottom: 16 },
+  naText: { fontSize: 14, color: colors.text },
+  naConfirmCard: { marginTop: 12, gap: 8 },
+  naConfirmText: { fontSize: 13, color: colors.text },
+  secondaryLink: { color: colors.textMuted, fontWeight: "500", fontSize: 12, marginTop: 12, textAlign: "center" },
+  blockedHint: { color: colors.textMuted, fontSize: 12, textAlign: "center", marginTop: 16 },
+  buttonRow: { flexDirection: "row", gap: 10 },
+  buttonHalf: { flex: 1 },
+  footerRow: { flexDirection: "row", gap: 10, marginTop: 24 },
+});

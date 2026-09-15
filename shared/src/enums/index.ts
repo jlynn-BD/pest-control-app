@@ -132,11 +132,19 @@ export const DeviceStatus = {
 } as const;
 export type DeviceStatus = (typeof DeviceStatus)[keyof typeof DeviceStatus];
 
+// Ordered to match the mandatory inspection wizard's sequence - see
+// shared/src/constants/checklistWizard.ts for the step order/required-vs-
+// conditional metadata built on top of this. INTERIOR was retired in favor
+// of FIRST_FLOOR/SECOND_FLOOR/THIRD_FLOOR/BASEMENT (Basement was previously
+// a single section nested inside INTERIOR).
 export const TemplateSectionCategory = {
   EXTERIOR: "EXTERIOR",
-  INTERIOR: "INTERIOR",
-  ATTIC: "ATTIC",
+  FIRST_FLOOR: "FIRST_FLOOR",
+  SECOND_FLOOR: "SECOND_FLOOR",
+  THIRD_FLOOR: "THIRD_FLOOR",
+  BASEMENT: "BASEMENT",
   CRAWLSPACE: "CRAWLSPACE",
+  ATTIC: "ATTIC",
   OTHER: "OTHER",
 } as const;
 export type TemplateSectionCategory = (typeof TemplateSectionCategory)[keyof typeof TemplateSectionCategory];

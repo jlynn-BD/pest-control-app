@@ -8,7 +8,8 @@ import { generateId } from "../../lib/uuid";
 import { getLocalInspectionDetail, LocalInspectionDetail } from "../../db/inspectionStore";
 import { saveSiteMapSketch, uploadSiteMap } from "../../api/properties";
 import { parseSiteMapSketch } from "../../lib/siteMapSketch";
-import { findChecklistResponseSummary, parseChecklistCategories } from "../../lib/checklist";
+import { findChecklistResponseSummary } from "../../lib/checklist";
+import { getWizardStepStatus } from "@pest-app/shared";
 import { capturePhoto } from "../../lib/photo";
 import { ApiError } from "../../api/client";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
@@ -156,15 +157,16 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   const wallCount = selectedLevel?.lines.length ?? 0;
   const annotationCount = selectedLevel?.annotations.length ?? 0;
 
-  const checklistSections = detail.inspection.templateId
-    ? getCachedTemplateSections(detail.inspection.templateId).filter((s) => {
-        if (s.category === "OTHER") return true;
-        return parseChecklistCategories(detail.inspection.checklistCategories).includes(s.category);
-      })
-    : [];
-  const checklistItemCount = checklistSections.reduce((sum, s) => sum + s.items.length, 0);
-  const checklistActiveItemIds = new Set(checklistSections.flatMap((s) => s.items.map((i) => i.id)));
-  const checklistAnsweredCount = detail.checklistResponses.filter((r) => checklistActiveItemIds.has(r.templateItemId)).length;
+  // Only categories the wizard has unlocked so far are shown here - lets a
+  // technician review/edit anything already reached without being able to
+  // jump ahead out of sequence from the map (see ChecklistPanel's
+  // allowedCategories prop / ChecklistScreen for the same restriction).
+  const wizardStatus = detail.inspection.templateId
+    ? getWizardStepStatus(getCachedTemplateSections(detail.inspection.templateId), detail.checklistResponses, property ?? undefined)
+    : null;
+  const unlockedCategories = wizardStatus ? wizardStatus.steps.slice(0, wizardStatus.furthestUnlockedIndex + 1).map((s) => s.category) : [];
+  const checklistItemCount = wizardStatus ? wizardStatus.steps.reduce((sum, s) => sum + s.itemsTotal, 0) : 0;
+  const checklistAnsweredCount = wizardStatus ? wizardStatus.steps.reduce((sum, s) => sum + s.itemsAnswered, 0) : 0;
 
   function toggleMode(next: SiteMapMode) {
     setMode((current) => (current === next ? "view" : next));
@@ -483,6 +485,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           {checklistExpanded ? (
             <ChecklistPanel
               inspectionId={inspectionId}
+              allowedCategories={unlockedCategories}
               onAddToSiteMap={(responseId) => navigation.setParams({ fromChecklistResponseId: responseId })}
             />
           ) : null}

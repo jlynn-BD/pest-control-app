@@ -15,6 +15,13 @@ export type InspectionsStackParamList = {
   LocalInspectionDetail: { inspectionId: string };
   NewInspection: undefined;
   InspectionWorkspace: { inspectionId: string };
+  // The mandatory checklist wizard - Exterior -> First Floor -> Second Floor
+  // (if applicable) -> Third Floor (if applicable) -> Basement (if
+  // applicable) -> Crawl Space (if applicable) -> Attic, in that fixed
+  // order (see shared/src/constants/checklistWizard.ts). Distinct from
+  // Checklist below, which is a flat multi-category review of everything
+  // already unlocked, not a step-by-step flow.
+  InspectionWizard: { inspectionId: string };
   Checklist: { inspectionId: string };
   // fromChecklistResponseId: arriving here to place a marker for a checklist
   // item that's already been answered - see ChecklistScreen's "Add to Site

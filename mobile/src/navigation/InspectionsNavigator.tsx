@@ -5,6 +5,7 @@ import SiteMapScreen from "../screens/inspections/SiteMapScreen";
 import FindingFormScreen from "../screens/inspections/FindingFormScreen";
 import InspectionDetailScreen from "../screens/inspections/InspectionDetailScreen";
 import InspectionListScreen from "../screens/inspections/InspectionListScreen";
+import InspectionWizardScreen from "../screens/inspections/InspectionWizardScreen";
 import InspectionWorkspaceScreen from "../screens/inspections/InspectionWorkspaceScreen";
 import LocalInspectionDetailScreen from "../screens/inspections/LocalInspectionDetailScreen";
 import NewInspectionScreen from "../screens/inspections/NewInspectionScreen";
@@ -26,6 +27,7 @@ export default function InspectionsNavigator() {
       <Stack.Screen name="LocalInspectionDetail" component={LocalInspectionDetailScreen} options={{ title: "Inspection" }} />
       <Stack.Screen name="NewInspection" component={NewInspectionScreen} options={{ title: "New Inspection" }} />
       <Stack.Screen name="InspectionWorkspace" component={InspectionWorkspaceScreen} options={{ title: "Inspection" }} />
+      <Stack.Screen name="InspectionWizard" component={InspectionWizardScreen} options={{ title: "Checklist" }} />
       <Stack.Screen name="Checklist" component={ChecklistScreen} options={{ title: "Checklist" }} />
       <Stack.Screen name="SiteMap" component={SiteMapScreen} options={{ title: "Site Map" }} />
       <Stack.Screen name="FindingForm" component={FindingFormScreen} options={{ title: "New Finding" }} />

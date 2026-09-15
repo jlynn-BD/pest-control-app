@@ -1,41 +1,15 @@
-export const CHECKLIST_CATEGORY_LABEL: Record<string, string> = {
-  EXTERIOR: "Exterior Inspection Checklist",
-  INTERIOR: "Interior Inspection Checklist",
-  ATTIC: "Attic Inspection Checklist",
-  CRAWLSPACE: "Crawl Space Inspection Checklist",
-  OTHER: "Additional Checklist Items",
-};
-export const CHECKLIST_CATEGORY_ORDER = ["EXTERIOR", "INTERIOR", "ATTIC", "CRAWLSPACE", "OTHER"];
+// Canonical category labels/order now live in shared/ (single source of
+// truth for the checklist wizard, the workspace, and the PDF report - see
+// shared/src/constants/checklistWizard.ts) - re-exported here so existing
+// call sites in this file/module don't all need to switch import paths.
+export { CHECKLIST_CATEGORY_LABEL, CHECKLIST_CATEGORY_SHORT_LABEL, CHECKLIST_CATEGORY_DISPLAY_ORDER } from "@pest-app/shared";
+import { CHECKLIST_CATEGORY_DISPLAY_ORDER } from "@pest-app/shared";
 
 export const CHECKLIST_STATUS_LABEL: Record<string, string> = {
   SATISFACTORY: "Satisfactory",
   NEEDS_ATTENTION: "Needs Attention",
   NOT_APPLICABLE: "N/A",
 };
-
-// The categories a technician can opt into per inspection - e.g. skip Crawl
-// Space on a slab-foundation house. Excludes OTHER, a catch-all bucket
-// rather than a physical area someone would deliberately include/skip.
-export const CHECKLIST_SELECTABLE_CATEGORIES = ["EXTERIOR", "INTERIOR", "ATTIC", "CRAWLSPACE"];
-export const CHECKLIST_CATEGORY_SHORT_LABEL: Record<string, string> = {
-  EXTERIOR: "Exterior",
-  INTERIOR: "Interior",
-  ATTIC: "Attic",
-  CRAWLSPACE: "Crawl Space",
-};
-
-// Inspection.checklistCategories is JSON-encoded; null/empty/unparseable
-// means "show every category" (also covers inspections created before this
-// field existed).
-export function parseChecklistCategories(json: string | null | undefined): string[] {
-  if (!json) return CHECKLIST_SELECTABLE_CATEGORIES;
-  try {
-    const parsed = JSON.parse(json);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : CHECKLIST_SELECTABLE_CATEGORIES;
-  } catch {
-    return CHECKLIST_SELECTABLE_CATEGORIES;
-  }
-}
 
 // Generic over the photo shape since local (LocalChecklistResponsePhoto,
 // keyed off localUri/remoteUrl) and remote (ChecklistResponsePhoto, keyed
@@ -81,7 +55,7 @@ export function groupChecklistForDisplay<P = unknown>(
     }
   }
 
-  return CHECKLIST_CATEGORY_ORDER.filter((c) => byCategory.has(c)).map((category) => ({
+  return CHECKLIST_CATEGORY_DISPLAY_ORDER.filter((c) => byCategory.has(c)).map((category) => ({
     category,
     items: byCategory.get(category)!,
   }));

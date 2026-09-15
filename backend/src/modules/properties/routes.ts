@@ -27,6 +27,10 @@ const propertySchema = z.object({
   yearBuilt: z.number().int().optional().nullable(),
   accessNotes: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
+  hasSecondFloor: z.boolean().optional().nullable(),
+  hasThirdFloor: z.boolean().optional().nullable(),
+  hasBasement: z.boolean().optional().nullable(),
+  hasCrawlspace: z.boolean().optional().nullable(),
 });
 
 propertiesRouter.get(

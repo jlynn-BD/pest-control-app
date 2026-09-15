@@ -29,6 +29,10 @@ interface RemoteProperty {
   siteMapImageUrl: string | null;
   siteMapSketch: string | null;
   siteMapUpdatedAt: string | null;
+  hasSecondFloor: boolean | null;
+  hasThirdFloor: boolean | null;
+  hasBasement: boolean | null;
+  hasCrawlspace: boolean | null;
 }
 interface RemoteTemplate {
   id: string;
@@ -117,7 +121,7 @@ export async function primeCache(): Promise<void> {
       );
       for (const p of c.properties) {
         db.runSync(
-          `INSERT OR REPLACE INTO local_properties (id, customerId, label, addressLine1, city, state, postalCode, propertyType, accessNotes, siteMapImageUrl, siteMapLocalUri, siteMapSketchJson, siteMapUpdatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT OR REPLACE INTO local_properties (id, customerId, label, addressLine1, city, state, postalCode, propertyType, accessNotes, siteMapImageUrl, siteMapLocalUri, siteMapSketchJson, siteMapUpdatedAt, hasSecondFloor, hasThirdFloor, hasBasement, hasCrawlspace) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             p.id,
             p.customerId,
@@ -132,6 +136,10 @@ export async function primeCache(): Promise<void> {
             siteMapLocalUris.get(p.id) ?? null,
             p.siteMapSketch,
             p.siteMapUpdatedAt,
+            p.hasSecondFloor == null ? null : p.hasSecondFloor ? 1 : 0,
+            p.hasThirdFloor == null ? null : p.hasThirdFloor ? 1 : 0,
+            p.hasBasement == null ? null : p.hasBasement ? 1 : 0,
+            p.hasCrawlspace == null ? null : p.hasCrawlspace ? 1 : 0,
           ]
         );
       }
@@ -164,6 +172,24 @@ export async function primeCache(): Promise<void> {
 export function updateLocalPropertySiteMapSketch(propertyId: string, sketchJson: string): void {
   if (!isLocalDbAvailable()) return;
   getDb().runSync(`UPDATE local_properties SET siteMapSketchJson = ? WHERE id = ?`, [sketchJson, propertyId]);
+}
+
+// Same optimistic-update pattern as updateLocalPropertySiteMapSketch, for
+// the checklist wizard's "this property doesn't have this" answers -
+// written immediately so the wizard isn't blocked on the paired best-effort
+// PATCH (see api/properties.ts's patchPropertyApplicability) landing first.
+export function updateLocalPropertyApplicability(
+  propertyId: string,
+  patch: Partial<Pick<LocalProperty, "hasSecondFloor" | "hasThirdFloor" | "hasBasement" | "hasCrawlspace">>
+): void {
+  if (!isLocalDbAvailable()) return;
+  const columns = Object.keys(patch);
+  if (columns.length === 0) return;
+  const db = getDb();
+  db.runSync(
+    `UPDATE local_properties SET ${columns.map((c) => `${c} = ?`).join(", ")} WHERE id = ?`,
+    [...columns.map((c) => patch[c as keyof typeof patch]), propertyId]
+  );
 }
 
 export function getCachedCustomers(): LocalCustomer[] {

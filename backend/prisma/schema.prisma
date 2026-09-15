@@ -121,6 +121,15 @@ model Property {
   siteMapImageUrl   String?
   siteMapSketch     String? // JSON-encoded { lines: {x1,y1,x2,y2}[], labels: {x,y,text}[] }, normalized 0-1 coords
   siteMapUpdatedAt  DateTime?
+  // Whether this property has each conditional inspection area - set once
+  // (typically via the checklist wizard's "this property doesn't have
+  // this" flow) and reused on every inspection here going forward, instead
+  // of re-asking a fact that doesn't change visit to visit. null = never
+  // determined yet.
+  hasSecondFloor Boolean?
+  hasThirdFloor  Boolean?
+  hasBasement    Boolean?
+  hasCrawlspace  Boolean?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
@@ -151,7 +160,7 @@ model TemplateSection {
   id         String @id
   templateId String
   name       String
-  category   String @default("OTHER") // EXTERIOR | INTERIOR | ATTIC | CRAWLSPACE | OTHER - groups sections into the checklist categories
+  category   String @default("OTHER") // EXTERIOR | FIRST_FLOOR | SECOND_FLOOR | THIRD_FLOOR | BASEMENT | CRAWLSPACE | ATTIC | OTHER - groups sections into the checklist wizard's steps (shared/src/constants/checklistWizard.ts)
   sortOrder  Int    @default(0)
 
   template InspectionTemplate @relation(fields: [templateId], references: [id])
@@ -246,7 +255,7 @@ model Inspection {
   completedAt        DateTime?
   generalNotes       String?
   weatherConditions  String?
-  checklistCategories String? // JSON array of category codes (EXTERIOR/INTERIOR/ATTIC/CRAWLSPACE) the technician chose to include - null means "show every category" (all inspections created before this field existed)
+  checklistCategories String? // Legacy - free category selection was replaced by the mandatory checklist wizard (shared/src/constants/checklistWizard.ts) + per-property applicability. No longer written by current clients; left populated on old rows only.
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
   deletedAt          DateTime?

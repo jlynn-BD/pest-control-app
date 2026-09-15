@@ -15,6 +15,24 @@ export interface LocalDb {
 
 let db: LocalDb | null = null;
 
+// `CREATE TABLE IF NOT EXISTS` is a no-op against a table that already
+// exists with an older column set - and on web, the sql.js database
+// persists across sessions via an IndexedDB snapshot (see
+// webSqlDatabase.ts), so a browser that used this app before these
+// columns existed has a local_properties table without them. Each ADD
+// COLUMN is wrapped since "already exists" is the expected outcome on
+// every subsequent boot, not an error.
+const LOCAL_PROPERTIES_MIGRATION_COLUMNS = ["hasSecondFloor", "hasThirdFloor", "hasBasement", "hasCrawlspace"];
+function migrateLocalProperties(adapter: LocalDb): void {
+  for (const column of LOCAL_PROPERTIES_MIGRATION_COLUMNS) {
+    try {
+      adapter.execSync(`ALTER TABLE local_properties ADD COLUMN ${column} INTEGER`);
+    } catch {
+      // Column already exists - expected on every boot after the first.
+    }
+  }
+}
+
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS local_customers (
   id TEXT PRIMARY KEY, name TEXT, type TEXT, phone TEXT, email TEXT, city TEXT, state TEXT
@@ -22,7 +40,8 @@ CREATE TABLE IF NOT EXISTS local_customers (
 CREATE TABLE IF NOT EXISTS local_properties (
   id TEXT PRIMARY KEY, customerId TEXT, label TEXT, addressLine1 TEXT, city TEXT, state TEXT,
   postalCode TEXT, propertyType TEXT, accessNotes TEXT,
-  siteMapImageUrl TEXT, siteMapLocalUri TEXT, siteMapSketchJson TEXT, siteMapUpdatedAt TEXT
+  siteMapImageUrl TEXT, siteMapLocalUri TEXT, siteMapSketchJson TEXT, siteMapUpdatedAt TEXT,
+  hasSecondFloor INTEGER, hasThirdFloor INTEGER, hasBasement INTEGER, hasCrawlspace INTEGER
 );
 CREATE TABLE IF NOT EXISTS local_templates (
   id TEXT PRIMARY KEY, name TEXT, description TEXT
@@ -92,6 +111,7 @@ export function getDb(): LocalDb {
       if (!isWebSqlReady()) throw new Error("Web SQL database is not initialized yet");
       db = webSqlAdapter;
       db.execSync(SCHEMA_SQL);
+      migrateLocalProperties(db);
     } else {
       const native = SQLite.openDatabaseSync("pestapp.db");
       // Wrapped rather than assigned directly - expo-sqlite's runSync/
@@ -105,6 +125,7 @@ export function getDb(): LocalDb {
         withTransactionSync: (fn) => native.withTransactionSync(fn),
       };
       adapter.execSync(SCHEMA_SQL);
+      migrateLocalProperties(adapter);
       db = adapter;
     }
   }

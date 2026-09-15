@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { renderToBuffer } from "@react-pdf/renderer";
 import React from "react";
+import { CHECKLIST_CATEGORY_DISPLAY_ORDER } from "@pest-app/shared";
 import { generateId } from "../../lib/id";
 import { prisma } from "../../lib/prisma";
 import { storage } from "../../lib/storage";
@@ -45,8 +46,7 @@ async function buildReportData(inspectionId: string): Promise<ReportData> {
     items.push({ prompt: r.templateItem.prompt, status: r.status, notes: r.notes });
     checklistByCategory.set(category, items);
   }
-  const CATEGORY_ORDER = ["EXTERIOR", "INTERIOR", "ATTIC", "CRAWLSPACE", "OTHER"];
-  const checklistSections = CATEGORY_ORDER.filter((c) => checklistByCategory.has(c)).map((category) => ({
+  const checklistSections = CHECKLIST_CATEGORY_DISPLAY_ORDER.filter((c) => checklistByCategory.has(c)).map((category) => ({
     category,
     items: checklistByCategory.get(category)!,
   }));

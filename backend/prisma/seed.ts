@@ -140,7 +140,7 @@ async function main() {
   // seeded dev database.
   const CHECKLIST_SECTIONS: Array<{
     name: string;
-    category: "EXTERIOR" | "INTERIOR" | "ATTIC" | "CRAWLSPACE" | "OTHER";
+    category: "EXTERIOR" | "FIRST_FLOOR" | "SECOND_FLOOR" | "THIRD_FLOOR" | "BASEMENT" | "CRAWLSPACE" | "ATTIC" | "OTHER";
     sortOrder: number;
     items: Array<{ prompt: string; itemType: string; required: boolean }>;
   }> = [
@@ -194,39 +194,87 @@ async function main() {
     },
     {
       name: "Kitchen & food storage",
-      category: "INTERIOR",
+      category: "FIRST_FLOOR",
       sortOrder: 0,
       items: [{ prompt: "Kitchen and food storage areas free of pest activity and entry points (under sink, appliances, pantry)", itemType: "CHECKBOX", required: true }],
     },
     {
       name: "Bathrooms & utility rooms",
-      category: "INTERIOR",
+      category: "FIRST_FLOOR",
       sortOrder: 1,
       items: [{ prompt: "Bathrooms and utility/mechanical rooms free of pest activity and entry points", itemType: "CHECKBOX", required: true }],
     },
     {
       name: "Living areas",
-      category: "INTERIOR",
+      category: "FIRST_FLOOR",
       sortOrder: 2,
       items: [{ prompt: "Living areas free of pest activity (baseboards, wall voids, flooring, thresholds)", itemType: "CHECKBOX", required: true }],
     },
     {
       name: "Garage",
-      category: "INTERIOR",
+      category: "FIRST_FLOOR",
       sortOrder: 3,
       items: [{ prompt: "Interior garage sealed and pest-free (firewall, storage areas, man door)", itemType: "CHECKBOX", required: true }],
     },
     {
-      name: "Basement",
-      category: "INTERIOR",
+      name: "Entry points",
+      category: "FIRST_FLOOR",
       sortOrder: 4,
-      items: [{ prompt: "Basement free of cracks, gaps, moisture, and pest activity", itemType: "CHECKBOX", required: true }],
+      items: [{ prompt: "Interior entry points sealed (thresholds, baseboards, penetrations behind appliances)", itemType: "CHECKBOX", required: true }],
+    },
+    {
+      name: "Living areas",
+      category: "SECOND_FLOOR",
+      sortOrder: 0,
+      items: [{ prompt: "Second floor living areas free of pest activity (baseboards, wall voids, closets)", itemType: "CHECKBOX", required: true }],
+    },
+    {
+      name: "Bathrooms & utility rooms",
+      category: "SECOND_FLOOR",
+      sortOrder: 1,
+      items: [{ prompt: "Second floor bathrooms and utility areas free of pest activity and moisture issues", itemType: "CHECKBOX", required: true }],
     },
     {
       name: "Entry points",
-      category: "INTERIOR",
-      sortOrder: 5,
-      items: [{ prompt: "Interior entry points sealed (thresholds, baseboards, penetrations behind appliances)", itemType: "CHECKBOX", required: true }],
+      category: "SECOND_FLOOR",
+      sortOrder: 2,
+      items: [{ prompt: "Second floor entry points sealed (window frames, utility penetrations, roofline access)", itemType: "CHECKBOX", required: true }],
+    },
+    {
+      name: "Living areas",
+      category: "THIRD_FLOOR",
+      sortOrder: 0,
+      items: [{ prompt: "Third floor living areas free of pest activity (baseboards, wall voids, closets)", itemType: "CHECKBOX", required: true }],
+    },
+    {
+      name: "Entry points",
+      category: "THIRD_FLOOR",
+      sortOrder: 1,
+      items: [{ prompt: "Third floor entry points sealed (window frames, roofline/eave access, utility penetrations)", itemType: "CHECKBOX", required: true }],
+    },
+    {
+      name: "Roofline access",
+      category: "THIRD_FLOOR",
+      sortOrder: 2,
+      items: [{ prompt: "Third floor roofline/attic knee-wall access points sealed and pest-free", itemType: "CHECKBOX", required: true }],
+    },
+    {
+      name: "Basement structure",
+      category: "BASEMENT",
+      sortOrder: 0,
+      items: [{ prompt: "Basement walls and floor free of cracks, gaps, and wood-to-soil contact", itemType: "CHECKBOX", required: true }],
+    },
+    {
+      name: "Moisture & drainage",
+      category: "BASEMENT",
+      sortOrder: 1,
+      items: [{ prompt: "No standing water; sump pump (if present) functioning; moisture levels normal", itemType: "CHECKBOX", required: true }],
+    },
+    {
+      name: "Pest evidence",
+      category: "BASEMENT",
+      sortOrder: 2,
+      items: [{ prompt: "Basement free of visible pest activity (droppings, nesting, entry points)", itemType: "CHECKBOX", required: true }],
     },
     {
       name: "Attic access",
@@ -284,9 +332,14 @@ async function main() {
   // cascades to its items and any recorded checklist responses. Idempotent:
   // a no-op once a given seed run has already migrated a database.
   const keepSectionKeys = new Set(CHECKLIST_SECTIONS.map((s) => `${s.category}::${s.name}`));
-  const managedCategories = ["EXTERIOR", "INTERIOR", "ATTIC", "CRAWLSPACE"] as const;
+  const managedCategories = ["EXTERIOR", "FIRST_FLOOR", "SECOND_FLOOR", "THIRD_FLOOR", "BASEMENT", "CRAWLSPACE", "ATTIC"] as const;
+  // INTERIOR is retired (split into FIRST_FLOOR + BASEMENT below) but isn't
+  // in managedCategories/CHECKLIST_SECTIONS any more, so it has to be
+  // queried for explicitly here or its old sections would never be found
+  // and cleaned up by the loop below.
+  const legacyCategoriesToPurge = ["INTERIOR"] as const;
   const existingSections = await prisma.templateSection.findMany({
-    where: { templateId: template.id, category: { in: [...managedCategories] } },
+    where: { templateId: template.id, category: { in: [...managedCategories, ...legacyCategoriesToPurge] } },
   });
   for (const existing of existingSections) {
     if (keepSectionKeys.has(`${existing.category}::${existing.name}`)) continue;
@@ -300,8 +353,9 @@ async function main() {
 
   for (const s of CHECKLIST_SECTIONS) {
     // Matched by (template, name, category) - some section names (e.g.
-    // "Garage") intentionally exist under both EXTERIOR and INTERIOR as
-    // distinct sections, so name alone isn't a safe match key.
+    // "Garage", "Living areas", "Entry points") intentionally exist under
+    // multiple categories as distinct sections, so name alone isn't a safe
+    // match key.
     const section =
       (await prisma.templateSection.findFirst({ where: { templateId: template.id, name: s.name, category: s.category } })) ??
       (await prisma.templateSection.create({

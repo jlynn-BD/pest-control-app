@@ -22,6 +22,12 @@ export interface LocalProperty {
   siteMapLocalUri: string | null;
   siteMapSketchJson: string | null;
   siteMapUpdatedAt: string | null;
+  // SQLite has no native boolean - 0/1/null, see checklistWizard's
+  // PropertyApplicabilityLike (shared/src/constants/checklistWizard.ts).
+  hasSecondFloor: number | null;
+  hasThirdFloor: number | null;
+  hasBasement: number | null;
+  hasCrawlspace: number | null;
 }
 
 export interface LocalTemplate {

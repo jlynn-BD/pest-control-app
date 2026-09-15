@@ -78,6 +78,14 @@ export interface Property extends BaseEntity {
   siteMapImageUrl?: string | null;
   siteMapSketch?: string | null; // JSON-encoded SiteMapSketch, see below
   siteMapUpdatedAt?: string | null;
+  // Whether this property has each conditional inspection area - set once
+  // (typically from the checklist wizard's "this property doesn't have
+  // this" flow) and reused on every future inspection here, so the same
+  // fact isn't re-asked every visit. null = never determined yet.
+  hasSecondFloor?: boolean | null;
+  hasThirdFloor?: boolean | null;
+  hasBasement?: boolean | null;
+  hasCrawlspace?: boolean | null;
 }
 
 export interface SiteMapSketchLine {
@@ -184,16 +192,13 @@ export interface Inspection extends BaseEntity {
   completedAt?: string | null;
   generalNotes?: string | null;
   weatherConditions?: string | null;
-  // JSON-encoded array of category codes (see CHECKLIST_SELECTABLE_CATEGORIES)
-  // the technician chose to include - null means "show every category"
-  // (inspections created before this field existed).
+  // Legacy: JSON-encoded array of category codes a technician used to
+  // opt into per inspection, before the mandatory checklist wizard (see
+  // shared/src/constants/checklistWizard.ts) replaced free category
+  // selection with a forced sequence + per-property applicability. No
+  // longer written by current clients; left populated on old rows only.
   checklistCategories?: string | null;
 }
-
-// The checklist categories a technician can opt into per inspection - OTHER
-// is excluded since it's a catch-all bucket, not a physical area of a
-// property a technician would deliberately include or skip.
-export const CHECKLIST_SELECTABLE_CATEGORIES = ["EXTERIOR", "INTERIOR", "ATTIC", "CRAWLSPACE"] as const;
 
 export interface PestType extends BaseEntity {
   name: string;

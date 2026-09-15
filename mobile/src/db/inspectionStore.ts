@@ -557,26 +557,13 @@ export function addLocalChecklistResponsePhoto(
 // already-started inspection, not just at creation time (NewInspectionScreen).
 // Detaching only hides the checklist section - it doesn't delete any
 // checklist_responses rows, so re-attaching the same template later restores
-// the technician's prior answers instead of losing them. `categories` is the
-// subset of EXTERIOR/INTERIOR/ATTIC/CRAWLSPACE the technician picked (e.g.
-// skipping Crawl Space on a slab-foundation house) - stored as JSON, null
-// when detaching.
-export function setLocalInspectionTemplate(
-  inspectionId: string,
-  templateId: string | null,
-  categories: string[] | null
-): void {
-  getDb().runSync(
-    `UPDATE inspections SET templateId = ?, checklistCategories = ?, updatedAt = ?, syncStatus = 'pending' WHERE id = ?`,
-    [templateId, categories ? JSON.stringify(categories) : null, nowIso(), inspectionId]
-  );
-}
-
-// Changes which categories show without touching the attached template or
-// any already-answered checklist_responses.
-export function setLocalInspectionChecklistCategories(inspectionId: string, categories: string[]): void {
-  getDb().runSync(`UPDATE inspections SET checklistCategories = ?, updatedAt = ?, syncStatus = 'pending' WHERE id = ?`, [
-    JSON.stringify(categories),
+// the technician's prior answers instead of losing them. Which categories
+// are relevant is no longer a per-inspection opt-in list (see the mandatory
+// checklist wizard, shared/src/constants/checklistWizard.ts) - it's derived
+// from the template's sections crossed with the property's applicability.
+export function setLocalInspectionTemplate(inspectionId: string, templateId: string | null): void {
+  getDb().runSync(`UPDATE inspections SET templateId = ?, updatedAt = ?, syncStatus = 'pending' WHERE id = ?`, [
+    templateId,
     nowIso(),
     inspectionId,
   ]);
