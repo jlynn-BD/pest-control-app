@@ -95,6 +95,24 @@ export interface SiteMapSketchLabel {
   text: string;
 }
 
+// Lightweight, color-coded markup that isn't tied to a full Finding - "not
+// every annotation needs to become a full detailed finding, sometimes the
+// technician simply needs to visually identify an area" (e.g. an X marking
+// termite activity, an arrow or highlighted rectangle showing where
+// treatment needs to occur). x2/y2 are only used by "arrow" and "rect" (the
+// two opposite corners for rect); "x" is a single point at x1/y1.
+export type SiteMapAnnotationType = "x" | "arrow" | "rect";
+
+export interface SiteMapAnnotation {
+  id: string;
+  type: SiteMapAnnotationType;
+  color: string;
+  x1: number;
+  y1: number;
+  x2?: number;
+  y2?: number;
+}
+
 // A sketch is split into technician-defined levels (e.g. "Exterior", "1st
 // Floor", "2nd Floor", "Attic") since a single flat drawing can't represent
 // a multi-story structure - not every property has every level, so the
@@ -107,6 +125,7 @@ export interface SiteMapLevel {
   sortOrder: number;
   lines: SiteMapSketchLine[];
   labels: SiteMapSketchLabel[];
+  annotations: SiteMapAnnotation[];
 }
 
 export interface SiteMapSketch {

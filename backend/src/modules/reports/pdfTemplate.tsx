@@ -4,7 +4,7 @@
 // conflict across the two copies at the type level only. Runtime is
 // unaffected (this file runs through tsx, which strips types without
 // checking); ReportData below stays fully typed and is what callers rely on.
-import { Document, Image, Line, Page, Polygon, StyleSheet, Svg, Text, View } from "@react-pdf/renderer";
+import { Document, Image, Line, Page, Polygon, Rect, StyleSheet, Svg, Text, View } from "@react-pdf/renderer";
 import React from "react";
 
 const styles = StyleSheet.create({
@@ -171,6 +171,15 @@ export interface ReportSiteMapLabel {
   text: string;
 }
 
+export interface ReportSiteMapAnnotation {
+  type: "x" | "arrow" | "rect";
+  color: string;
+  x1: number;
+  y1: number;
+  x2?: number;
+  y2?: number;
+}
+
 // One per level in sketch mode ("Site Map — Exterior", "Site Map — 1st
 // Floor", ...), or a single panel titled "Site Map" in photo mode.
 export interface ReportSiteMapPanel {
@@ -178,6 +187,7 @@ export interface ReportSiteMapPanel {
   imagePath: string | null;
   lines: ReportSiteMapLine[];
   labels: ReportSiteMapLabel[];
+  annotations: ReportSiteMapAnnotation[];
   arrows: ReportSiteMapArrow[];
 }
 
@@ -306,6 +316,46 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
                         <Line x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke={color} strokeWidth={0.006} />
                         <Polygon points={arrowHeadPoints(start, end)} fill={color} />
                       </React.Fragment>
+                    );
+                  })}
+                  {/* Lightweight X-mark/arrow/shape annotations - see
+                      SiteMapAnnotation in shared/types. Coordinates are
+                      already normalized 0-1, same as everything else in
+                      this Svg (viewBox="0 0 1 1"). */}
+                  {panel.annotations.map((a, i) => {
+                    if (a.type === "x") {
+                      const r = 0.012;
+                      return (
+                        <React.Fragment key={`annotation-${i}`}>
+                          <Line x1={a.x1 - r} y1={a.y1 - r} x2={a.x1 + r} y2={a.y1 + r} stroke={a.color} strokeWidth={0.006} />
+                          <Line x1={a.x1 - r} y1={a.y1 + r} x2={a.x1 + r} y2={a.y1 - r} stroke={a.color} strokeWidth={0.006} />
+                        </React.Fragment>
+                      );
+                    }
+                    if (a.type === "arrow") {
+                      const start = { x: a.x1, y: a.y1 };
+                      const end = { x: a.x2 ?? a.x1, y: a.y2 ?? a.y1 };
+                      return (
+                        <React.Fragment key={`annotation-${i}`}>
+                          <Line x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke={a.color} strokeWidth={0.005} />
+                          <Polygon points={arrowHeadPoints(start, end)} fill={a.color} />
+                        </React.Fragment>
+                      );
+                    }
+                    const x2 = a.x2 ?? a.x1;
+                    const y2 = a.y2 ?? a.y1;
+                    return (
+                      <Rect
+                        key={`annotation-${i}`}
+                        x={Math.min(a.x1, x2)}
+                        y={Math.min(a.y1, y2)}
+                        width={Math.abs(x2 - a.x1)}
+                        height={Math.abs(y2 - a.y1)}
+                        stroke={a.color}
+                        strokeWidth={0.004}
+                        fill={a.color}
+                        fillOpacity={0.15}
+                      />
                     );
                   })}
                 </Svg>

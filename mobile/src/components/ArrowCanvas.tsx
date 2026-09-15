@@ -1,39 +1,55 @@
+import type { SiteMapAnnotation, SiteMapAnnotationType } from "@pest-app/shared";
 import React, { useMemo, useRef, useState } from "react";
 import { Image, LayoutChangeEvent, PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
-import Svg, { Line as SvgLine, Polygon } from "react-native-svg";
+import Svg, { Line as SvgLine, Polygon, Rect } from "react-native-svg";
 import { arrowHeadPoints, gridLines, Line, Point } from "../lib/arrowGeometry";
 import { colors } from "./ui";
 
-export type SiteMapMode = "view" | "arrow" | "wall" | "label";
+export type SiteMapMode = "view" | "arrow" | "wall" | "label" | "annotate";
 
 // Was previously rendered as an absolutely-positioned overlay INSIDE the
 // canvas (bottom edge, full width) - a technician found that box sitting
 // over the drawing surface itself would swallow the drag gesture starting
-// under it, so drawing through that area silently did nothing. Now exported
-// for SiteMapScreen to render as a normal line of text above the canvas,
-// entirely outside its bounds, so there is no overlay left to intercept a
-// touch at all.
-export const SITE_MAP_HINT_TEXT: Record<SiteMapMode, string | null> = {
-  view: null,
-  arrow: "Drag on the image to draw an arrow to the issue",
-  wall: "Drag to draw a wall segment",
-  label: "Tap to place a label",
-};
+// under it, so drawing through that area silently did nothing. Now a plain
+// function SiteMapScreen calls to render a normal line of text above the
+// canvas, entirely outside its bounds, so there is no overlay left to
+// intercept a touch at all.
+export function siteMapHintText(mode: SiteMapMode, annotationType?: SiteMapAnnotationType): string | null {
+  switch (mode) {
+    case "arrow":
+      return "Drag on the image to draw an arrow to the issue";
+    case "wall":
+      return "Drag to draw a wall segment";
+    case "label":
+      return "Tap to place a label";
+    case "annotate":
+      if (annotationType === "x") return "Tap to place an X mark";
+      if (annotationType === "rect") return "Drag to draw a shape";
+      return "Drag to draw an arrow";
+    default:
+      return null;
+  }
+}
 
 // Mirrors useSignaturePad's approach (custom SVG + PanResponder, no extra
-// native dependency, works on `expo start --web` too). A drag in "arrow" or
-// "wall" mode completes a line (arrow: becomes a Finding; wall: becomes a
-// structure segment); a tap (near-zero movement) in "label" mode places a
-// nameplate instead. One gesture responder handles all three so they never
-// fight each other for the touch.
+// native dependency, works on `expo start --web` too). A drag completes a
+// line (arrow: becomes a Finding; wall: becomes a structure segment;
+// annotate+arrow/rect: becomes a lightweight annotation); a tap in "label"
+// mode or "annotate"+X placement completes at a single point instead.
+// `completesOnTap` tells the gesture which behavior the current mode/
+// sub-type wants, so one responder handles all of them without fighting
+// over the touch.
 function useSiteMapGesture(
   mode: SiteMapMode,
+  completesOnTap: boolean,
   onLineComplete: (start: Point, end: Point) => void,
   onTap: (point: Point) => void,
   minLineLength = 12
 ) {
   const modeRef = useRef(mode);
   modeRef.current = mode;
+  const completesOnTapRef = useRef(completesOnTap);
+  completesOnTapRef.current = completesOnTap;
   const onLineCompleteRef = useRef(onLineComplete);
   onLineCompleteRef.current = onLineComplete;
   const onTapRef = useRef(onTap);
@@ -49,10 +65,10 @@ function useSiteMapGesture(
         onPanResponderGrant: (evt) => {
           const p = { x: evt.nativeEvent.locationX, y: evt.nativeEvent.locationY };
           startRef.current = p;
-          if (modeRef.current !== "label") setLive({ start: p, end: p });
+          if (!completesOnTapRef.current) setLive({ start: p, end: p });
         },
         onPanResponderMove: (evt) => {
-          if (!startRef.current || modeRef.current === "label") return;
+          if (!startRef.current || completesOnTapRef.current) return;
           setLive({ start: startRef.current, end: { x: evt.nativeEvent.locationX, y: evt.nativeEvent.locationY } });
         },
         onPanResponderRelease: (evt) => {
@@ -62,7 +78,7 @@ function useSiteMapGesture(
           if (!start) return;
           const end = { x: evt.nativeEvent.locationX, y: evt.nativeEvent.locationY };
           const dist = Math.hypot(end.x - start.x, end.y - start.y);
-          if (modeRef.current === "label") {
+          if (completesOnTapRef.current) {
             if (dist < minLineLength) onTapRef.current(start);
           } else if (dist >= minLineLength) {
             onLineCompleteRef.current(start, end);
@@ -110,6 +126,23 @@ function wallHitRect(l: WallLine, width: number, height: number, pad = 14) {
   };
 }
 
+// Same idea as wallHitRect but for an annotation, whose geometry is either a
+// single point ("x", x2/y2 unset), a line ("arrow"), or a bounding box
+// ("rect") - defaulting the missing corner to the start point makes a
+// single formula work for all three.
+function annotationHitRect(a: SiteMapAnnotation, width: number, height: number, pad = 14) {
+  const x1 = a.x1 * width;
+  const y1 = a.y1 * height;
+  const x2 = (a.x2 ?? a.x1) * width;
+  const y2 = (a.y2 ?? a.y1) * height;
+  return {
+    left: Math.min(x1, x2) - pad,
+    top: Math.min(y1, y2) - pad,
+    width: Math.abs(x2 - x1) + pad * 2,
+    height: Math.abs(y2 - y1) + pad * 2,
+  };
+}
+
 const SEVERITY_COLOR: Record<string, string> = {
   LOW: colors.primary,
   MEDIUM: colors.warning,
@@ -123,15 +156,21 @@ export function SiteMapCanvas({
   savedLines = [],
   pendingLines = [],
   labels = [],
+  annotations = [],
   mode = "view",
+  annotationType,
+  annotationColor,
   onArrowDrawn,
   onWallDrawn,
   onLabelTap,
+  onAnnotationDrawn,
   onArrowPress,
   onLabelPress,
   onWallPress,
+  onAnnotationPress,
   selectedLabelId = null,
   selectedWallId = null,
+  selectedAnnotationId = null,
   height = 320,
 }: {
   imageUri: string | null;
@@ -139,15 +178,21 @@ export function SiteMapCanvas({
   savedLines?: WallLine[];
   pendingLines?: WallLine[];
   labels?: SiteMapLabel[];
+  annotations?: SiteMapAnnotation[];
   mode?: SiteMapMode;
+  annotationType?: SiteMapAnnotationType;
+  annotationColor?: string;
   onArrowDrawn?: (start: Point, end: Point) => void;
   onWallDrawn?: (start: Point, end: Point) => void;
   onLabelTap?: (point: Point) => void;
+  onAnnotationDrawn?: (type: SiteMapAnnotationType, color: string, start: Point, end: Point) => void;
   onArrowPress?: (arrowId: string) => void;
   onLabelPress?: (labelId: string) => void;
   onWallPress?: (wallId: string) => void;
+  onAnnotationPress?: (annotationId: string) => void;
   selectedLabelId?: string | null;
   selectedWallId?: string | null;
+  selectedAnnotationId?: string | null;
   height?: number;
 }) {
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -157,17 +202,25 @@ export function SiteMapCanvas({
     setSize({ width, height: h });
   }
 
+  const completesOnTap = mode === "label" || (mode === "annotate" && annotationType === "x");
+
   const { panHandlers, live } = useSiteMapGesture(
     mode,
+    completesOnTap,
     (start, end) => {
       if (size.width === 0 || size.height === 0) return;
       const norm = { start: { x: start.x / size.width, y: start.y / size.height }, end: { x: end.x / size.width, y: end.y / size.height } };
       if (mode === "arrow") onArrowDrawn?.(norm.start, norm.end);
       else if (mode === "wall") onWallDrawn?.(norm.start, norm.end);
+      else if (mode === "annotate" && annotationType && annotationType !== "x" && annotationColor) {
+        onAnnotationDrawn?.(annotationType, annotationColor, norm.start, norm.end);
+      }
     },
     (point) => {
       if (size.width === 0 || size.height === 0) return;
-      onLabelTap?.({ x: point.x / size.width, y: point.y / size.height });
+      const norm = { x: point.x / size.width, y: point.y / size.height };
+      if (mode === "label") onLabelTap?.(norm);
+      else if (mode === "annotate" && annotationType === "x" && annotationColor) onAnnotationDrawn?.("x", annotationColor, norm, norm);
     }
   );
 
@@ -224,19 +277,81 @@ export function SiteMapCanvas({
               </React.Fragment>
             );
           })}
-          {live ? (
-            <>
-              <SvgLine
-                x1={live.start.x}
-                y1={live.start.y}
-                x2={live.end.x}
-                y2={live.end.y}
-                stroke={mode === "wall" ? colors.primary : colors.text}
-                strokeWidth={2.5}
-                strokeDasharray={mode === "wall" ? undefined : "4,3"}
+          {/* Lightweight X-mark/arrow/shape annotations, not tied to a
+              Finding - Tate's "sometimes the technician simply needs to
+              visually identify an area" ask. */}
+          {annotations.map((a) => {
+            const selected = a.id === selectedAnnotationId;
+            if (a.type === "x") {
+              const cx = a.x1 * size.width;
+              const cy = a.y1 * size.height;
+              const r = selected ? 10 : 8;
+              return (
+                <React.Fragment key={`ann-${a.id}`}>
+                  <SvgLine x1={cx - r} y1={cy - r} x2={cx + r} y2={cy + r} stroke={a.color} strokeWidth={selected ? 4 : 3} strokeLinecap="round" />
+                  <SvgLine x1={cx - r} y1={cy + r} x2={cx + r} y2={cy - r} stroke={a.color} strokeWidth={selected ? 4 : 3} strokeLinecap="round" />
+                </React.Fragment>
+              );
+            }
+            if (a.type === "arrow") {
+              const start = { x: a.x1 * size.width, y: a.y1 * size.height };
+              const end = { x: (a.x2 ?? a.x1) * size.width, y: (a.y2 ?? a.y1) * size.height };
+              return (
+                <React.Fragment key={`ann-${a.id}`}>
+                  <SvgLine x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke={a.color} strokeWidth={selected ? 4 : 2.5} />
+                  <Polygon points={arrowHeadPoints(start, end)} fill={a.color} />
+                </React.Fragment>
+              );
+            }
+            const rx1 = Math.min(a.x1, a.x2 ?? a.x1) * size.width;
+            const ry1 = Math.min(a.y1, a.y2 ?? a.y1) * size.height;
+            const rw = Math.abs((a.x2 ?? a.x1) - a.x1) * size.width;
+            const rh = Math.abs((a.y2 ?? a.y1) - a.y1) * size.height;
+            return (
+              <Rect
+                key={`ann-${a.id}`}
+                x={rx1}
+                y={ry1}
+                width={rw}
+                height={rh}
+                stroke={a.color}
+                strokeWidth={selected ? 3 : 2}
+                fill={a.color}
+                fillOpacity={0.15}
+                rx={4}
               />
-              {mode === "arrow" ? <Polygon points={arrowHeadPoints(live.start, live.end)} fill={colors.text} /> : null}
-            </>
+            );
+          })}
+          {live ? (
+            mode === "annotate" && annotationType === "rect" ? (
+              <Rect
+                x={Math.min(live.start.x, live.end.x)}
+                y={Math.min(live.start.y, live.end.y)}
+                width={Math.abs(live.end.x - live.start.x)}
+                height={Math.abs(live.end.y - live.start.y)}
+                stroke={annotationColor ?? colors.text}
+                strokeWidth={2}
+                strokeDasharray="4,3"
+                fill={annotationColor ?? colors.text}
+                fillOpacity={0.12}
+                rx={4}
+              />
+            ) : (
+              <>
+                <SvgLine
+                  x1={live.start.x}
+                  y1={live.start.y}
+                  x2={live.end.x}
+                  y2={live.end.y}
+                  stroke={mode === "wall" ? colors.primary : mode === "annotate" ? annotationColor ?? colors.text : colors.text}
+                  strokeWidth={2.5}
+                  strokeDasharray={mode === "wall" ? undefined : "4,3"}
+                />
+                {mode === "arrow" || (mode === "annotate" && annotationType === "arrow") ? (
+                  <Polygon points={arrowHeadPoints(live.start, live.end)} fill={mode === "annotate" ? annotationColor ?? colors.text : colors.text} />
+                ) : null}
+              </>
+            )
           ) : null}
         </Svg>
       ) : null}
@@ -246,6 +361,15 @@ export function SiteMapCanvas({
               key={`wall-hit-${l.id}`}
               onPress={() => onWallPress?.(l.id)}
               style={[styles.wallHitArea, wallHitRect(l, size.width, size.height)]}
+            />
+          ))
+        : null}
+      {size.width > 0 && mode === "view"
+        ? annotations.map((a) => (
+            <Pressable
+              key={`ann-hit-${a.id}`}
+              onPress={() => onAnnotationPress?.(a.id)}
+              style={[styles.wallHitArea, annotationHitRect(a, size.width, size.height)]}
             />
           ))
         : null}

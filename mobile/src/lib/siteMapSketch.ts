@@ -27,6 +27,12 @@ export function parseSiteMapSketch(json: string | null | undefined): SiteMapSket
         labels: Array.isArray(l.labels)
           ? l.labels.map((label, i) => ({ id: label.id ?? `${l.id}:label:${i}`, x: label.x, y: label.y, text: label.text }))
           : [],
+        // Sketches saved before annotations existed at all simply have none
+        // - unlike lines/labels there's no per-item id backfill needed since
+        // the whole array is either present (already carrying real ids,
+        // since this is a new-enough field that every writer always
+        // generates one) or absent entirely.
+        annotations: Array.isArray(l.annotations) ? l.annotations : [],
       })),
     };
   } catch {
@@ -50,6 +56,7 @@ export interface SiteMapPanel {
   imageUri: string | null;
   lines: SiteMapSketch["levels"][number]["lines"];
   labels: SiteMapSketch["levels"][number]["labels"];
+  annotations: SiteMapSketch["levels"][number]["annotations"];
   arrows: SiteMapArrow[];
 }
 
@@ -73,7 +80,7 @@ export function buildSiteMapPanels(imageUri: string | null, sketch: SiteMapSketc
   });
 
   if (imageUri) {
-    return [{ title: "Site Map", imageUri, lines: [], labels: [], arrows: placed.map(toArrow) }];
+    return [{ title: "Site Map", imageUri, lines: [], labels: [], annotations: [], arrows: placed.map(toArrow) }];
   }
 
   return [...sketch.levels]
@@ -83,7 +90,8 @@ export function buildSiteMapPanels(imageUri: string | null, sketch: SiteMapSketc
       imageUri: null,
       lines: level.lines,
       labels: level.labels,
+      annotations: level.annotations,
       arrows: placed.filter((f) => f.siteMapLevel === level.id).map(toArrow),
     }))
-    .filter((panel) => panel.lines.length > 0 || panel.labels.length > 0 || panel.arrows.length > 0);
+    .filter((panel) => panel.lines.length > 0 || panel.labels.length > 0 || panel.annotations.length > 0 || panel.arrows.length > 0);
 }

@@ -129,6 +129,24 @@ const siteMapSketchSchema = z.object({
       sortOrder: z.number().int(),
       lines: z.array(z.object({ id: z.string().min(1), x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number() })),
       labels: z.array(z.object({ id: z.string().min(1), x: z.number(), y: z.number(), text: z.string().min(1) })),
+      // Lightweight X-mark/arrow/shape markup, not tied to a Finding - see
+      // SiteMapAnnotation in shared/types. Optional/defaulted so a sketch
+      // saved by a mobile bundle from before this field existed still
+      // validates during the deploy transition window.
+      annotations: z
+        .array(
+          z.object({
+            id: z.string().min(1),
+            type: z.enum(["x", "arrow", "rect"]),
+            color: z.string().min(1),
+            x1: z.number(),
+            y1: z.number(),
+            x2: z.number().optional(),
+            y2: z.number().optional(),
+          })
+        )
+        .optional()
+        .default([]),
     })
   ),
 });

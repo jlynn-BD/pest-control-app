@@ -41,7 +41,14 @@ export default function LocalInspectionDetailScreen({ route }: Props) {
       {siteMapPanels.map((panel, i) => (
         <View key={i}>
           <Text style={styles.sectionTitle}>{panel.title}</Text>
-          <SiteMapCanvas imageUri={panel.imageUri} arrows={panel.arrows} savedLines={panel.lines} labels={panel.labels} mode="view" />
+          <SiteMapCanvas
+            imageUri={panel.imageUri}
+            arrows={panel.arrows}
+            savedLines={panel.lines}
+            labels={panel.labels}
+            annotations={panel.annotations}
+            mode="view"
+          />
         </View>
       ))}
 

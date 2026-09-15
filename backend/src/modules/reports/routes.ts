@@ -6,7 +6,7 @@ import { prisma } from "../../lib/prisma";
 import { storage } from "../../lib/storage";
 import { asyncHandler, HttpError } from "../../middleware/error-handler";
 import { requireAuth } from "../../middleware/auth";
-import { InspectionReportDocument, ReportData, ReportSiteMapLabel, ReportSiteMapLine } from "./pdfTemplate";
+import { InspectionReportDocument, ReportData, ReportSiteMapAnnotation, ReportSiteMapLabel, ReportSiteMapLine } from "./pdfTemplate";
 
 export const reportsRouter = Router();
 reportsRouter.use(requireAuth);
@@ -74,11 +74,14 @@ async function buildReportData(inspectionId: string): Promise<ReportData> {
         imagePath: mediaUrlToAbsolutePath(inspection.property.siteMapImageUrl),
         lines: [],
         labels: [],
+        annotations: [],
         arrows: placedFindings.map(toArrow),
       },
     ];
   } else if (inspection.property.siteMapSketch) {
-    let sketch: { levels: { id: string; name: string; sortOrder: number; lines: unknown[]; labels: unknown[] }[] } = { levels: [] };
+    let sketch: { levels: { id: string; name: string; sortOrder: number; lines: unknown[]; labels: unknown[]; annotations?: unknown[] }[] } = {
+      levels: [],
+    };
     try {
       const parsed = JSON.parse(inspection.property.siteMapSketch);
       // Guards against pre-levels sketch JSON (the flat { lines, labels }
@@ -95,9 +98,11 @@ async function buildReportData(inspectionId: string): Promise<ReportData> {
         imagePath: null,
         lines: level.lines as ReportSiteMapLine[],
         labels: level.labels as ReportSiteMapLabel[],
+        // Sketches saved before annotations existed just have none.
+        annotations: (level.annotations ?? []) as ReportSiteMapAnnotation[],
         arrows: placedFindings.filter((f) => f.siteMapLevel === level.id).map(toArrow),
       }))
-      .filter((panel) => panel.lines.length > 0 || panel.labels.length > 0 || panel.arrows.length > 0);
+      .filter((panel) => panel.lines.length > 0 || panel.labels.length > 0 || panel.annotations.length > 0 || panel.arrows.length > 0);
   }
 
   return {

@@ -1,6 +1,6 @@
 import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { SITE_MAP_LEVEL_SUGGESTIONS, SiteMapLevel } from "@pest-app/shared";
+import { SITE_MAP_LEVEL_SUGGESTIONS, SiteMapAnnotationType, SiteMapLevel } from "@pest-app/shared";
 import React, { useCallback, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getCachedProperty, getCachedTemplateSections, updateLocalPropertySiteMapSketch } from "../../db/cache";
@@ -12,7 +12,7 @@ import { findChecklistResponseSummary } from "../../lib/checklist";
 import { capturePhoto } from "../../lib/photo";
 import { ApiError } from "../../api/client";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
-import { SITE_MAP_HINT_TEXT, SiteMapArrow, SiteMapCanvas, SiteMapMode } from "../../components/ArrowCanvas";
+import { siteMapHintText, SiteMapArrow, SiteMapCanvas, SiteMapMode } from "../../components/ArrowCanvas";
 import { FindingEditorForm } from "../../components/FindingEditorForm";
 import { Badge, Card, Field, PrimaryButton, colors } from "../../components/ui";
 import type { LocalProperty } from "../../db/types";
@@ -20,9 +20,30 @@ import type { Point } from "../../lib/arrowGeometry";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "SiteMap">;
 
-// Whichever wall or label was just auto-saved, so a one-tap "Undo" can
-// remove it - see the auto-save note below.
-type LastAction = { type: "wall"; id: string } | { type: "label"; id: string; text: string };
+// Lightweight X-mark/arrow/shape annotation tools, offered alongside the
+// full Finding marker flow - "not every annotation needs to become a full
+// detailed finding, sometimes the technician simply needs to visually
+// identify an area" (Tate). A small fixed palette rather than a full color
+// picker, since the point is speed, not precision.
+const ANNOTATION_TYPES: { type: SiteMapAnnotationType; label: string }[] = [
+  { type: "x", label: "✕ X mark" },
+  { type: "arrow", label: "↗ Arrow" },
+  { type: "rect", label: "▭ Shape" },
+];
+const ANNOTATION_COLORS = [
+  { label: "Red", value: "#C0392B" },
+  { label: "Orange", value: "#E07B18" },
+  { label: "Yellow", value: "#D4AC0D" },
+  { label: "Green", value: "#1F7A5C" },
+  { label: "Blue", value: "#2E6DA4" },
+];
+
+// Whichever wall/label/annotation was just auto-saved, so a one-tap "Undo"
+// can remove it - see the auto-save note below.
+type LastAction =
+  | { kind: "wall"; id: string }
+  | { kind: "label"; id: string; text: string }
+  | { kind: "annotation"; id: string };
 
 export default function SiteMapScreen({ route, navigation }: Props) {
   const { inspectionId, fromChecklistResponseId } = route.params;
@@ -43,6 +64,9 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   const [editingFindingId, setEditingFindingId] = useState<string | null>(null);
   const [editingLabel, setEditingLabel] = useState<{ id: string; text: string } | null>(null);
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
+  const [annotationType, setAnnotationType] = useState<SiteMapAnnotationType>("x");
+  const [annotationColor, setAnnotationColor] = useState(ANNOTATION_COLORS[0].value);
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [addingLevelSaving, setAddingLevelSaving] = useState(false);
@@ -73,6 +97,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       setAddingLevel(false);
       setEditingLabel(null);
       setSelectedWallId(null);
+      setSelectedAnnotationId(null);
       setDraftArrow(null);
       setEditingFindingId(null);
       setLastAction(null);
@@ -120,11 +145,26 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   const visibleArrows = isPhotoMode ? allArrows : allArrows.filter((a) => detail.findings.find((f) => f.id === a.id)?.siteMapLevel === selectedLevelId);
 
   const wallCount = selectedLevel?.lines.length ?? 0;
+  const annotationCount = selectedLevel?.annotations.length ?? 0;
 
   function toggleMode(next: SiteMapMode) {
     setMode((current) => (current === next ? "view" : next));
     setPendingLabelPoint(null);
     setSelectedWallId(null);
+    setSelectedAnnotationId(null);
+  }
+
+  // Each annotation type gets its own one-tap button (mirroring +Marker/
+  // +Wall/+Label) rather than a nested "pick a type, then start drawing"
+  // step - tapping "✕ X mark" both switches into annotate mode and picks
+  // that type in one go; the color row alongside it can still be changed
+  // between draws without leaving the mode.
+  function toggleAnnotationType(type: SiteMapAnnotationType) {
+    setMode((current) => (current === "annotate" && annotationType === type ? "view" : "annotate"));
+    setAnnotationType(type);
+    setPendingLabelPoint(null);
+    setSelectedWallId(null);
+    setSelectedAnnotationId(null);
   }
 
   async function handleUpload() {
@@ -149,7 +189,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     setAddingLevelSaving(true);
     setError(null);
     try {
-      const newLevel: SiteMapLevel = { id: generateId(), name: name.trim(), sortOrder: levels.length, lines: [], labels: [] };
+      const newLevel: SiteMapLevel = { id: generateId(), name: name.trim(), sortOrder: levels.length, lines: [], labels: [], annotations: [] };
       const nextSketch = { levels: [...levels, newLevel] };
       await saveSiteMapSketch(property.id, nextSketch);
       updateLocalPropertySiteMapSketch(property.id, JSON.stringify(nextSketch));
@@ -193,23 +233,50 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     }
   }
 
-  // Undoes whichever wall or label was auto-saved most recently - the
-  // safety net Jaida asked for once saving stopped being a manual step:
-  // one tap removes exactly the thing that was just added, without having
-  // to hunt for it on the canvas.
+  // Undoes whichever wall, label, or annotation was auto-saved most
+  // recently - the safety net Jaida asked for once saving stopped being a
+  // manual step: one tap removes exactly the thing that was just added,
+  // without having to hunt for it on the canvas.
   async function handleUndoLastAction() {
     if (!lastAction) return;
-    const ok =
-      lastAction.type === "wall"
-        ? await persistSelectedLevel((l) => ({ ...l, lines: l.lines.filter((line) => line.id !== lastAction.id) }))
-        : await persistSelectedLevel((l) => ({ ...l, labels: l.labels.filter((label) => label.id !== lastAction.id) }));
+    const ok = await persistSelectedLevel((l) => {
+      if (lastAction.kind === "wall") return { ...l, lines: l.lines.filter((line) => line.id !== lastAction.id) };
+      if (lastAction.kind === "label") return { ...l, labels: l.labels.filter((label) => label.id !== lastAction.id) };
+      return { ...l, annotations: l.annotations.filter((a) => a.id !== lastAction.id) };
+    });
     if (ok) setLastAction(null);
   }
 
   async function handleWallDrawn(start: Point, end: Point) {
     const id = generateId();
     const ok = await persistSelectedLevel((l) => ({ ...l, lines: [...l.lines, { id, x1: start.x, y1: start.y, x2: end.x, y2: end.y }] }));
-    if (ok) setLastAction({ type: "wall", id });
+    if (ok) setLastAction({ kind: "wall", id });
+  }
+
+  async function handleAnnotationDrawn(type: SiteMapAnnotationType, color: string, start: Point, end: Point) {
+    const id = generateId();
+    const annotation = type === "x" ? { id, type, color, x1: start.x, y1: start.y } : { id, type, color, x1: start.x, y1: start.y, x2: end.x, y2: end.y };
+    const ok = await persistSelectedLevel((l) => ({ ...l, annotations: [...l.annotations, annotation] }));
+    if (ok) setLastAction({ kind: "annotation", id });
+  }
+
+  function handleDeleteSavedAnnotation(id: string) {
+    persistSelectedLevel((l) => ({ ...l, annotations: l.annotations.filter((a) => a.id !== id) }));
+  }
+
+  // Tapping an annotation directly on the canvas (view mode only) selects
+  // it and shows a small Delete action, mirroring how walls are selected -
+  // there's no text to edit on an annotation, only geometry/color, so
+  // Delete (draw a fresh one to replace it) is the whole affordance.
+  function handleAnnotationPress(id: string) {
+    if (editorOpen) return;
+    setSelectedAnnotationId(id);
+  }
+
+  function handleDeleteSelectedAnnotation() {
+    if (!selectedAnnotationId) return;
+    handleDeleteSavedAnnotation(selectedAnnotationId);
+    setSelectedAnnotationId(null);
   }
 
   function handleDeleteSavedWall(id: string) {
@@ -236,7 +303,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     const text = labelText.trim();
     const ok = await persistSelectedLevel((l) => ({ ...l, labels: [...l.labels, { id, x: pendingLabelPoint.x, y: pendingLabelPoint.y, text }] }));
     if (ok) {
-      setLastAction({ type: "label", id, text });
+      setLastAction({ kind: "label", id, text });
       setPendingLabelPoint(null);
       setLabelText("");
     }
@@ -278,6 +345,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     setMode("view");
     setEditingLabel(null);
     setSelectedWallId(null);
+    setSelectedAnnotationId(null);
     // A stale Undo would otherwise target the level it was drawn on, not
     // whichever level is selected when the tap actually happens.
     setLastAction(null);
@@ -340,27 +408,35 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           an overlay on top of it - a technician found that an in-canvas
           instructional banner sitting over the drawing surface could
           swallow the touch used to draw through that spot. */}
-      {canDraw && !editorOpen && SITE_MAP_HINT_TEXT[mode] ? <Text style={styles.drawHint}>{SITE_MAP_HINT_TEXT[mode]}</Text> : null}
+      {canDraw && !editorOpen && siteMapHintText(mode, annotationType) ? (
+        <Text style={styles.drawHint}>{siteMapHintText(mode, annotationType)}</Text>
+      ) : null}
 
       <SiteMapCanvas
         imageUri={imageUri}
         arrows={visibleArrows}
         savedLines={selectedLevel?.lines ?? []}
         labels={selectedLevel?.labels ?? []}
+        annotations={selectedLevel?.annotations ?? []}
         mode={canDraw && !editorOpen ? mode : "view"}
+        annotationType={annotationType}
+        annotationColor={annotationColor}
         onArrowPress={(id) => {
           if (editorOpen) return;
           setEditingFindingId(id);
         }}
         onLabelPress={handleLabelPress}
         onWallPress={handleWallPress}
+        onAnnotationPress={handleAnnotationPress}
         selectedLabelId={editingLabel?.id ?? null}
         selectedWallId={selectedWallId}
+        selectedAnnotationId={selectedAnnotationId}
         onArrowDrawn={(start, end) => {
           setMode("view");
           setDraftArrow({ start, end });
         }}
         onWallDrawn={handleWallDrawn}
+        onAnnotationDrawn={handleAnnotationDrawn}
         onLabelTap={(point) => {
           setPendingLabelPoint(point);
           setLabelText("");
@@ -467,13 +543,28 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         </Card>
       ) : null}
 
-      {/* Every wall/label write above already saved itself the instant it
-          happened - this is just a one-tap way to undo that specific write
-          if it was a mistake, not a "did you remember to save" prompt. */}
+      {selectedAnnotationId ? (
+        <Card style={styles.labelPromptCard}>
+          <Text style={styles.editorTitle}>Annotation</Text>
+          <View style={styles.buttonRow}>
+            <View style={styles.buttonHalf}>
+              <PrimaryButton title="Delete" onPress={handleDeleteSelectedAnnotation} loading={saving} />
+            </View>
+            <View style={styles.buttonHalf}>
+              <PrimaryButton title="Cancel" onPress={() => setSelectedAnnotationId(null)} />
+            </View>
+          </View>
+        </Card>
+      ) : null}
+
+      {/* Every wall/label/annotation write above already saved itself the
+          instant it happened - this is just a one-tap way to undo that
+          specific write if it was a mistake, not a "did you remember to
+          save" prompt. */}
       {lastAction ? (
         <Card style={styles.lastActionCard}>
           <Text style={styles.editorTitle}>
-            {lastAction.type === "wall" ? "✓ Wall saved" : `✓ Label saved: "${lastAction.text}"`}
+            {lastAction.kind === "wall" ? "✓ Wall saved" : lastAction.kind === "annotation" ? "✓ Annotation saved" : `✓ Label saved: "${lastAction.text}"`}
           </Text>
           <View style={styles.buttonRow}>
             <View style={styles.buttonHalf}>
@@ -500,12 +591,42 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         </View>
       ) : null}
 
+      {/* Lightweight annotation tools, separate from the +Marker/+Wall/
+          +Label row above since these don't open any form at all - tap a
+          type, tap/drag on the map, done. Tate: "not every annotation needs
+          to become a full detailed finding". */}
+      {canDraw && !editorOpen ? (
+        <View style={styles.toggleRow}>
+          {ANNOTATION_TYPES.map(({ type, label }) => (
+            <View key={type} style={styles.buttonThird}>
+              <PrimaryButton
+                title={mode === "annotate" && annotationType === type ? "Cancel" : label}
+                onPress={() => toggleAnnotationType(type)}
+              />
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {mode === "annotate" && !editorOpen ? (
+        <View style={styles.colorRow}>
+          {ANNOTATION_COLORS.map((c) => (
+            <Pressable
+              key={c.value}
+              onPress={() => setAnnotationColor(c.value)}
+              accessibilityLabel={c.label}
+              style={[styles.colorSwatch, { backgroundColor: c.value }, c.value === annotationColor && styles.colorSwatchSelected]}
+            />
+          ))}
+        </View>
+      ) : null}
+
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <Text style={styles.hint}>
-        {visibleArrows.length} marker(s) · {wallCount} wall segment(s)
+        {visibleArrows.length} marker(s) · {wallCount} wall segment(s) · {annotationCount} annotation(s)
         {isPhotoMode ? "" : selectedLevel ? ` on ${selectedLevel.name}` : ""}
-        {wallCount > 0 && mode === "view" && !editorOpen ? " · tap a wall to delete it" : ""}
+        {(wallCount > 0 || annotationCount > 0) && mode === "view" && !editorOpen ? " · tap one to delete it" : ""}
       </Text>
 
       {!imageUri && !editorOpen ? (
@@ -553,6 +674,9 @@ const styles = StyleSheet.create({
   checklistBannerLabel: { fontSize: 12, color: colors.textMuted, fontWeight: "600" },
   checklistBannerPrompt: { fontSize: 15, fontWeight: "700", color: colors.text },
   toggleRow: { flexDirection: "row", gap: 10, marginTop: 14 },
+  colorRow: { flexDirection: "row", gap: 10, marginTop: 12, justifyContent: "center" },
+  colorSwatch: { width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: "transparent" },
+  colorSwatchSelected: { borderColor: colors.text },
   buttonThird: { flex: 1 },
   buttonHalf: { flex: 1 },
   buttonRow: { flexDirection: "row", gap: 10, marginTop: 10 },
