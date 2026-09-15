@@ -364,7 +364,16 @@ export function SiteMapCanvas({
             />
           ))
         : null}
-      {size.width > 0 && mode === "view"
+      {/* Also active while placing a new X mark (not arrow/rect - those
+          complete on a drag, and letting an existing annotation's hit-area
+          claim the touch-start would swallow that drag the same way labels
+          used to swallow wall-drawing gestures). X placement is a tap, same
+          gesture shape as selecting an existing one, so a tap landing on
+          top of an already-placed annotation is far more likely to mean
+          "that one" than "a new one exactly here" - lets a technician
+          clean up a duplicate/misplaced X immediately without first
+          backing out of X-mark mode. */}
+      {size.width > 0 && (mode === "view" || (mode === "annotate" && annotationType === "x"))
         ? annotations.map((a) => (
             <Pressable
               key={`ann-hit-${a.id}`}
