@@ -42,6 +42,34 @@ export const CHECKLIST_CATEGORY_SHORT_LABEL: Record<string, string> = {
   ...Object.fromEntries(WIZARD_STEPS.map((s) => [s.category, s.shortLabel])),
   OTHER: "Other",
 };
+
+// Maps a site-map level's free-text name (SITE_MAP_LEVEL_SUGGESTIONS, or
+// anything a technician typed by hand) to its rank in the wizard's
+// canonical order, so the site map's level tabs - a separate, independently
+// named drawing feature - display Exterior -> ... -> Attic in the same
+// fixed sequence as the checklist itself, not whatever order they happened
+// to get drawn in. Case-insensitive with a couple of common synonyms;
+// anything unrecognized (a custom level name) sorts after every canonical
+// one rather than erroring.
+const LEVEL_NAME_TO_CATEGORY: Record<string, WizardStepCategory> = {
+  exterior: "EXTERIOR",
+  "1st floor": "FIRST_FLOOR",
+  "first floor": "FIRST_FLOOR",
+  "2nd floor": "SECOND_FLOOR",
+  "second floor": "SECOND_FLOOR",
+  "3rd floor": "THIRD_FLOOR",
+  "third floor": "THIRD_FLOOR",
+  basement: "BASEMENT",
+  crawlspace: "CRAWLSPACE",
+  "crawl space": "CRAWLSPACE",
+  attic: "ATTIC",
+};
+
+export function getSiteMapLevelRank(name: string): number {
+  const category = LEVEL_NAME_TO_CATEGORY[name.trim().toLowerCase()];
+  if (!category) return WIZARD_STEPS.length;
+  return WIZARD_STEPS.findIndex((s) => s.category === category);
+}
 export const CHECKLIST_CATEGORY_DISPLAY_ORDER: string[] = [...WIZARD_STEPS.map((s) => s.category), "OTHER"];
 
 // Duck-typed (not coupled to the Prisma or SQLite row shapes directly) so

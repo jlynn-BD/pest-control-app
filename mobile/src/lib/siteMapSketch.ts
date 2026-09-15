@@ -1,3 +1,4 @@
+import { getSiteMapLevelRank } from "@pest-app/shared";
 import type { SiteMapLevel, SiteMapSketch } from "@pest-app/shared";
 import type { SiteMapArrow } from "../components/ArrowCanvas";
 
@@ -84,7 +85,10 @@ export function buildSiteMapPanels(imageUri: string | null, sketch: SiteMapSketc
   }
 
   return [...sketch.levels]
-    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .sort((a, b) => {
+      const rankDiff = getSiteMapLevelRank(a.name) - getSiteMapLevelRank(b.name);
+      return rankDiff !== 0 ? rankDiff : a.sortOrder - b.sortOrder;
+    })
     .map((level) => ({
       title: `Site Map — ${level.name}`,
       imageUri: null,

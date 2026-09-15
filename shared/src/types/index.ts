@@ -143,7 +143,13 @@ export interface SiteMapSketch {
 // Suggested level names shown to the technician when adding one - not
 // exhaustive, just the common cases so most inspections don't need to type
 // a custom name.
-export const SITE_MAP_LEVEL_SUGGESTIONS = ["Exterior", "1st Floor", "2nd Floor", "3rd Floor", "Attic", "Basement", "Crawlspace"] as const;
+// Same order as the checklist wizard's steps (checklistWizard.ts's
+// WIZARD_STEPS) - Matt wanted the house walked in one consistent sequence,
+// not just enforced in the checklist itself, so the site map's level tabs
+// (a separate, freely-named drawing feature) shouldn't silently disagree
+// with it just because levels happen to get added in whatever order a
+// technician draws them.
+export const SITE_MAP_LEVEL_SUGGESTIONS = ["Exterior", "1st Floor", "2nd Floor", "3rd Floor", "Basement", "Crawlspace", "Attic"] as const;
 
 export interface InspectionTemplate extends BaseEntity {
   name: string;

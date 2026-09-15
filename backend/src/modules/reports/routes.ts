@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { renderToBuffer } from "@react-pdf/renderer";
 import React from "react";
-import { CHECKLIST_CATEGORY_DISPLAY_ORDER } from "@pest-app/shared";
+import { CHECKLIST_CATEGORY_DISPLAY_ORDER, getSiteMapLevelRank } from "@pest-app/shared";
 import { generateId } from "../../lib/id";
 import { prisma } from "../../lib/prisma";
 import { storage } from "../../lib/storage";
@@ -92,7 +92,10 @@ async function buildReportData(inspectionId: string): Promise<ReportData> {
       // Malformed sketch JSON shouldn't block report generation - render without it.
     }
     siteMapPanels = [...sketch.levels]
-      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .sort((a, b) => {
+        const rankDiff = getSiteMapLevelRank(a.name) - getSiteMapLevelRank(b.name);
+        return rankDiff !== 0 ? rankDiff : a.sortOrder - b.sortOrder;
+      })
       .map((level) => ({
         title: `Site Map — ${level.name}`,
         imagePath: null,

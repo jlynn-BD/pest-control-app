@@ -1,6 +1,6 @@
 import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { SITE_MAP_LEVEL_SUGGESTIONS, SiteMapAnnotationType, SiteMapLevel } from "@pest-app/shared";
+import { getSiteMapLevelRank, getWizardStepStatus, SITE_MAP_LEVEL_SUGGESTIONS, SiteMapAnnotationType, SiteMapLevel } from "@pest-app/shared";
 import React, { useCallback, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getCachedProperty, getCachedTemplateSections, updateLocalPropertySiteMapSketch } from "../../db/cache";
@@ -9,7 +9,6 @@ import { getLocalInspectionDetail, LocalInspectionDetail } from "../../db/inspec
 import { saveSiteMapSketch, uploadSiteMap } from "../../api/properties";
 import { parseSiteMapSketch } from "../../lib/siteMapSketch";
 import { findChecklistResponseSummary } from "../../lib/checklist";
-import { getWizardStepStatus } from "@pest-app/shared";
 import { capturePhoto } from "../../lib/photo";
 import { ApiError } from "../../api/client";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
@@ -119,7 +118,14 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   const imageUri = property?.siteMapLocalUri || property?.siteMapImageUrl || null;
   const isPhotoMode = Boolean(imageUri);
   const savedSketch = parseSiteMapSketch(property?.siteMapSketchJson);
-  const levels = [...savedSketch.levels].sort((a, b) => a.sortOrder - b.sortOrder);
+  // Exterior -> 1st Floor -> ... -> Attic, same fixed sequence as the
+  // checklist wizard (Matt: the house should be walked in one consistent
+  // order) - not whatever order a technician happened to draw/add levels
+  // in, which is all `sortOrder` reflects.
+  const levels = [...savedSketch.levels].sort((a, b) => {
+    const rankDiff = getSiteMapLevelRank(a.name) - getSiteMapLevelRank(b.name);
+    return rankDiff !== 0 ? rankDiff : a.sortOrder - b.sortOrder;
+  });
   const selectedLevel = levels.find((l) => l.id === selectedLevelId) ?? null;
   // Photo mode is one flat canvas (no levels); sketch mode needs a level
   // selected before anything can be drawn on it.
