@@ -134,6 +134,7 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
             inspectionId={inspectionId}
             categoryFilter={step.category}
             hideCategoryHeader
+            onChange={refresh}
             onAddToSiteMap={(responseId) => navigation.navigate("SiteMap", { inspectionId, fromChecklistResponseId: responseId })}
           />
           {!step.required ? (

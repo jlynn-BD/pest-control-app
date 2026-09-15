@@ -33,6 +33,7 @@ export function ChecklistPanel({
   categoryFilter,
   hideCategoryHeader,
   allowedCategories,
+  onChange,
 }: {
   inspectionId: string;
   onAddToSiteMap: (responseId: string) => void;
@@ -47,6 +48,11 @@ export function ChecklistPanel({
   // far, so a technician can review/edit anything already reached but can't
   // answer a category out of sequence from these entry points.
   allowedCategories?: string[];
+  // Fires after every response mutation (check/uncheck/notes/photo) - lets
+  // a host that derives its own state from responses (the wizard's
+  // step-resolved/Next-button gating) stay in sync live instead of only on
+  // next focus, since this component owns its response state independently.
+  onChange?: () => void;
 }) {
   const [responses, setResponses] = useState<ResponseWithPhotos[]>([]);
   const [templateId, setTemplateId] = useState<string | null>(null);
@@ -118,6 +124,7 @@ export function ChecklistPanel({
     const response = upsertLocalChecklistResponse(inspectionId, item.id, "SATISFACTORY", notes);
     const existingPhotos = responseByItem.get(item.id)?.photos ?? [];
     setResponses((prev) => [...prev.filter((r) => r.templateItemId !== item.id), { ...response, photos: existingPhotos }]);
+    onChange?.();
   }
 
   function handleUncheck(item: LocalTemplateItem) {
@@ -126,6 +133,7 @@ export function ChecklistPanel({
     deleteLocalChecklistResponse(existing.id);
     setResponses((prev) => prev.filter((r) => r.templateItemId !== item.id));
     deleteChecklistResponse(inspectionId, existing.id).catch(() => {});
+    onChange?.();
   }
 
   function handleNotesChange(item: LocalTemplateItem, notes: string | null) {
@@ -133,6 +141,7 @@ export function ChecklistPanel({
     if (!existing) return;
     const response = upsertLocalChecklistResponse(inspectionId, item.id, existing.status, notes);
     setResponses((prev) => [...prev.filter((r) => r.templateItemId !== item.id), { ...response, photos: existing.photos }]);
+    onChange?.();
   }
 
   function commitResponse(item: LocalTemplateItem, notes: string | null): ResponseWithPhotos {
@@ -141,6 +150,7 @@ export function ChecklistPanel({
     const updated = upsertLocalChecklistResponse(inspectionId, item.id, status, notes);
     const response = { ...updated, photos: existing?.photos ?? [] };
     setResponses((prev) => [...prev.filter((r) => r.templateItemId !== item.id), response]);
+    onChange?.();
     return response;
   }
 
