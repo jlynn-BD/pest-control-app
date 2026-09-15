@@ -1,6 +1,6 @@
 import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { SITE_MAP_LEVEL_SUGGESTIONS, SiteMapLevel, SiteMapSketchLabel, SiteMapSketchLine } from "@pest-app/shared";
+import { SITE_MAP_LEVEL_SUGGESTIONS, SiteMapLevel } from "@pest-app/shared";
 import React, { useCallback, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getCachedProperty, getCachedTemplateSections, updateLocalPropertySiteMapSketch } from "../../db/cache";
@@ -20,10 +20,9 @@ import type { Point } from "../../lib/arrowGeometry";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "SiteMap">;
 
-// A pending (unsaved) wall or label, in the order the technician drew/placed
-// it - a single ordered stack (rather than two separate arrays) is what lets
-// "Undo" pop whichever one actually came last, regardless of type.
-type PendingEntry = { kind: "line"; line: SiteMapSketchLine } | { kind: "label"; label: SiteMapSketchLabel };
+// Whichever wall or label was just auto-saved, so a one-tap "Undo" can
+// remove it - see the auto-save note below.
+type LastAction = { type: "wall"; id: string } | { type: "label"; id: string; text: string };
 
 export default function SiteMapScreen({ route, navigation }: Props) {
   const { inspectionId, fromChecklistResponseId } = route.params;
@@ -33,16 +32,16 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   const [addingLevel, setAddingLevel] = useState(false);
   const [newLevelName, setNewLevelName] = useState("");
   const [mode, setMode] = useState<SiteMapMode>("view");
-  const [pendingHistory, setPendingHistory] = useState<PendingEntry[]>([]);
   const [pendingLabelPoint, setPendingLabelPoint] = useState<{ x: number; y: number } | null>(null);
   const [labelText, setLabelText] = useState("");
+  const [lastAction, setLastAction] = useState<LastAction | null>(null);
   // A just-drawn, not-yet-saved marker position - opens the inline finding
   // editor below the canvas instead of navigating away (Tate: "keep the map
   // visible while entering/editing findings"). Editing an existing marker
   // works the same way, via editingFindingId.
   const [draftArrow, setDraftArrow] = useState<{ start: Point; end: Point } | null>(null);
   const [editingFindingId, setEditingFindingId] = useState<string | null>(null);
-  const [editingLabel, setEditingLabel] = useState<{ id: string; text: string; isPending: boolean } | null>(null);
+  const [editingLabel, setEditingLabel] = useState<{ id: string; text: string } | null>(null);
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -70,13 +69,13 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       // item (see ChecklistScreen's "Add to Site Map") skips the separate
       // "+Marker" tap and drops straight into drawing mode.
       setMode(fromChecklistResponseId ? "arrow" : "view");
-      setPendingHistory([]);
       setPendingLabelPoint(null);
       setAddingLevel(false);
       setEditingLabel(null);
       setSelectedWallId(null);
       setDraftArrow(null);
       setEditingFindingId(null);
+      setLastAction(null);
     }, [refresh, fromChecklistResponseId])
   );
 
@@ -87,11 +86,6 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   const savedSketch = parseSiteMapSketch(property?.siteMapSketchJson);
   const levels = [...savedSketch.levels].sort((a, b) => a.sortOrder - b.sortOrder);
   const selectedLevel = levels.find((l) => l.id === selectedLevelId) ?? null;
-  const pendingLines = pendingHistory.filter((h): h is { kind: "line"; line: SiteMapSketchLine } => h.kind === "line").map((h) => h.line);
-  const pendingLabels = pendingHistory
-    .filter((h): h is { kind: "label"; label: SiteMapSketchLabel } => h.kind === "label")
-    .map((h) => h.label);
-  const hasPendingChanges = pendingHistory.length > 0;
   // Photo mode is one flat canvas (no levels); sketch mode needs a level
   // selected before anything can be drawn on it.
   const canDraw = isPhotoMode || Boolean(selectedLevel);
@@ -125,8 +119,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // in photo mode every arrow shares the one flat canvas.
   const visibleArrows = isPhotoMode ? allArrows : allArrows.filter((a) => detail.findings.find((f) => f.id === a.id)?.siteMapLevel === selectedLevelId);
 
-  const wallCount = (selectedLevel?.lines.length ?? 0) + pendingLines.length;
-  const selectedWallIsPending = selectedWallId ? pendingLines.some((l) => l.id === selectedWallId) : false;
+  const wallCount = selectedLevel?.lines.length ?? 0;
 
   function toggleMode(next: SiteMapMode) {
     setMode((current) => (current === next ? "view" : next));
@@ -171,11 +164,16 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     }
   }
 
-  // Shared by every action that edits an already-saved wall/label (delete,
-  // rename) - replaces just the current level within the full sketch and
-  // persists it the same way handleSaveStructure does. Returns whether it
-  // succeeded so callers (e.g. the label-edit card) can decide whether to
-  // dismiss themselves or stay open/retryable on failure.
+  // Shared by every action that adds/edits/deletes a wall or label -
+  // replaces just the current level within the full sketch and saves it to
+  // the server immediately. Everything on this screen goes through this one
+  // function, which is what makes the whole thing auto-save: a technician
+  // testing this found a drawn structure disappear because nothing persists
+  // until a manual "Save" tap is remembered, so there is no longer a manual
+  // save step to forget - every wall/label write is already durable the
+  // moment it happens. Returns whether it succeeded so callers (e.g. the
+  // label-edit card) can decide whether to dismiss themselves or stay
+  // open/retryable on failure.
   async function persistSelectedLevel(mutate: (level: SiteMapLevel) => SiteMapLevel): Promise<boolean> {
     if (!property || !selectedLevel) return false;
     setSaving(true);
@@ -195,45 +193,23 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     }
   }
 
-  async function handleSaveStructure() {
-    if (!property || !selectedLevel) return;
-    setSaving(true);
-    setError(null);
-    try {
-      const nextLevels = levels.map((l) =>
-        l.id === selectedLevel.id ? { ...l, lines: [...l.lines, ...pendingLines], labels: [...l.labels, ...pendingLabels] } : l
-      );
-      const nextSketch = { levels: nextLevels };
-      await saveSiteMapSketch(property.id, nextSketch);
-      updateLocalPropertySiteMapSketch(property.id, JSON.stringify(nextSketch));
-      setPendingHistory([]);
-      setMode("view");
-      refresh();
-    } catch (err) {
-      setError(err instanceof ApiError || err instanceof Error ? err.message : "Failed to save site plan structure");
-    } finally {
-      setSaving(false);
-    }
+  // Undoes whichever wall or label was auto-saved most recently - the
+  // safety net Jaida asked for once saving stopped being a manual step:
+  // one tap removes exactly the thing that was just added, without having
+  // to hunt for it on the canvas.
+  async function handleUndoLastAction() {
+    if (!lastAction) return;
+    const ok =
+      lastAction.type === "wall"
+        ? await persistSelectedLevel((l) => ({ ...l, lines: l.lines.filter((line) => line.id !== lastAction.id) }))
+        : await persistSelectedLevel((l) => ({ ...l, labels: l.labels.filter((label) => label.id !== lastAction.id) }));
+    if (ok) setLastAction(null);
   }
 
-  function handleDiscardStructure() {
-    setPendingHistory([]);
-    setPendingLabelPoint(null);
-    setMode("view");
-    setSelectedWallId(null);
-  }
-
-  // Pops whichever wall or label was added most recently in this editing
-  // session, regardless of which of the two it was - the fix for Tate's
-  // complaint that a mis-drawn wall or mis-placed label had no quick way
-  // back out short of discarding the whole session.
-  function handleUndo() {
-    setPendingHistory((prev) => prev.slice(0, -1));
-    setSelectedWallId(null);
-  }
-
-  function handleDeletePendingItem(id: string) {
-    setPendingHistory((prev) => prev.filter((h) => (h.kind === "line" ? h.line.id : h.label.id) !== id));
+  async function handleWallDrawn(start: Point, end: Point) {
+    const id = generateId();
+    const ok = await persistSelectedLevel((l) => ({ ...l, lines: [...l.lines, { id, x1: start.x, y1: start.y, x2: end.x, y2: end.y }] }));
+    if (ok) setLastAction({ type: "wall", id });
   }
 
   function handleDeleteSavedWall(id: string) {
@@ -250,45 +226,36 @@ export default function SiteMapScreen({ route, navigation }: Props) {
 
   function handleDeleteSelectedWall() {
     if (!selectedWallId) return;
-    if (selectedWallIsPending) handleDeletePendingItem(selectedWallId);
-    else handleDeleteSavedWall(selectedWallId);
+    handleDeleteSavedWall(selectedWallId);
     setSelectedWallId(null);
   }
 
-  function handleConfirmLabel() {
+  async function handleConfirmLabel() {
     if (!pendingLabelPoint || !labelText.trim()) return;
-    setPendingHistory((prev) => [
-      ...prev,
-      { kind: "label", label: { id: generateId(), x: pendingLabelPoint.x, y: pendingLabelPoint.y, text: labelText.trim() } },
-    ]);
-    setPendingLabelPoint(null);
-    setLabelText("");
+    const id = generateId();
+    const text = labelText.trim();
+    const ok = await persistSelectedLevel((l) => ({ ...l, labels: [...l.labels, { id, x: pendingLabelPoint.x, y: pendingLabelPoint.y, text }] }));
+    if (ok) {
+      setLastAction({ type: "label", id, text });
+      setPendingLabelPoint(null);
+      setLabelText("");
+    }
+    // Left open (retryable) on failure, same reasoning as handleAddLevel -
+    // the error banner already explains what went wrong.
   }
 
-  // Tapping a label (saved or still-pending) reopens its text for editing -
-  // Tate suggested double-clicking on desktop, but a tap is the equivalent
-  // touch gesture and matches how markers are already selected on this map.
+  // Tapping a label reopens its text for editing - Tate suggested
+  // double-clicking on desktop, but a tap is the equivalent touch gesture
+  // and matches how markers are already selected on this map.
   function handleLabelPress(id: string) {
     if (editorOpen) return;
-    const pending = pendingLabels.find((l) => l.id === id);
-    if (pending) {
-      setEditingLabel({ id, text: pending.text, isPending: true });
-      return;
-    }
     const saved = selectedLevel?.labels.find((l) => l.id === id);
-    if (saved) setEditingLabel({ id, text: saved.text, isPending: false });
+    if (saved) setEditingLabel({ id, text: saved.text });
   }
 
   async function handleSaveLabelEdit() {
     if (!editingLabel || !editingLabel.text.trim()) return;
     const text = editingLabel.text.trim();
-    if (editingLabel.isPending) {
-      setPendingHistory((prev) =>
-        prev.map((h) => (h.kind === "label" && h.label.id === editingLabel.id ? { ...h, label: { ...h.label, text } } : h))
-      );
-      setEditingLabel(null);
-      return;
-    }
     // Kept open (retryable) on failure rather than dismissed, same as
     // handleAddLevel - otherwise a network error would silently discard the
     // correction the technician just typed.
@@ -301,21 +268,19 @@ export default function SiteMapScreen({ route, navigation }: Props) {
 
   async function handleDeleteLabelEdit() {
     if (!editingLabel) return;
-    if (editingLabel.isPending) {
-      handleDeletePendingItem(editingLabel.id);
-      setEditingLabel(null);
-      return;
-    }
     const ok = await persistSelectedLevel((l) => ({ ...l, labels: l.labels.filter((label) => label.id !== editingLabel.id) }));
     if (ok) setEditingLabel(null);
   }
 
   function handleSelectLevel(levelId: string) {
-    if (hasPendingChanges || editorOpen) return; // avoid silently dropping unsaved wall/label/finding edits on level switch
+    if (editorOpen) return; // avoid silently dropping an in-progress finding edit
     setSelectedLevelId(levelId);
     setMode("view");
     setEditingLabel(null);
     setSelectedWallId(null);
+    // A stale Undo would otherwise target the level it was drawn on, not
+    // whichever level is selected when the tap actually happens.
+    setLastAction(null);
   }
 
   return (
@@ -375,8 +340,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         imageUri={imageUri}
         arrows={visibleArrows}
         savedLines={selectedLevel?.lines ?? []}
-        pendingLines={pendingLines}
-        labels={[...(selectedLevel?.labels ?? []), ...pendingLabels]}
+        labels={selectedLevel?.labels ?? []}
         mode={canDraw && !editorOpen ? mode : "view"}
         onArrowPress={(id) => {
           if (editorOpen) return;
@@ -390,12 +354,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           setMode("view");
           setDraftArrow({ start, end });
         }}
-        onWallDrawn={(start, end) =>
-          setPendingHistory((prev) => [
-            ...prev,
-            { kind: "line", line: { id: generateId(), x1: start.x, y1: start.y, x2: end.x, y2: end.y } },
-          ])
-        }
+        onWallDrawn={handleWallDrawn}
         onLabelTap={(point) => {
           setPendingLabelPoint(point);
           setLabelText("");
@@ -457,7 +416,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           />
           <View style={styles.buttonRow}>
             <View style={styles.buttonHalf}>
-              <PrimaryButton title="Add label" onPress={handleConfirmLabel} disabled={!labelText.trim()} />
+              <PrimaryButton title="Add label" onPress={handleConfirmLabel} disabled={!labelText.trim()} loading={saving} />
             </View>
             <View style={styles.buttonHalf}>
               <PrimaryButton title="Cancel" onPress={() => setPendingLabelPoint(null)} />
@@ -490,13 +449,32 @@ export default function SiteMapScreen({ route, navigation }: Props) {
 
       {selectedWallId ? (
         <Card style={styles.labelPromptCard}>
-          <Text style={styles.editorTitle}>Wall segment{selectedWallIsPending ? " (unsaved)" : ""}</Text>
+          <Text style={styles.editorTitle}>Wall segment</Text>
           <View style={styles.buttonRow}>
             <View style={styles.buttonHalf}>
-              <PrimaryButton title="Delete" onPress={handleDeleteSelectedWall} loading={!selectedWallIsPending && saving} />
+              <PrimaryButton title="Delete" onPress={handleDeleteSelectedWall} loading={saving} />
             </View>
             <View style={styles.buttonHalf}>
               <PrimaryButton title="Cancel" onPress={() => setSelectedWallId(null)} />
+            </View>
+          </View>
+        </Card>
+      ) : null}
+
+      {/* Every wall/label write above already saved itself the instant it
+          happened - this is just a one-tap way to undo that specific write
+          if it was a mistake, not a "did you remember to save" prompt. */}
+      {lastAction ? (
+        <Card style={styles.lastActionCard}>
+          <Text style={styles.editorTitle}>
+            {lastAction.type === "wall" ? "✓ Wall saved" : `✓ Label saved: "${lastAction.text}"`}
+          </Text>
+          <View style={styles.buttonRow}>
+            <View style={styles.buttonHalf}>
+              <PrimaryButton title="Undo" onPress={handleUndoLastAction} loading={saving} />
+            </View>
+            <View style={styles.buttonHalf}>
+              <PrimaryButton title="Keep" onPress={() => setLastAction(null)} />
             </View>
           </View>
         </Card>
@@ -512,20 +490,6 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           </View>
           <View style={styles.buttonThird}>
             <PrimaryButton title={mode === "label" ? "Cancel" : "+ Label"} onPress={() => toggleMode("label")} />
-          </View>
-        </View>
-      ) : null}
-
-      {hasPendingChanges && !editorOpen ? (
-        <View style={styles.toggleRow}>
-          <View style={styles.buttonThird}>
-            <PrimaryButton title="Save structure" onPress={handleSaveStructure} loading={saving} />
-          </View>
-          <View style={styles.buttonThird}>
-            <PrimaryButton title="Undo" onPress={handleUndo} />
-          </View>
-          <View style={styles.buttonThird}>
-            <PrimaryButton title="Discard" onPress={handleDiscardStructure} />
           </View>
         </View>
       ) : null}
@@ -591,6 +555,7 @@ const styles = StyleSheet.create({
   labelPromptCard: { marginTop: 12, gap: 4 },
   editorCard: { marginTop: 14, gap: 4, borderColor: colors.primary, borderWidth: 2 },
   editorTitle: { fontSize: 15, fontWeight: "700", color: colors.text, marginBottom: 4 },
+  lastActionCard: { marginTop: 12, gap: 4, borderColor: colors.primary, borderWidth: 1 },
   dismissLink: { color: colors.primary, fontWeight: "600", fontSize: 13, marginTop: 4 },
   error: { color: colors.danger, textAlign: "center", marginTop: 10 },
   findingsListCard: { marginTop: 16, gap: 4 },
