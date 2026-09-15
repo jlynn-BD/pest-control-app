@@ -84,6 +84,19 @@ function useSiteMapGesture(
             onLineCompleteRef.current(start, end);
           }
         },
+        // Without this, a mostly-vertical drag (e.g. a wall drawn straight
+        // down) reads to the parent ScrollView as a scroll gesture partway
+        // through, which steals the responder - a technician hit exactly
+        // this, a drawn line "cutting off in the middle". Refusing every
+        // termination request keeps the whole drag with this canvas once it
+        // starts. onPanResponderTerminate is a fallback for termination that
+        // can't be refused (e.g. an incoming call) so a stolen gesture at
+        // least clears its frozen preview line instead of leaving it stuck.
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderTerminate: () => {
+          startRef.current = null;
+          setLive(null);
+        },
       }),
     []
   );

@@ -150,6 +150,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   function toggleMode(next: SiteMapMode) {
     setMode((current) => (current === next ? "view" : next));
     setPendingLabelPoint(null);
+    setEditingLabel(null);
     setSelectedWallId(null);
     setSelectedAnnotationId(null);
   }
@@ -163,6 +164,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     setMode((current) => (current === "annotate" && annotationType === type ? "view" : "annotate"));
     setAnnotationType(type);
     setPendingLabelPoint(null);
+    setEditingLabel(null);
     setSelectedWallId(null);
     setSelectedAnnotationId(null);
   }
