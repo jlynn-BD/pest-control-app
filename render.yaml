@@ -59,3 +59,14 @@ services:
     # this if pestapp-backend is ever renamed or given a custom domain.
     buildCommand: npm install && EXPO_PUBLIC_API_URL=https://pestapp-backend.onrender.com npm run build:web -w mobile
     staticPublishPath: mobile/dist
+    # Without this, any direct hit on a deep route - a hard refresh while on
+    # an inspection/site-map screen, a bookmark, someone pasting a link -
+    # 404s instead of loading the app, since this is a client-side-routed
+    # single-page app and Render has no reason to know /Inspections/SiteMap
+    # isn't a real file. Static file requests (JS bundles, images) still
+    # resolve to the actual file first; this only catches paths that don't
+    # match one.
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
