@@ -8,11 +8,12 @@ import { generateId } from "../../lib/uuid";
 import { getLocalInspectionDetail, LocalInspectionDetail } from "../../db/inspectionStore";
 import { saveSiteMapSketch, uploadSiteMap } from "../../api/properties";
 import { parseSiteMapSketch } from "../../lib/siteMapSketch";
-import { findChecklistResponseSummary } from "../../lib/checklist";
+import { findChecklistResponseSummary, parseChecklistCategories } from "../../lib/checklist";
 import { capturePhoto } from "../../lib/photo";
 import { ApiError } from "../../api/client";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { siteMapHintText, SiteMapArrow, SiteMapCanvas, SiteMapMode } from "../../components/ArrowCanvas";
+import { ChecklistPanel } from "../../components/ChecklistPanel";
 import { FindingEditorForm } from "../../components/FindingEditorForm";
 import { Badge, Card, Field, PrimaryButton, colors } from "../../components/ui";
 import type { LocalProperty } from "../../db/types";
@@ -71,6 +72,11 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   const [saving, setSaving] = useState(false);
   const [addingLevelSaving, setAddingLevelSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Collapsed by default (a long checklist is a lot to push the map down by)
+  // - Tate: "Site Map + Checklist + Finding Editor, all in one workspace",
+  // so this is embedded here rather than behind a separate screen a
+  // technician would have to navigate to and back from.
+  const [checklistExpanded, setChecklistExpanded] = useState(false);
 
   const refresh = useCallback(() => {
     const d = getLocalInspectionDetail(inspectionId);
@@ -93,6 +99,9 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       // item (see ChecklistScreen's "Add to Site Map") skips the separate
       // "+Marker" tap and drops straight into drawing mode.
       setMode(fromChecklistResponseId ? "arrow" : "view");
+      // Only ever auto-*expand* - never collapse a section the technician
+      // may have opened themselves, e.g. after switching tabs and back.
+      if (fromChecklistResponseId) setChecklistExpanded(true);
       setPendingLabelPoint(null);
       setAddingLevel(false);
       setEditingLabel(null);
@@ -146,6 +155,16 @@ export default function SiteMapScreen({ route, navigation }: Props) {
 
   const wallCount = selectedLevel?.lines.length ?? 0;
   const annotationCount = selectedLevel?.annotations.length ?? 0;
+
+  const checklistSections = detail.inspection.templateId
+    ? getCachedTemplateSections(detail.inspection.templateId).filter((s) => {
+        if (s.category === "OTHER") return true;
+        return parseChecklistCategories(detail.inspection.checklistCategories).includes(s.category);
+      })
+    : [];
+  const checklistItemCount = checklistSections.reduce((sum, s) => sum + s.items.length, 0);
+  const checklistActiveItemIds = new Set(checklistSections.flatMap((s) => s.items.map((i) => i.id)));
+  const checklistAnsweredCount = detail.checklistResponses.filter((r) => checklistActiveItemIds.has(r.templateItemId)).length;
 
   function toggleMode(next: SiteMapMode) {
     setMode((current) => (current === next ? "view" : next));
@@ -445,6 +464,31 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         }}
       />
 
+      {/* Embedded here rather than behind a separate "Checklist" screen -
+          Tate's eventual ask was "Site Map + Checklist + Finding Editor, all
+          visible within the same workspace" so a technician can check what a
+          checklist item says (or add a marker for it) without losing the
+          map. Stays visible while the finding editor is open below, since
+          seeing the checklist alongside it is the whole point, not just
+          alongside the bare map. */}
+      {detail.inspection.templateId ? (
+        <View style={styles.section}>
+          <Pressable style={styles.checklistHeaderRow} onPress={() => setChecklistExpanded((v) => !v)}>
+            <Text style={styles.checklistHeaderTitle}>{checklistExpanded ? "▾" : "▸"} Checklist</Text>
+            <Badge
+              label={`${checklistAnsweredCount}/${checklistItemCount}`}
+              tone={checklistAnsweredCount >= checklistItemCount && checklistItemCount > 0 ? "success" : "default"}
+            />
+          </Pressable>
+          {checklistExpanded ? (
+            <ChecklistPanel
+              inspectionId={inspectionId}
+              onAddToSiteMap={(responseId) => navigation.setParams({ fromChecklistResponseId: responseId })}
+            />
+          ) : null}
+        </View>
+      ) : null}
+
       {/* Drawing a marker or tapping an existing one opens this editor right
           here, below the still-visible map, instead of navigating to a
           separate screen - Tate's "keep the map visible" feedback. */}
@@ -675,6 +719,20 @@ const styles = StyleSheet.create({
   checklistBannerCard: { marginBottom: 14, gap: 4, borderColor: colors.primary, borderWidth: 2 },
   checklistBannerLabel: { fontSize: 12, color: colors.textMuted, fontWeight: "600" },
   checklistBannerPrompt: { fontSize: 15, fontWeight: "700", color: colors.text },
+  section: { marginTop: 14 },
+  checklistHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: colors.card,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 8,
+  },
+  checklistHeaderTitle: { fontSize: 15, fontWeight: "700", color: colors.text },
   toggleRow: { flexDirection: "row", gap: 10, marginTop: 14 },
   colorRow: { flexDirection: "row", gap: 10, marginTop: 12, justifyContent: "center" },
   colorSwatch: { width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: "transparent" },
