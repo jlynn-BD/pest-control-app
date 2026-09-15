@@ -67,3 +67,11 @@ export function deleteChecklistResponse(inspectionId: string, responseId: string
 export function deleteFinding(findingId: string): Promise<void> {
   return apiRequest(`/api/findings/${findingId}`, { method: "DELETE" });
 }
+
+// Best-effort immediate delete for discarding a stray/duplicate in-progress
+// inspection from InspectionWorkspaceScreen. Same reasoning as deleteFinding
+// above: an inspection that never synced simply 404s here, which is fine
+// since there's nothing server-side to remove.
+export function deleteInspection(inspectionId: string): Promise<void> {
+  return apiRequest(`/api/inspections/${inspectionId}`, { method: "DELETE" });
+}

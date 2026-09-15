@@ -5,11 +5,13 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getCachedCustomer, getCachedProperty, getCachedTemplateSections, getCachedTemplates } from "../../db/cache";
 import {
   completeLocalInspection,
+  deleteLocalInspection,
   getLocalInspectionDetail,
   LocalInspectionDetail,
   setLocalInspectionChecklistCategories,
   setLocalInspectionTemplate,
 } from "../../db/inspectionStore";
+import { deleteInspection } from "../../api/inspections";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { Badge, Card, Checkbox, PrimaryButton, colors } from "../../components/ui";
 import {
@@ -25,6 +27,7 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
   const [detail, setDetail] = useState<LocalInspectionDetail | null>(null);
   const [draftCategories, setDraftCategories] = useState<string[]>(CHECKLIST_SELECTABLE_CATEGORIES);
   const [editingCategories, setEditingCategories] = useState(false);
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -53,6 +56,16 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
   function handleComplete() {
     completeLocalInspection(inspectionId);
     navigation.replace("LocalInspectionDetail", { inspectionId });
+  }
+
+  // Discards a stray/duplicate in-progress inspection - e.g. one left behind
+  // by a sync that never completed, which otherwise has no way to go away
+  // (see deleteLocalInspection's comment: this schema has no delete UI at
+  // all today, only Undo for the most recent site-map edit).
+  function handleDiscard() {
+    deleteLocalInspection(inspectionId);
+    deleteInspection(inspectionId).catch(() => {});
+    navigation.popToTop();
   }
 
   function toggleDraftCategory(code: string) {
@@ -252,6 +265,26 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
       {!isCompleted && (!hasCustomerSignature || !hasTechnicianSignature) ? (
         <Text style={styles.hint}>Both signatures are required to complete the inspection.</Text>
       ) : null}
+
+      {!isCompleted ? (
+        confirmingDiscard ? (
+          <View style={styles.deleteConfirmRow}>
+            <Text style={styles.deleteConfirmText}>Discard this inspection? This can't be undone.</Text>
+            <View style={styles.buttonRow}>
+              <Pressable onPress={handleDiscard} style={styles.deleteConfirmButton}>
+                <Text style={styles.deleteConfirmButtonText}>Discard</Text>
+              </Pressable>
+              <Pressable onPress={() => setConfirmingDiscard(false)} style={styles.cancelConfirmButton}>
+                <Text style={styles.cancelConfirmButtonText}>Cancel</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          <Text style={styles.deleteLink} onPress={() => setConfirmingDiscard(true)}>
+            Discard inspection
+          </Text>
+        )
+      ) : null}
     </ScrollView>
   );
 }
@@ -317,4 +350,20 @@ const styles = StyleSheet.create({
   signatureCardDone: { borderColor: colors.primary },
   spacer: { height: 20 },
   hint: { color: colors.textMuted, fontSize: 12, textAlign: "center", marginTop: 8 },
+  buttonRow: { flexDirection: "row", gap: 10 },
+  deleteLink: { color: colors.danger, fontWeight: "600", fontSize: 13, textAlign: "center", marginTop: 16 },
+  deleteConfirmRow: { marginTop: 16, gap: 8 },
+  deleteConfirmText: { color: colors.text, fontSize: 13, textAlign: "center" },
+  deleteConfirmButton: { flex: 1, backgroundColor: colors.danger, borderRadius: 8, paddingVertical: 12, alignItems: "center" },
+  deleteConfirmButtonText: { color: "#fff", fontWeight: "600" },
+  cancelConfirmButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  cancelConfirmButtonText: { color: colors.text, fontWeight: "600" },
 });

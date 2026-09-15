@@ -67,6 +67,31 @@ export function createLocalInspection(input: NewInspectionInput): LocalInspectio
   return inspection;
 }
 
+// Hard delete, same reasoning as deleteLocalFinding - the caller also fires
+// a best-effort remote delete (api/inspections.ts's deleteInspection) since
+// removing the local row here forfeits any further chance to sync it. Used
+// to discard a stray/duplicate in-progress inspection (e.g. one left behind
+// by a sync that never completed) - there's no cascade in this schema, so
+// every child table needs its own DELETE.
+export function deleteLocalInspection(id: string): void {
+  const db = getDb();
+  db.runSync(`DELETE FROM finding_photos WHERE findingId IN (SELECT id FROM findings WHERE inspectionId = ?)`, [id]);
+  db.runSync(`DELETE FROM findings WHERE inspectionId = ?`, [id]);
+  db.runSync(`DELETE FROM recommendations WHERE inspectionId = ?`, [id]);
+  db.runSync(
+    `DELETE FROM treatment_products WHERE treatmentRecordId IN (SELECT id FROM treatment_records WHERE inspectionId = ?)`,
+    [id]
+  );
+  db.runSync(`DELETE FROM treatment_records WHERE inspectionId = ?`, [id]);
+  db.runSync(`DELETE FROM signatures WHERE inspectionId = ?`, [id]);
+  db.runSync(
+    `DELETE FROM checklist_response_photos WHERE checklistResponseId IN (SELECT id FROM checklist_responses WHERE inspectionId = ?)`,
+    [id]
+  );
+  db.runSync(`DELETE FROM checklist_responses WHERE inspectionId = ?`, [id]);
+  db.runSync(`DELETE FROM inspections WHERE id = ?`, [id]);
+}
+
 export interface LocalInspectionListItem extends LocalInspection {
   customerName: string;
   propertyAddress: string;
