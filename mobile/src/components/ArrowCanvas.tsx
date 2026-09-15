@@ -6,6 +6,20 @@ import { colors } from "./ui";
 
 export type SiteMapMode = "view" | "arrow" | "wall" | "label";
 
+// Was previously rendered as an absolutely-positioned overlay INSIDE the
+// canvas (bottom edge, full width) - a technician found that box sitting
+// over the drawing surface itself would swallow the drag gesture starting
+// under it, so drawing through that area silently did nothing. Now exported
+// for SiteMapScreen to render as a normal line of text above the canvas,
+// entirely outside its bounds, so there is no overlay left to intercept a
+// touch at all.
+export const SITE_MAP_HINT_TEXT: Record<SiteMapMode, string | null> = {
+  view: null,
+  arrow: "Drag on the image to draw an arrow to the issue",
+  wall: "Drag to draw a wall segment",
+  label: "Tap to place a label",
+};
+
 // Mirrors useSignaturePad's approach (custom SVG + PanResponder, no extra
 // native dependency, works on `expo start --web` too). A drag in "arrow" or
 // "wall" mode completes a line (arrow: becomes a Finding; wall: becomes a
@@ -157,13 +171,6 @@ export function SiteMapCanvas({
     }
   );
 
-  const HINT_TEXT: Record<SiteMapMode, string | null> = {
-    view: null,
-    arrow: "Drag on the image to draw an arrow to the issue",
-    wall: "Drag to draw a wall segment",
-    label: "Tap to place a label",
-  };
-
   return (
     <View style={[styles.container, { height }]} onLayout={handleLayout} {...panHandlers}>
       {imageUri ? <Image source={{ uri: imageUri }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : null}
@@ -242,11 +249,20 @@ export function SiteMapCanvas({
             />
           ))
         : null}
+      {/* pointerEvents is forced to "none" while actively drawing (any mode
+          but "view") - otherwise an existing label or marker sitting under
+          where a technician is trying to draw a new wall/arrow/label
+          silently claims that touch before the canvas's own PanResponder
+          ever sees it, since a child Pressable wins the touch-responder
+          negotiation by default. A technician hit exactly this: dragging
+          through a label near the middle of the map did nothing, and
+          placing a new marker in that same spot was just as stuck. */}
       {size.width > 0
         ? labels.map((l) => (
             <Pressable
               key={`label-${l.id}`}
               onPress={() => onLabelPress?.(l.id)}
+              pointerEvents={mode === "view" ? "auto" : "none"}
               style={[
                 styles.structureLabel,
                 l.id === selectedLabelId && styles.structureLabelSelected,
@@ -264,6 +280,7 @@ export function SiteMapCanvas({
             <Pressable
               key={a.id}
               onPress={() => onArrowPress?.(a.id)}
+              pointerEvents={mode === "view" ? "auto" : "none"}
               style={[
                 styles.labelBubble,
                 {
@@ -279,11 +296,6 @@ export function SiteMapCanvas({
             </Pressable>
           ))
         : null}
-      {HINT_TEXT[mode] ? (
-        <View style={styles.hintBanner} pointerEvents="none">
-          <Text style={styles.hintText}>{HINT_TEXT[mode]}</Text>
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -319,14 +331,4 @@ const styles = StyleSheet.create({
   structureLabelText: { fontSize: 11, fontWeight: "700", color: colors.primary },
   structureLabelSelected: { borderWidth: 2, borderColor: colors.danger },
   wallHitArea: { position: "absolute" },
-  hintBanner: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: "rgba(26,36,33,0.75)",
-    paddingVertical: 6,
-    alignItems: "center",
-  },
-  hintText: { color: "#fff", fontSize: 12, fontWeight: "600" },
 });

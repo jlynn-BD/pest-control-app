@@ -12,7 +12,7 @@ import { findChecklistResponseSummary } from "../../lib/checklist";
 import { capturePhoto } from "../../lib/photo";
 import { ApiError } from "../../api/client";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
-import { SiteMapArrow, SiteMapCanvas, SiteMapMode } from "../../components/ArrowCanvas";
+import { SITE_MAP_HINT_TEXT, SiteMapArrow, SiteMapCanvas, SiteMapMode } from "../../components/ArrowCanvas";
 import { FindingEditorForm } from "../../components/FindingEditorForm";
 import { Badge, Card, Field, PrimaryButton, colors } from "../../components/ui";
 import type { LocalProperty } from "../../db/types";
@@ -336,6 +336,12 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         </>
       ) : null}
 
+      {/* Rendered above the canvas, in normal document flow, rather than as
+          an overlay on top of it - a technician found that an in-canvas
+          instructional banner sitting over the drawing surface could
+          swallow the touch used to draw through that spot. */}
+      {canDraw && !editorOpen && SITE_MAP_HINT_TEXT[mode] ? <Text style={styles.drawHint}>{SITE_MAP_HINT_TEXT[mode]}</Text> : null}
+
       <SiteMapCanvas
         imageUri={imageUri}
         arrows={visibleArrows}
@@ -551,6 +557,16 @@ const styles = StyleSheet.create({
   buttonHalf: { flex: 1 },
   buttonRow: { flexDirection: "row", gap: 10, marginTop: 10 },
   hint: { fontSize: 12, color: colors.textMuted, textAlign: "center", marginTop: 10 },
+  drawHint: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#fff",
+    backgroundColor: "rgba(26,36,33,0.75)",
+    textAlign: "center",
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginBottom: 8,
+  },
   uploadRow: { marginTop: 14 },
   labelPromptCard: { marginTop: 12, gap: 4 },
   editorCard: { marginTop: 14, gap: 4, borderColor: colors.primary, borderWidth: 2 },
