@@ -117,7 +117,7 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.progressRow}>
+      <View style={styles.progressList}>
         {status.steps.map((s, index) => {
           const reachable = index <= status.furthestUnlockedIndex;
           const active = index === stepIndex;
@@ -126,9 +126,15 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
               key={s.category}
               disabled={!reachable}
               onPress={() => goToStep(index)}
-              style={[styles.stepChip, s.resolved && styles.stepChipResolved, active && styles.stepChipActive, !reachable && styles.stepChipLocked]}
+              style={[styles.stepRow, active && styles.stepRowActive, !reachable && styles.stepRowLocked]}
             >
-              <Text style={[styles.stepChipText, s.resolved && styles.stepChipTextResolved, active && styles.stepChipTextActive]}>{s.shortLabel}</Text>
+              <View style={[styles.stepCheckbox, s.resolved && styles.stepCheckboxChecked]}>
+                {s.resolved ? <Text style={styles.stepCheckboxMark}>✓</Text> : null}
+              </View>
+              <Text style={[styles.stepRowLabel, active && styles.stepRowLabelActive, !reachable && styles.stepRowLabelLocked]}>
+                {s.shortLabel}
+                {!s.required ? " (if applicable)" : ""}
+              </Text>
             </Pressable>
           );
         })}
@@ -218,21 +224,32 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 40 },
-  progressRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 16 },
-  stepChip: {
-    paddingVertical: 6,
+  progressList: { gap: 2, marginBottom: 16 },
+  stepRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 8,
     paddingHorizontal: 10,
-    borderRadius: 14,
-    borderWidth: 1,
+    borderRadius: 8,
+  },
+  stepRowActive: { backgroundColor: colors.chip },
+  stepRowLocked: { opacity: 0.4 },
+  stepCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 5,
+    borderWidth: 2,
     borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: colors.card,
   },
-  stepChipResolved: { backgroundColor: colors.chip, borderColor: colors.primary },
-  stepChipActive: { borderColor: colors.primary, borderWidth: 2 },
-  stepChipLocked: { opacity: 0.4 },
-  stepChipText: { fontSize: 12, fontWeight: "600", color: colors.textMuted },
-  stepChipTextResolved: { color: colors.primary },
-  stepChipTextActive: { color: colors.text },
+  stepCheckboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+  stepCheckboxMark: { color: "#fff", fontSize: 14, fontWeight: "700", lineHeight: 15 },
+  stepRowLabel: { fontSize: 14, fontWeight: "600", color: colors.textMuted },
+  stepRowLabelActive: { color: colors.text },
+  stepRowLabelLocked: { color: colors.textMuted },
   stepTitle: { fontSize: 18, fontWeight: "700", color: colors.text, marginBottom: 4 },
   stepHint: { fontSize: 12, color: colors.textMuted, marginBottom: 12 },
   naCard: { gap: 8, marginBottom: 16 },

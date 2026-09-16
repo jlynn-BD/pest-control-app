@@ -90,10 +90,16 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
         </View>
         {detail.inspection.templateId && wizardStatus ? (
           <Card style={styles.itemCard}>
-            <View style={styles.wizardStepChipRow}>
+            <View style={styles.wizardStepList}>
               {wizardStatus.steps.map((s) => (
-                <View key={s.category} style={[styles.wizardStepChip, s.resolved && styles.wizardStepChipResolved]}>
-                  <Text style={[styles.wizardStepChipText, s.resolved && styles.wizardStepChipTextResolved]}>{s.shortLabel}</Text>
+                <View key={s.category} style={styles.wizardStepRow}>
+                  <View style={[styles.wizardStepCheckbox, s.resolved && styles.wizardStepCheckboxChecked]}>
+                    {s.resolved ? <Text style={styles.wizardStepCheckboxMark}>✓</Text> : null}
+                  </View>
+                  <Text style={styles.wizardStepLabel}>
+                    {s.shortLabel}
+                    {!s.required ? " (if applicable)" : ""}
+                  </Text>
                 </View>
               ))}
             </View>
@@ -280,18 +286,21 @@ const styles = StyleSheet.create({
   addLink: { color: colors.primary, fontWeight: "600", fontSize: 13 },
   secondaryLink: { color: colors.textMuted, fontWeight: "500", fontSize: 12, marginTop: 4 },
   itemCard: { marginBottom: 6, gap: 2 },
-  wizardStepChipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 },
-  wizardStepChip: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-    borderWidth: 1,
+  wizardStepList: { gap: 2, marginBottom: 8 },
+  wizardStepRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 3 },
+  wizardStepCheckbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 2,
     borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: colors.bg,
   },
-  wizardStepChipResolved: { backgroundColor: colors.primary, borderColor: colors.primary },
-  wizardStepChipText: { fontSize: 11, fontWeight: "600", color: colors.textMuted },
-  wizardStepChipTextResolved: { color: "#fff" },
+  wizardStepCheckboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+  wizardStepCheckboxMark: { color: "#fff", fontSize: 12, fontWeight: "700", lineHeight: 13 },
+  wizardStepLabel: { fontSize: 13, fontWeight: "600", color: colors.text },
   itemTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
   itemMeta: { fontSize: 12, color: colors.textMuted },
   signatureRow: { flexDirection: "row", gap: 10, marginTop: 4 },
