@@ -97,6 +97,21 @@ const SUPPORTS_UPDATED_AT = new Set(["Inspection", "Finding", "Recommendation", 
 // record shouldn't be silently overwritten by a later "update," only
 // removed (undo) and re-created fresh.
 
+// Entities where a DB-level uniqueness constraint is keyed on something
+// other than `id` (see schema.prisma's @@unique). The client always
+// generates a fresh row id when it locally recreates an answer - unchecking
+// then rechecking a checklist item (soft-deletes the old row, then a brand
+// new id for the new one), or undoing then re-confirming a wizard "not
+// applicable" sign-off (InspectionSectionSkip has no soft-delete at all, so
+// the old row is simply still there). A plain `create` by the new id would
+// violate the natural-key constraint against that old row. Falling back to
+// a natural-key lookup here mirrors the dedicated REST routes' upsert
+// behavior (see checklist/routes.ts's POST handler) instead of 500ing.
+const NATURAL_KEY_FIELDS: Record<string, string[]> = {
+  ChecklistResponse: ["inspectionId", "templateItemId"],
+  InspectionSectionSkip: ["inspectionId", "category"],
+};
+
 async function applyChange(change: Change): Promise<PushResult> {
   const model = getModel(change.entity);
   if (!model) throw new HttpError(400, `Unsupported sync entity: ${change.entity}`);
@@ -113,7 +128,14 @@ async function applyChange(change: Change): Promise<PushResult> {
   }
 
   const data = sanitize(change.entity, change.data ?? {});
-  const existing = await model.findUnique({ where: { id: change.id } });
+  let existing = await model.findUnique({ where: { id: change.id } });
+
+  const naturalKeyFields = NATURAL_KEY_FIELDS[change.entity];
+  if (!existing && naturalKeyFields) {
+    existing = await model.findFirst({
+      where: Object.fromEntries(naturalKeyFields.map((field) => [field, data[field]])),
+    });
+  }
 
   if (!existing) {
     await model.create({
@@ -124,16 +146,26 @@ async function applyChange(change: Change): Promise<PushResult> {
 
   if (!SUPPORTS_UPDATED_AT.has(change.entity)) {
     // No updatedAt to compare (e.g. InspectionSectionSkip) - treat as
-    // immutable once created rather than guessing at conflict resolution.
+    // immutable once created, UNLESS this is actually a natural-key
+    // resurrection/replacement (a fresh sign-off superseding the old one),
+    // which does need the new initials/technician/timestamp written.
+    if (naturalKeyFields) {
+      await model.update({ where: { id: existing.id }, data });
+    }
     return { entity: change.entity, id: change.id, result: "applied" };
   }
 
   const existingUpdatedAt = (existing as { updatedAt: Date }).updatedAt;
   const incomingUpdatedAt = new Date(change.updatedAt);
-  if (incomingUpdatedAt > existingUpdatedAt) {
+  // A natural-key match found via the fallback above is, by definition, a
+  // soft-deleted row the client no longer knows the id of (its own copy was
+  // hard-deleted locally) - always resurrect it rather than running it
+  // through last-write-wins, which would compare against a stale
+  // updatedAt and could wrongly report a conflict.
+  if (incomingUpdatedAt > existingUpdatedAt || (naturalKeyFields && existing.id !== change.id)) {
     await model.update({
-      where: { id: change.id },
-      data: { ...data, updatedAt: incomingUpdatedAt },
+      where: { id: existing.id },
+      data: { ...data, updatedAt: incomingUpdatedAt, ...(SUPPORTS_SOFT_DELETE.has(change.entity) ? { deletedAt: null } : {}) },
     });
     return { entity: change.entity, id: change.id, result: "applied" };
   }
