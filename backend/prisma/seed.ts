@@ -1,7 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { v4 as uuidv4 } from "uuid";
 import bcrypt from "bcryptjs";
-import { DEFAULT_PEST_TYPES } from "@pest-app/shared";
 import { storage } from "../src/lib/storage";
 
 const prisma = new PrismaClient();
@@ -56,14 +55,6 @@ async function main() {
       phone: "555-0101",
     },
   });
-
-  for (const pt of DEFAULT_PEST_TYPES) {
-    await prisma.pestType.upsert({
-      where: { name: pt.name },
-      update: {},
-      create: { id: uuidv4(), name: pt.name, category: pt.category },
-    });
-  }
 
   const existingCustomer = await prisma.customer.findFirst({ where: { name: "Jordan Miles" } });
   const customer =
@@ -448,7 +439,6 @@ async function main() {
   });
   let demoInspectionId: string | null = existingDemoInspection?.id ?? null;
   if (!existingDemoInspection) {
-    const roach = await prisma.pestType.findUnique({ where: { name: "German Cockroach" } });
     const now = new Date();
     const inspection = await prisma.inspection.create({
       data: {
@@ -469,13 +459,10 @@ async function main() {
       data: {
         id: uuidv4(),
         inspectionId: inspection.id,
-        pestTypeId: roach?.id ?? null,
         areaLocation: "Kitchen - under sink",
-        evidenceTypes: JSON.stringify(["Droppings", "Live pest sighting"]),
         severity: "HIGH",
-        riskFactors: JSON.stringify(["Moisture/humidity issue"]),
-        entryPoints: JSON.stringify(["Pipe chase"]),
-        description: "Active roach activity under kitchen sink, moisture present from a slow leak.",
+        description:
+          "Active German cockroach activity under kitchen sink - droppings and a live sighting observed. Moisture present from a slow leak, likely the entry/risk factor. Recommend sealing pipe chase and addressing the leak.",
       },
     });
 
@@ -483,13 +470,10 @@ async function main() {
       data: {
         id: uuidv4(),
         inspectionId: inspection.id,
-        pestTypeOther: "Mouse",
         areaLocation: "Garage foundation vent",
-        evidenceTypes: JSON.stringify(["Gnaw marks"]),
         severity: "MEDIUM",
-        riskFactors: JSON.stringify([]),
-        entryPoints: JSON.stringify(["Foundation vent"]),
-        description: "Gap around garage foundation vent screen; possible rodent entry point.",
+        description:
+          "Gnaw marks consistent with mouse activity near the garage foundation vent. Gap around the vent screen is a likely rodent entry point - recommend screening it.",
         floorPlanX: 0.63,
         floorPlanY: 0.5,
         siteMapArrowStartX: 0.8,

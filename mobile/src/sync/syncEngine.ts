@@ -5,6 +5,7 @@ import {
   getPendingChecklistResponses,
   getPendingFindings,
   getPendingInspections,
+  getPendingInspectionSectionSkips,
   getPendingRecommendations,
   getPendingTreatments,
   getUploadableChecklistResponsePhotos,
@@ -19,6 +20,7 @@ import type {
   LocalChecklistResponse,
   LocalFinding,
   LocalInspection,
+  LocalInspectionSectionSkip,
   LocalRecommendation,
   LocalTreatmentProduct,
   LocalTreatmentRecord,
@@ -68,14 +70,9 @@ function findingToChange(f: LocalFinding): SyncChangePayload {
     updatedAt: f.updatedAt,
     data: {
       inspectionId: f.inspectionId,
-      pestTypeId: f.pestTypeId,
-      pestTypeOther: f.pestTypeOther,
       areaLocation: f.areaLocation,
       locationDetail: f.locationDetail,
-      evidenceTypes: f.evidenceTypes,
       severity: f.severity,
-      riskFactors: f.riskFactors,
-      entryPoints: f.entryPoints,
       description: f.description,
       lat: f.lat,
       lng: f.lng,
@@ -160,15 +157,32 @@ function checklistResponseToChange(c: LocalChecklistResponse): SyncChangePayload
   };
 }
 
+function sectionSkipToChange(s: LocalInspectionSectionSkip): SyncChangePayload {
+  return {
+    entity: "InspectionSectionSkip",
+    op: "create",
+    id: s.id,
+    updatedAt: s.createdAt,
+    data: {
+      inspectionId: s.inspectionId,
+      category: s.category,
+      technicianId: s.technicianId,
+      initials: s.initials,
+      confirmedAt: s.confirmedAt,
+    },
+  };
+}
+
 const TABLE_BY_ENTITY: Record<
   string,
-  "inspections" | "findings" | "recommendations" | "treatment_records" | "checklist_responses"
+  "inspections" | "findings" | "recommendations" | "treatment_records" | "checklist_responses" | "inspection_section_skips"
 > = {
   Inspection: "inspections",
   Finding: "findings",
   Recommendation: "recommendations",
   TreatmentRecord: "treatment_records",
   ChecklistResponse: "checklist_responses",
+  InspectionSectionSkip: "inspection_section_skips",
 };
 
 export interface SyncResult {
@@ -195,6 +209,7 @@ export async function runSync(): Promise<SyncResult> {
       ...getPendingRecommendations().map(recommendationToChange),
       ...getPendingTreatments().flatMap(treatmentToChanges),
       ...getPendingChecklistResponses().map(checklistResponseToChange),
+      ...getPendingInspectionSectionSkips().map(sectionSkipToChange),
     ];
 
     if (changes.length > 0) {

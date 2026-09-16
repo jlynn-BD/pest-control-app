@@ -188,11 +188,7 @@ export interface ReportSiteMapPanel {
 export interface ReportFinding {
   areaLocation: string;
   locationDetail: string | null;
-  pestTypeName: string | null;
   severity: string;
-  evidenceTypes: string[];
-  riskFactors: string[];
-  entryPoints: string[];
   description: string | null;
   photoPaths: string[];
 }
@@ -212,6 +208,17 @@ export interface ReportTreatment {
   appliedAt: string;
   safetyInstructions: string | null;
   products: { productName: string; quantity: number; unit: string; applicationMethod: string | null }[];
+}
+
+// Matt's accountability ask: a per-inspection audit entry for every
+// conditional wizard step (Second/Third Floor, Basement, Crawl Space) the
+// technician marked not present, with who signed off and when - see
+// InspectionSectionSkip in schema.prisma.
+export interface ReportSkippedSection {
+  category: string;
+  technicianName: string;
+  initials: string;
+  confirmedAt: string;
 }
 
 export interface ReportSignature {
@@ -234,6 +241,7 @@ export interface ReportData {
   followUpDate: string | null;
   siteMapPanels: ReportSiteMapPanel[];
   checklistSections: ReportChecklistSection[];
+  skippedSections: ReportSkippedSection[];
   findings: ReportFinding[];
   recommendations: ReportRecommendation[];
   treatments: ReportTreatment[];
@@ -397,6 +405,20 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
           </View>
         ))}
 
+        {data.skippedSections.length > 0 ? (
+          <View style={styles.section} wrap={false}>
+            <Text style={styles.sectionTitle}>Skipped Sections</Text>
+            {data.skippedSections.map((s, i) => (
+              <View key={i} style={styles.checklistRow}>
+                <Text style={styles.checklistPrompt}>{CHECKLIST_CATEGORY_LABEL[s.category] ?? s.category} — not present at this property</Text>
+                <Text style={styles.cardMeta}>
+                  Confirmed by {s.technicianName} ({s.initials}) · {new Date(s.confirmedAt).toLocaleString()}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Findings ({data.findings.length})</Text>
           {data.findings.length === 0 ? <Text style={styles.cardBody}>No findings recorded.</Text> : null}
@@ -409,10 +431,6 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
                 </Text>
                 <Text style={severityStyle(f.severity)}>{f.severity}</Text>
               </View>
-              {f.pestTypeName ? <Text style={styles.cardMeta}>Pest: {f.pestTypeName}</Text> : null}
-              {f.evidenceTypes.length > 0 ? <Text style={styles.cardMeta}>Evidence: {f.evidenceTypes.join(", ")}</Text> : null}
-              {f.riskFactors.length > 0 ? <Text style={styles.cardMeta}>Risk factors: {f.riskFactors.join(", ")}</Text> : null}
-              {f.entryPoints.length > 0 ? <Text style={styles.cardMeta}>Entry points: {f.entryPoints.join(", ")}</Text> : null}
               {f.description ? <Text style={styles.cardBody}>{f.description}</Text> : null}
               {f.photoPaths.length > 0 ? (
                 <View style={styles.photoRow}>

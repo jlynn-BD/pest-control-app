@@ -8,7 +8,7 @@ export const syncRouter = Router();
 syncRouter.use(requireAuth);
 
 const changeSchema = z.object({
-  entity: z.enum(["Inspection", "Finding", "Recommendation", "TreatmentRecord", "TreatmentProduct", "ChecklistResponse"]),
+  entity: z.enum(["Inspection", "Finding", "Recommendation", "TreatmentRecord", "TreatmentProduct", "ChecklistResponse", "InspectionSectionSkip"]),
   op: z.enum(["create", "update", "delete"]),
   id: z.string(),
   data: z.record(z.string(), z.unknown()).optional(),
@@ -30,6 +30,7 @@ const DATE_FIELDS: Record<string, string[]> = {
   TreatmentRecord: ["appliedAt"],
   TreatmentProduct: [],
   ChecklistResponse: [],
+  InspectionSectionSkip: ["confirmedAt"],
 };
 
 // Fields the client is allowed to set directly; anything else in `data` is
@@ -40,8 +41,7 @@ const ALLOWED_FIELDS: Record<string, string[]> = {
     "status", "scheduledAt", "startedAt", "completedAt", "generalNotes", "weatherConditions", "checklistCategories",
   ],
   Finding: [
-    "inspectionId", "pestTypeId", "pestTypeOther", "areaLocation", "locationDetail",
-    "evidenceTypes", "severity", "riskFactors", "entryPoints", "description", "lat", "lng",
+    "inspectionId", "areaLocation", "locationDetail", "severity", "description", "lat", "lng",
     "floorPlanX", "floorPlanY", "siteMapArrowStartX", "siteMapArrowStartY", "siteMapLevel",
   ],
   Recommendation: [
@@ -57,6 +57,7 @@ const ALLOWED_FIELDS: Record<string, string[]> = {
     "quantity", "unit", "concentration", "applicationMethod",
   ],
   ChecklistResponse: ["inspectionId", "templateItemId", "status", "notes"],
+  InspectionSectionSkip: ["inspectionId", "category", "technicianId", "initials", "confirmedAt"],
 };
 
 function sanitize(entity: string, data: Record<string, unknown>): Record<string, unknown> {
@@ -97,6 +98,8 @@ function getModel(entity: string): any {
       return prisma.treatmentProduct;
     case "ChecklistResponse":
       return prisma.checklistResponse;
+    case "InspectionSectionSkip":
+      return prisma.inspectionSectionSkip;
     default:
       return null;
   }
@@ -104,6 +107,9 @@ function getModel(entity: string): any {
 
 const SUPPORTS_SOFT_DELETE = new Set(["Inspection", "Finding", "Recommendation", "TreatmentRecord", "ChecklistResponse"]);
 const SUPPORTS_UPDATED_AT = new Set(["Inspection", "Finding", "Recommendation", "TreatmentRecord", "ChecklistResponse"]);
+// InspectionSectionSkip is immutable once created, same as TreatmentProduct -
+// an accountability record shouldn't be silently overwritten by a later
+// "update," only removed (undo) and re-created fresh.
 
 async function applyChange(change: Change): Promise<PushResult> {
   const model = getModel(change.entity);
@@ -171,6 +177,7 @@ const ENTITY_QUERIES: Record<string, (since: Date) => Promise<unknown[]>> = {
   Recommendation: (since) => prisma.recommendation.findMany({ where: { updatedAt: { gt: since } } }),
   TreatmentRecord: (since) => prisma.treatmentRecord.findMany({ where: { updatedAt: { gt: since } } }),
   ChecklistResponse: (since) => prisma.checklistResponse.findMany({ where: { updatedAt: { gt: since } } }),
+  InspectionSectionSkip: (since) => prisma.inspectionSectionSkip.findMany({ where: { createdAt: { gt: since } } }),
 };
 
 syncRouter.get(

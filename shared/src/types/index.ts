@@ -206,22 +206,15 @@ export interface Inspection extends BaseEntity {
   checklistCategories?: string | null;
 }
 
-export interface PestType extends BaseEntity {
-  name: string;
-  category?: string | null;
-  active: boolean;
-}
-
+// Evidence observed, entry points, and risk factors are described in
+// `description` (free-text Notes) rather than structured fields - Matt's
+// ask: a finding shouldn't revolve around identifying a pest or force
+// clicking through checkbox lists. See FINDING_NOTES_GUIDANCE.
 export interface Finding extends BaseEntity {
   inspectionId: string;
-  pestTypeId?: string | null;
-  pestTypeOther?: string | null;
   areaLocation: string;
   locationDetail?: string | null;
-  evidenceTypes: string[];
   severity: Severity;
-  riskFactors: string[];
-  entryPoints: string[];
   description?: string | null;
   lat?: number | null;
   lng?: number | null;

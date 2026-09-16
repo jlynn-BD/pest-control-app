@@ -16,7 +16,6 @@ import { recommendationsOnInspectionRouter, recommendationsRouter } from "./modu
 import { treatmentsOnInspectionRouter, treatmentsRouter } from "./modules/treatments/routes";
 import { signaturesOnInspectionRouter } from "./modules/signatures/routes";
 import { followUpsOnInspectionRouter, followUpsRouter } from "./modules/followups/routes";
-import { pestTypesRouter } from "./modules/pest-types/routes";
 import { mediaRouter } from "./modules/media/routes";
 import { syncRouter } from "./modules/sync/routes";
 import { reportsRouter } from "./modules/reports/routes";
@@ -50,7 +49,6 @@ app.use("/api/checklist-responses", checklistResponsesRouter);
 app.use("/api/recommendations", recommendationsRouter);
 app.use("/api/treatments", treatmentsRouter);
 app.use("/api/followups", followUpsRouter);
-app.use("/api/pest-types", pestTypesRouter);
 app.use("/api/media", mediaRouter);
 app.use("/api/sync", syncRouter);
 

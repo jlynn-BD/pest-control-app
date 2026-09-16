@@ -26,7 +26,7 @@ async function buildReportData(inspectionId: string): Promise<ReportData> {
       property: true,
       customer: true,
       technician: true,
-      findings: { where: { deletedAt: null }, include: { photos: true, pestType: true } },
+      findings: { where: { deletedAt: null }, include: { photos: true } },
       recommendations: { where: { deletedAt: null } },
       treatmentRecords: { where: { deletedAt: null }, include: { products: true } },
       signatures: true,
@@ -35,6 +35,7 @@ async function buildReportData(inspectionId: string): Promise<ReportData> {
         where: { deletedAt: null },
         include: { templateItem: { include: { section: true } } },
       },
+      sectionSkips: { include: { technician: true } },
     },
   });
   if (!inspection) throw new HttpError(404, "Inspection not found");
@@ -121,14 +122,16 @@ async function buildReportData(inspectionId: string): Promise<ReportData> {
     followUpDate: inspection.followUpsFrom[0]?.scheduledDate?.toISOString() ?? null,
     siteMapPanels,
     checklistSections,
+    skippedSections: inspection.sectionSkips.map((s) => ({
+      category: s.category,
+      technicianName: `${s.technician.firstName} ${s.technician.lastName}`,
+      initials: s.initials,
+      confirmedAt: s.confirmedAt.toISOString(),
+    })),
     findings: inspection.findings.map((f) => ({
       areaLocation: f.areaLocation,
       locationDetail: f.locationDetail,
-      pestTypeName: f.pestType?.name ?? f.pestTypeOther,
       severity: f.severity,
-      evidenceTypes: JSON.parse(f.evidenceTypes) as string[],
-      riskFactors: JSON.parse(f.riskFactors) as string[],
-      entryPoints: f.entryPoints ? (JSON.parse(f.entryPoints) as string[]) : [],
       description: f.description,
       photoPaths: f.photos.map((p) => mediaUrlToAbsolutePath(p.fileUrl)),
     })),

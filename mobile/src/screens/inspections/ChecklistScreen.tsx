@@ -31,7 +31,7 @@ export default function ChecklistScreen({ route, navigation }: Props) {
       }
       const property = getCachedProperty(detail.inspection.propertyId);
       const sections = getCachedTemplateSections(detail.inspection.templateId);
-      const status = getWizardStepStatus(sections, detail.checklistResponses, property ?? undefined);
+      const status = getWizardStepStatus(sections, detail.checklistResponses, property ?? undefined, detail.sectionSkips);
       setAllowedCategories(status.steps.slice(0, status.furthestUnlockedIndex + 1).map((s) => s.category));
     }, [inspectionId])
   );

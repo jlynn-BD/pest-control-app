@@ -1,13 +1,13 @@
-import { ENTRY_POINT_OPTIONS, EVIDENCE_TYPE_OPTIONS, RISK_FACTOR_OPTIONS, Severity } from "@pest-app/shared";
+import { FINDING_NOTES_GUIDANCE, Severity } from "@pest-app/shared";
 import React, { useMemo, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
-import { getCachedPestTypes, getCachedTemplateSections } from "../db/cache";
+import { getCachedTemplateSections } from "../db/cache";
 import { addLocalFinding, addLocalFindingPhoto, deleteLocalFinding, getLocalInspectionDetail, updateLocalFinding } from "../db/inspectionStore";
 import { deleteFinding } from "../api/inspections";
 import { capturePhoto } from "../lib/photo";
 import { getCurrentCoords } from "../lib/location";
 import { CHECKLIST_CATEGORY_SHORT_LABEL, findChecklistResponseSummary, listChecklistResponseSummaries } from "../lib/checklist";
-import { ChipMultiSelect, SegmentedControl } from "./ChipMultiSelect";
+import { SegmentedControl } from "./ChipMultiSelect";
 import { Badge, Field, PrimaryButton, colors } from "./ui";
 
 const SEVERITY_OPTIONS = [Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL];
@@ -49,7 +49,6 @@ export function FindingEditorForm({
   onCancel,
 }: FindingEditorFormProps) {
   const hasSiteMapPosition = arrowStartX != null && arrowStartY != null && arrowEndX != null && arrowEndY != null;
-  const pestTypes = useMemo(() => getCachedPestTypes(), []);
 
   // Editing an existing marker/finding - Tate's feedback was that markers
   // placed by mistake or needing correction had no way to be fixed.
@@ -90,14 +89,9 @@ export function FindingEditorForm({
   const [showChecklistPicker, setShowChecklistPicker] = useState(false);
   const [copiedFromChecklistPrompt, setCopiedFromChecklistPrompt] = useState<string | null>(null);
 
-  const [pestTypeId, setPestTypeId] = useState<string | null>(existingFinding?.pestTypeId ?? null);
-  const [pestTypeOther, setPestTypeOther] = useState(existingFinding?.pestTypeOther ?? "");
   const [areaLocation, setAreaLocation] = useState(existingFinding?.areaLocation ?? checklistSummary?.prompt ?? "");
   const [locationDetail, setLocationDetail] = useState(existingFinding?.locationDetail ?? "");
-  const [evidenceTypes, setEvidenceTypes] = useState<string[]>(existingFinding ? JSON.parse(existingFinding.evidenceTypes) : []);
   const [severity, setSeverity] = useState<string>(existingFinding?.severity ?? Severity.MEDIUM);
-  const [riskFactors, setRiskFactors] = useState<string[]>(existingFinding ? JSON.parse(existingFinding.riskFactors) : []);
-  const [entryPoints, setEntryPoints] = useState<string[]>(existingFinding ? JSON.parse(existingFinding.entryPoints) : []);
   const [description, setDescription] = useState(existingFinding?.description ?? checklistSummary?.notes ?? "");
   const [photos, setPhotos] = useState<string[]>(existingPhotoUris.length > 0 ? existingPhotoUris : checklistSummary?.photos.map((p) => p.localUri) ?? []);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
@@ -144,14 +138,9 @@ export function FindingEditorForm({
       return;
     }
     const input = {
-      pestTypeId,
-      pestTypeOther: pestTypeOther.trim() || null,
       areaLocation: areaLocation.trim(),
       locationDetail: locationDetail.trim() || null,
-      evidenceTypes,
       severity,
-      riskFactors,
-      entryPoints,
       description: description.trim() || null,
       lat: coords?.lat ?? null,
       lng: coords?.lng ?? null,
@@ -224,29 +213,13 @@ export function FindingEditorForm({
         </>
       ) : null}
 
-      <Text style={styles.label}>Pest type</Text>
-      <View style={styles.pestRow}>
-        {pestTypes.slice(0, 8).map((pt) => (
-          <Pressable
-            key={pt.id}
-            onPress={() => setPestTypeId(pt.id === pestTypeId ? null : pt.id)}
-            style={[styles.pestChip, pestTypeId === pt.id && styles.pestChipActive]}
-          >
-            <Text style={[styles.pestChipText, pestTypeId === pt.id && styles.pestChipTextActive]}>{pt.name}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <Field label="Other / specify pest" value={pestTypeOther} onChangeText={setPestTypeOther} placeholder="If not listed above" />
-
       <Field label="Area / location" value={areaLocation} onChangeText={setAreaLocation} placeholder="e.g. Kitchen - under sink" />
       <Field label="Location detail" value={locationDetail} onChangeText={setLocationDetail} placeholder="Optional detail" />
 
-      <ChipMultiSelect label="Evidence observed" options={EVIDENCE_TYPE_OPTIONS} selected={evidenceTypes} onChange={setEvidenceTypes} />
       <SegmentedControl label="Severity" options={SEVERITY_OPTIONS} value={severity} onChange={setSeverity} />
-      <ChipMultiSelect label="Risk factors" options={RISK_FACTOR_OPTIONS} selected={riskFactors} onChange={setRiskFactors} />
-      <ChipMultiSelect label="Entry points" options={ENTRY_POINT_OPTIONS} selected={entryPoints} onChange={setEntryPoints} />
 
-      <Field label="Description" value={description} onChangeText={setDescription} multiline numberOfLines={3} />
+      <Text style={styles.notesGuidance}>{FINDING_NOTES_GUIDANCE}</Text>
+      <Field label="Notes" value={description} onChangeText={setDescription} multiline numberOfLines={4} />
 
       <Text style={styles.label}>Location</Text>
       <Pressable onPress={handleCaptureLocation} style={styles.secondaryButton}>
@@ -312,11 +285,7 @@ const styles = StyleSheet.create({
   checklistPickerNotes: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   dismissLink: { color: colors.primary, fontWeight: "600", fontSize: 13, marginBottom: 12 },
   label: { fontSize: 13, color: colors.textMuted, marginBottom: 8, fontWeight: "500" },
-  pestRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 },
-  pestChip: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
-  pestChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  pestChipText: { fontSize: 13, color: colors.text },
-  pestChipTextActive: { color: "#fff", fontWeight: "600" },
+  notesGuidance: { fontSize: 12, color: colors.textMuted, marginBottom: 8, fontStyle: "italic" },
   secondaryButton: {
     borderWidth: 1,
     borderColor: colors.border,

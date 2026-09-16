@@ -141,7 +141,6 @@ export default function InspectionDetailScreen({ route }: Props) {
               tone={finding.severity === "CRITICAL" || finding.severity === "HIGH" ? "danger" : "warning"}
             />
           </View>
-          {finding.pestTypeOther ? <Text style={styles.meta}>{finding.pestTypeOther}</Text> : null}
           {finding.description ? <Text style={styles.body}>{finding.description}</Text> : null}
           <Text style={styles.meta}>{finding.photos.length} photo(s)</Text>
         </Card>

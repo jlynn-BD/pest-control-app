@@ -53,12 +53,6 @@ export interface LocalTemplateItem {
   required: number;
 }
 
-export interface LocalPestType {
-  id: string;
-  name: string;
-  category: string | null;
-}
-
 export interface LocalInspection {
   id: string;
   propertyId: string;
@@ -80,14 +74,9 @@ export interface LocalInspection {
 export interface LocalFinding {
   id: string;
   inspectionId: string;
-  pestTypeId: string | null;
-  pestTypeOther: string | null;
   areaLocation: string;
   locationDetail: string | null;
-  evidenceTypes: string; // JSON string[]
   severity: string;
-  riskFactors: string; // JSON string[]
-  entryPoints: string; // JSON string[]
   description: string | null;
   lat: number | null;
   lng: number | null;
@@ -188,5 +177,16 @@ export interface LocalChecklistResponsePhoto {
   caption: string | null;
   takenAt: string | null;
   sortOrder: number;
+  syncStatus: "pending" | "synced";
+}
+
+export interface LocalInspectionSectionSkip {
+  id: string;
+  inspectionId: string;
+  category: string;
+  technicianId: string;
+  initials: string;
+  confirmedAt: string;
+  createdAt: string;
   syncStatus: "pending" | "synced";
 }

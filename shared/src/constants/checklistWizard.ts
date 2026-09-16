@@ -89,6 +89,13 @@ export interface PropertyApplicabilityLike {
   hasBasement?: boolean | number | null;
   hasCrawlspace?: boolean | number | null;
 }
+// One per (inspection, category) - the technician's personally-attested
+// sign-off that this specific inspection found the area not present (Matt's
+// accountability ask: a stale property-level flag from a PRIOR inspection
+// is never enough on its own, see getWizardStepStatus below).
+export interface WizardSectionSkipLike {
+  category: string;
+}
 
 export interface WizardStepStatus {
   category: WizardStepCategory;
@@ -116,9 +123,11 @@ export interface WizardStatus {
 export function getWizardStepStatus(
   sections: WizardSectionLike[],
   responses: WizardResponseLike[],
-  applicability?: PropertyApplicabilityLike | null
+  applicability?: PropertyApplicabilityLike | null,
+  sectionSkips?: WizardSectionSkipLike[] | null
 ): WizardStatus {
   const answeredItemIds = new Set(responses.map((r) => r.templateItemId));
+  const skippedCategories = new Set((sectionSkips ?? []).map((s) => s.category));
   const steps: WizardStepStatus[] = [];
   let blocked = false;
   let furthestUnlockedIndex = 0;
@@ -139,7 +148,13 @@ export function getWizardStepStatus(
     // never defined any for that area) is vacuously resolved rather than
     // permanently blocking the wizard on nothing to answer.
     const answeredEnough = itemsTotal === 0 || itemsAnswered >= itemsTotal;
-    const resolved = def.required ? answeredEnough : applicable === false || answeredEnough;
+    // A conditional step being marked not-applicable on the PROPERTY isn't
+    // enough by itself - Matt's accountability ask requires the technician
+    // on THIS inspection to have personally signed off (see
+    // WizardSectionSkipLike). A property flag carried over from a prior
+    // inspection with no skip record yet for this one leaves the step
+    // unresolved until re-confirmed.
+    const resolved = def.required ? answeredEnough : (applicable === false && skippedCategories.has(def.category)) || answeredEnough;
 
     steps.push({ category: def.category, label: def.label, shortLabel: def.shortLabel, required: def.required, applicable, resolved, itemsTotal, itemsAnswered });
 

@@ -8,26 +8,10 @@ import { asyncHandler, HttpError } from "../../middleware/error-handler";
 import { requireAuth } from "../../middleware/auth";
 import { upload } from "../../middleware/upload";
 
-function serializeFinding<T extends { evidenceTypes: string; riskFactors: string; entryPoints: string | null }>(
-  finding: T
-) {
-  return {
-    ...finding,
-    evidenceTypes: JSON.parse(finding.evidenceTypes) as string[],
-    riskFactors: JSON.parse(finding.riskFactors) as string[],
-    entryPoints: finding.entryPoints ? (JSON.parse(finding.entryPoints) as string[]) : [],
-  };
-}
-
 const findingSchema = z.object({
-  pestTypeId: z.string().optional().nullable(),
-  pestTypeOther: z.string().optional().nullable(),
   areaLocation: z.string().min(1),
   locationDetail: z.string().optional().nullable(),
-  evidenceTypes: z.array(z.string()).default([]),
   severity: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
-  riskFactors: z.array(z.string()).default([]),
-  entryPoints: z.array(z.string()).default([]),
   description: z.string().optional().nullable(),
   lat: z.number().optional().nullable(),
   lng: z.number().optional().nullable(),
@@ -47,10 +31,10 @@ findingsOnInspectionRouter.get(
   asyncHandler(async (req, res) => {
     const findings = await prisma.finding.findMany({
       where: { inspectionId: req.params.inspectionId, deletedAt: null },
-      include: { photos: true, pestType: true },
+      include: { photos: true },
       orderBy: { createdAt: "asc" },
     });
-    res.json(findings.map(serializeFinding));
+    res.json(findings);
   })
 );
 
@@ -62,14 +46,9 @@ findingsOnInspectionRouter.post(
       data: {
         id: generateId(),
         inspectionId: req.params.inspectionId,
-        pestTypeId: body.pestTypeId,
-        pestTypeOther: body.pestTypeOther,
         areaLocation: body.areaLocation,
         locationDetail: body.locationDetail,
-        evidenceTypes: JSON.stringify(body.evidenceTypes),
         severity: body.severity,
-        riskFactors: JSON.stringify(body.riskFactors),
-        entryPoints: JSON.stringify(body.entryPoints),
         description: body.description,
         lat: body.lat,
         lng: body.lng,
@@ -79,9 +58,9 @@ findingsOnInspectionRouter.post(
         siteMapArrowStartY: body.siteMapArrowStartY,
         siteMapLevel: body.siteMapLevel,
       },
-      include: { photos: true, pestType: true },
+      include: { photos: true },
     });
-    res.status(201).json(serializeFinding(finding));
+    res.status(201).json(finding);
   })
 );
 
@@ -94,10 +73,10 @@ findingsRouter.get(
   asyncHandler(async (req, res) => {
     const finding = await prisma.finding.findFirst({
       where: { id: req.params.id, deletedAt: null },
-      include: { photos: true, pestType: true },
+      include: { photos: true },
     });
     if (!finding) throw new HttpError(404, "Finding not found");
-    res.json(serializeFinding(finding));
+    res.json(finding);
   })
 );
 
@@ -105,16 +84,12 @@ findingsRouter.patch(
   "/:id",
   asyncHandler(async (req, res) => {
     const body = findingSchema.partial().parse(req.body);
-    const data: Record<string, unknown> = { ...body };
-    if (body.evidenceTypes) data.evidenceTypes = JSON.stringify(body.evidenceTypes);
-    if (body.riskFactors) data.riskFactors = JSON.stringify(body.riskFactors);
-    if (body.entryPoints) data.entryPoints = JSON.stringify(body.entryPoints);
     const finding = await prisma.finding.update({
       where: { id: req.params.id },
-      data,
-      include: { photos: true, pestType: true },
+      data: body,
+      include: { photos: true },
     });
-    res.json(serializeFinding(finding));
+    res.json(finding);
   })
 );
 

@@ -4,7 +4,7 @@ import { getDb, isLocalDbAvailable } from "./database";
 import { apiRequest } from "../api/client";
 import { API_BASE_URL } from "../api/config";
 import { tokenStore } from "../api/tokenStore";
-import type { LocalCustomer, LocalPestType, LocalProperty, LocalTemplate, LocalTemplateItem, LocalTemplateSection } from "./types";
+import type { LocalCustomer, LocalProperty, LocalTemplate, LocalTemplateItem, LocalTemplateSection } from "./types";
 
 interface RemoteCustomer {
   id: string;
@@ -47,12 +47,6 @@ interface RemoteTemplate {
     items: Array<{ id: string; sectionId: string; prompt: string; itemType: string; sortOrder: number; required: boolean }>;
   }>;
 }
-interface RemotePestType {
-  id: string;
-  name: string;
-  category: string | null;
-}
-
 // Downloads a property's site map image into a stable local cache path so
 // the drawing screen still has something to render offline. Best-effort:
 // a failed download just leaves the property without a local copy, and the
@@ -73,17 +67,16 @@ async function cacheSiteMapImage(propertyId: string, remoteUrl: string): Promise
   }
 }
 
-// Pulls reference data (customers/properties/templates/pest types) down to
-// local storage so a technician can start and complete an inspection with
-// zero connectivity, as long as this has run at least once while online.
+// Pulls reference data (customers/properties/templates) down to local
+// storage so a technician can start and complete an inspection with zero
+// connectivity, as long as this has run at least once while online.
 export async function primeCache(): Promise<void> {
   if (!isLocalDbAvailable()) return;
   const db = getDb();
 
-  const [customers, templates, pestTypes] = await Promise.all([
+  const [customers, templates] = await Promise.all([
     apiRequest<RemoteCustomer[]>("/api/customers"),
     apiRequest<RemoteTemplate[]>("/api/templates"),
-    apiRequest<RemotePestType[]>("/api/pest-types"),
   ]);
 
   // Downloads happen outside the sync transaction below (SQLite transactions
@@ -160,10 +153,6 @@ export async function primeCache(): Promise<void> {
         }
       }
     }
-
-    for (const pt of pestTypes) {
-      db.runSync(`INSERT OR REPLACE INTO local_pest_types (id, name, category) VALUES (?, ?, ?)`, [pt.id, pt.name, pt.category]);
-    }
   });
 }
 
@@ -233,7 +222,3 @@ export function getCachedTemplateSections(templateId: string): (LocalTemplateSec
   }));
 }
 
-export function getCachedPestTypes(): LocalPestType[] {
-  if (!isLocalDbAvailable()) return [];
-  return getDb().getAllSync<LocalPestType>(`SELECT * FROM local_pest_types ORDER BY name ASC`);
-}

@@ -37,7 +37,7 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
   // full section list crossed with the property's applicability flags.
   const templateSections = detail.inspection.templateId ? getCachedTemplateSections(detail.inspection.templateId) : [];
   const wizardStatus = detail.inspection.templateId
-    ? getWizardStepStatus(templateSections, detail.checklistResponses, property ?? undefined)
+    ? getWizardStepStatus(templateSections, detail.checklistResponses, property ?? undefined, detail.sectionSkips)
     : null;
   const resolvedStepCount = wizardStatus ? wizardStatus.steps.filter((s) => s.resolved).length : 0;
   const checklistResolved = !detail.inspection.templateId || Boolean(wizardStatus?.canComplete);

@@ -52,18 +52,20 @@ CREATE TABLE IF NOT EXISTS local_template_sections (
 CREATE TABLE IF NOT EXISTS local_template_items (
   id TEXT PRIMARY KEY, sectionId TEXT, prompt TEXT, itemType TEXT, sortOrder INTEGER, required INTEGER
 );
-CREATE TABLE IF NOT EXISTS local_pest_types (
-  id TEXT PRIMARY KEY, name TEXT, category TEXT
-);
 CREATE TABLE IF NOT EXISTS inspections (
   id TEXT PRIMARY KEY, propertyId TEXT, customerId TEXT, templateId TEXT, technicianId TEXT,
   status TEXT, scheduledAt TEXT, startedAt TEXT, completedAt TEXT, generalNotes TEXT, weatherConditions TEXT,
   checklistCategories TEXT,
   createdAt TEXT, updatedAt TEXT, syncStatus TEXT DEFAULT 'pending'
 );
+-- Evidence/entry points/risk factors and pest type are no longer separate
+-- structured fields (Matt's ask - see FINDING_NOTES_GUIDANCE in shared) so
+-- new local DBs don't get those columns; an existing local DB from before
+-- this change simply carries them along unused, same one-directional
+-- pattern as every other column change here (only ever ADD, never DROP).
 CREATE TABLE IF NOT EXISTS findings (
-  id TEXT PRIMARY KEY, inspectionId TEXT, pestTypeId TEXT, pestTypeOther TEXT, areaLocation TEXT,
-  locationDetail TEXT, evidenceTypes TEXT, severity TEXT, riskFactors TEXT, entryPoints TEXT,
+  id TEXT PRIMARY KEY, inspectionId TEXT, areaLocation TEXT,
+  locationDetail TEXT, severity TEXT,
   description TEXT, lat REAL, lng REAL,
   floorPlanX REAL, floorPlanY REAL, siteMapArrowStartX REAL, siteMapArrowStartY REAL, siteMapLevel TEXT,
   createdAt TEXT, updatedAt TEXT, syncStatus TEXT DEFAULT 'pending'
@@ -97,6 +99,10 @@ CREATE TABLE IF NOT EXISTS checklist_responses (
 CREATE TABLE IF NOT EXISTS checklist_response_photos (
   id TEXT PRIMARY KEY, checklistResponseId TEXT, localUri TEXT, remoteUrl TEXT, caption TEXT, takenAt TEXT,
   sortOrder INTEGER, syncStatus TEXT DEFAULT 'pending'
+);
+CREATE TABLE IF NOT EXISTS inspection_section_skips (
+  id TEXT PRIMARY KEY, inspectionId TEXT, category TEXT, technicianId TEXT, initials TEXT,
+  confirmedAt TEXT, createdAt TEXT, syncStatus TEXT DEFAULT 'pending'
 );
 CREATE TABLE IF NOT EXISTS sync_meta (
   key TEXT PRIMARY KEY, value TEXT

@@ -13,7 +13,7 @@ const fullInclude = {
   customer: true,
   template: { include: { sections: { include: { items: true }, orderBy: { sortOrder: "asc" as const } } } },
   technician: { select: { id: true, firstName: true, lastName: true } },
-  findings: { include: { photos: true, pestType: true }, where: { deletedAt: null } },
+  findings: { include: { photos: true }, where: { deletedAt: null } },
   recommendations: { where: { deletedAt: null } },
   treatmentRecords: { include: { products: true }, where: { deletedAt: null } },
   signatures: true,

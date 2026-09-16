@@ -41,6 +41,7 @@ model User {
   generatedReports     Report[]
   ownedRecommendations Recommendation[]
   createdEstimates     Estimate[]
+  sectionSkips         InspectionSectionSkip[]
 }
 
 model RefreshToken {
@@ -275,32 +276,52 @@ model Inspection {
   followUpFor        FollowUp?           @relation("FollowUpInspection")
   checklistResponses ChecklistResponse[]
   estimates          Estimate[]
+  sectionSkips       InspectionSectionSkip[]
 
   @@index([propertyId])
   @@index([technicianId])
   @@index([status])
 }
 
-model PestType {
-  id       String  @id
-  name     String  @unique
-  category String?
-  active   Boolean @default(true)
+// Accountability record for Matt's ask: when a technician marks a
+// conditional wizard step (Second/Third Floor, Basement, Crawl Space) as
+// "this property doesn't have this," they must personally sign off with
+// their initials - per INSPECTION, not just once per property, even if the
+// property's applicability flag (Property.hasSecondFloor etc.) was already
+// set from a prior inspection there. This is what lets Blue Duck show which
+// specific technician, on which specific visit, attested a given area
+// didn't exist - see getWizardStepStatus in
+// shared/src/constants/checklistWizard.ts for how this combines with the
+// property flag to resolve a step. Immutable once created (no updatedAt) -
+// an audit entry isn't meant to be edited, only superseded by undoing the
+// N/A answer, which simply removes it and lets the step be answered instead.
+model InspectionSectionSkip {
+  id           String   @id
+  inspectionId String
+  category     String // TemplateSectionCategory value (conditional categories only)
+  technicianId String
+  initials     String
+  confirmedAt  DateTime
+  createdAt    DateTime @default(now())
 
-  findings Finding[]
+  inspection Inspection @relation(fields: [inspectionId], references: [id])
+  technician User       @relation(fields: [technicianId], references: [id])
+
+  @@unique([inspectionId, category])
+  @@index([inspectionId])
 }
 
+// Findings describe the issue in free-text Notes instead of structured pest
+// identification or checkbox fields (Matt's ask: a finding shouldn't revolve
+// around identifying a pest, or force clicking through evidence/entry-point/
+// risk-factor lists) - see FindingEditorForm.tsx's guidance text above the
+// notes box for what to mention.
 model Finding {
   id             String    @id
   inspectionId   String
-  pestTypeId     String?
-  pestTypeOther  String?
   areaLocation   String
   locationDetail String?
-  evidenceTypes  String // JSON-encoded string[]
   severity       String // LOW | MEDIUM | HIGH | CRITICAL
-  riskFactors    String // JSON-encoded string[]
-  entryPoints    String? // JSON-encoded string[]
   description    String?
   lat            Float?
   lng            Float?
@@ -315,7 +336,6 @@ model Finding {
   deletedAt      DateTime?
 
   inspection      Inspection        @relation(fields: [inspectionId], references: [id])
-  pestType        PestType?         @relation(fields: [pestTypeId], references: [id])
   device          MonitoringDevice? @relation(fields: [deviceId], references: [id])
   photos          FindingPhoto[]
   recommendations Recommendation[]

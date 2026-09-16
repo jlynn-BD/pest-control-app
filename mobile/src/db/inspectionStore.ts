@@ -6,6 +6,7 @@ import type {
   LocalFinding,
   LocalFindingPhoto,
   LocalInspection,
+  LocalInspectionSectionSkip,
   LocalRecommendation,
   LocalSignature,
   LocalTreatmentProduct,
@@ -89,6 +90,7 @@ export function deleteLocalInspection(id: string): void {
     [id]
   );
   db.runSync(`DELETE FROM checklist_responses WHERE inspectionId = ?`, [id]);
+  db.runSync(`DELETE FROM inspection_section_skips WHERE inspectionId = ?`, [id]);
   db.runSync(`DELETE FROM inspections WHERE id = ?`, [id]);
 }
 
@@ -117,6 +119,7 @@ export interface LocalInspectionDetail {
   treatments: (LocalTreatmentRecord & { products: LocalTreatmentProduct[] })[];
   signatures: LocalSignature[];
   checklistResponses: (LocalChecklistResponse & { photos: LocalChecklistResponsePhoto[] })[];
+  sectionSkips: LocalInspectionSectionSkip[];
 }
 
 export function getLocalInspectionDetail(inspectionId: string): LocalInspectionDetail | null {
@@ -161,6 +164,11 @@ export function getLocalInspectionDetail(inspectionId: string): LocalInspectionD
     ),
   }));
 
+  const sectionSkips = db.getAllSync<LocalInspectionSectionSkip>(
+    `SELECT * FROM inspection_section_skips WHERE inspectionId = ?`,
+    [inspectionId]
+  );
+
   return {
     inspection,
     findings: findingsWithPhotos,
@@ -168,18 +176,14 @@ export function getLocalInspectionDetail(inspectionId: string): LocalInspectionD
     treatments: treatmentsWithProducts,
     signatures,
     checklistResponses: checklistResponsesWithPhotos,
+    sectionSkips,
   };
 }
 
 export interface NewFindingInput {
-  pestTypeId: string | null;
-  pestTypeOther: string | null;
   areaLocation: string;
   locationDetail: string | null;
-  evidenceTypes: string[];
   severity: string;
-  riskFactors: string[];
-  entryPoints: string[];
   description: string | null;
   lat: number | null;
   lng: number | null;
@@ -196,14 +200,9 @@ export function addLocalFinding(inspectionId: string, input: NewFindingInput): L
   const finding: LocalFinding = {
     id: generateId(),
     inspectionId,
-    pestTypeId: input.pestTypeId,
-    pestTypeOther: input.pestTypeOther,
     areaLocation: input.areaLocation,
     locationDetail: input.locationDetail,
-    evidenceTypes: JSON.stringify(input.evidenceTypes),
     severity: input.severity,
-    riskFactors: JSON.stringify(input.riskFactors),
-    entryPoints: JSON.stringify(input.entryPoints),
     description: input.description,
     lat: input.lat,
     lng: input.lng,
@@ -217,19 +216,14 @@ export function addLocalFinding(inspectionId: string, input: NewFindingInput): L
     syncStatus: "pending",
   };
   db.runSync(
-    `INSERT INTO findings (id, inspectionId, pestTypeId, pestTypeOther, areaLocation, locationDetail, evidenceTypes, severity, riskFactors, entryPoints, description, lat, lng, floorPlanX, floorPlanY, siteMapArrowStartX, siteMapArrowStartY, siteMapLevel, createdAt, updatedAt, syncStatus)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO findings (id, inspectionId, areaLocation, locationDetail, severity, description, lat, lng, floorPlanX, floorPlanY, siteMapArrowStartX, siteMapArrowStartY, siteMapLevel, createdAt, updatedAt, syncStatus)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       finding.id,
       finding.inspectionId,
-      finding.pestTypeId,
-      finding.pestTypeOther,
       finding.areaLocation,
       finding.locationDetail,
-      finding.evidenceTypes,
       finding.severity,
-      finding.riskFactors,
-      finding.entryPoints,
       finding.description,
       finding.lat,
       finding.lng,
@@ -259,14 +253,9 @@ export function updateLocalFinding(id: string, input: Partial<NewFindingInput>):
   if (!existing) return;
   const merged: LocalFinding = {
     ...existing,
-    ...(input.pestTypeId !== undefined ? { pestTypeId: input.pestTypeId } : {}),
-    ...(input.pestTypeOther !== undefined ? { pestTypeOther: input.pestTypeOther } : {}),
     ...(input.areaLocation !== undefined ? { areaLocation: input.areaLocation } : {}),
     ...(input.locationDetail !== undefined ? { locationDetail: input.locationDetail } : {}),
-    ...(input.evidenceTypes !== undefined ? { evidenceTypes: JSON.stringify(input.evidenceTypes) } : {}),
     ...(input.severity !== undefined ? { severity: input.severity } : {}),
-    ...(input.riskFactors !== undefined ? { riskFactors: JSON.stringify(input.riskFactors) } : {}),
-    ...(input.entryPoints !== undefined ? { entryPoints: JSON.stringify(input.entryPoints) } : {}),
     ...(input.description !== undefined ? { description: input.description } : {}),
     ...(input.lat !== undefined ? { lat: input.lat } : {}),
     ...(input.lng !== undefined ? { lng: input.lng } : {}),
@@ -279,17 +268,12 @@ export function updateLocalFinding(id: string, input: Partial<NewFindingInput>):
     syncStatus: "pending",
   };
   db.runSync(
-    `UPDATE findings SET pestTypeId = ?, pestTypeOther = ?, areaLocation = ?, locationDetail = ?, evidenceTypes = ?, severity = ?, riskFactors = ?, entryPoints = ?, description = ?, lat = ?, lng = ?, floorPlanX = ?, floorPlanY = ?, siteMapArrowStartX = ?, siteMapArrowStartY = ?, siteMapLevel = ?, updatedAt = ?, syncStatus = 'pending'
+    `UPDATE findings SET areaLocation = ?, locationDetail = ?, severity = ?, description = ?, lat = ?, lng = ?, floorPlanX = ?, floorPlanY = ?, siteMapArrowStartX = ?, siteMapArrowStartY = ?, siteMapLevel = ?, updatedAt = ?, syncStatus = 'pending'
      WHERE id = ?`,
     [
-      merged.pestTypeId,
-      merged.pestTypeOther,
       merged.areaLocation,
       merged.locationDetail,
-      merged.evidenceTypes,
       merged.severity,
-      merged.riskFactors,
-      merged.entryPoints,
       merged.description,
       merged.lat,
       merged.lng,
@@ -585,6 +569,49 @@ export function deleteLocalChecklistResponse(id: string): void {
   db.runSync(`DELETE FROM checklist_responses WHERE id = ?`, [id]);
 }
 
+// Matt's accountability ask: creates the technician's personal sign-off
+// that THIS inspection found a conditional area not present - separate from
+// (and required in addition to) the property-level applicability flag,
+// which only pre-fills the wizard's suggestion text on future visits. One
+// per (inspection, category) - re-confirming replaces the prior row instead
+// of accumulating duplicates, since only one technician can be doing this
+// inspection's walkthrough at a time.
+export function createLocalInspectionSectionSkip(
+  inspectionId: string,
+  category: string,
+  technicianId: string,
+  initials: string
+): LocalInspectionSectionSkip {
+  const db = getDb();
+  const now = nowIso();
+  db.runSync(`DELETE FROM inspection_section_skips WHERE inspectionId = ? AND category = ?`, [inspectionId, category]);
+  const skip: LocalInspectionSectionSkip = {
+    id: generateId(),
+    inspectionId,
+    category,
+    technicianId,
+    initials,
+    confirmedAt: now,
+    createdAt: now,
+    syncStatus: "pending",
+  };
+  db.runSync(
+    `INSERT INTO inspection_section_skips (id, inspectionId, category, technicianId, initials, confirmedAt, createdAt, syncStatus)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [skip.id, skip.inspectionId, skip.category, skip.technicianId, skip.initials, skip.confirmedAt, skip.createdAt, skip.syncStatus]
+  );
+  touchInspection(inspectionId);
+  return skip;
+}
+
+// Undoing a "not applicable" answer removes this inspection's sign-off
+// entirely (matching updateLocalPropertyApplicability's undo, which resets
+// the property flag rather than leaving a stale record) - the technician is
+// asserting the area does exist after all, so there's nothing left to attest.
+export function deleteLocalInspectionSectionSkip(inspectionId: string, category: string): void {
+  getDb().runSync(`DELETE FROM inspection_section_skips WHERE inspectionId = ? AND category = ?`, [inspectionId, category]);
+}
+
 export function completeLocalInspection(inspectionId: string): void {
   const db = getDb();
   const now = nowIso();
@@ -631,8 +658,13 @@ export function getPendingChecklistResponses(): LocalChecklistResponse[] {
   return getDb().getAllSync<LocalChecklistResponse>(`SELECT * FROM checklist_responses WHERE syncStatus = 'pending'`);
 }
 
+export function getPendingInspectionSectionSkips(): LocalInspectionSectionSkip[] {
+  if (!isLocalDbAvailable()) return [];
+  return getDb().getAllSync<LocalInspectionSectionSkip>(`SELECT * FROM inspection_section_skips WHERE syncStatus = 'pending'`);
+}
+
 export function markSynced(
-  table: "inspections" | "findings" | "recommendations" | "treatment_records" | "checklist_responses",
+  table: "inspections" | "findings" | "recommendations" | "treatment_records" | "checklist_responses" | "inspection_section_skips",
   id: string
 ): void {
   getDb().runSync(`UPDATE ${table} SET syncStatus = 'synced' WHERE id = ?`, [id]);
@@ -695,6 +727,7 @@ export function countPendingSyncRows(): number {
     "signatures",
     "checklist_responses",
     "checklist_response_photos",
+    "inspection_section_skips",
   ];
   return tables.reduce((sum, table) => {
     const row = db.getFirstSync<{ count: number }>(`SELECT COUNT(*) as count FROM ${table} WHERE syncStatus = 'pending'`);

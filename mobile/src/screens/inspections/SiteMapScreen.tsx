@@ -168,7 +168,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // jump ahead out of sequence from the map (see ChecklistPanel's
   // allowedCategories prop / ChecklistScreen for the same restriction).
   const wizardStatus = detail.inspection.templateId
-    ? getWizardStepStatus(getCachedTemplateSections(detail.inspection.templateId), detail.checklistResponses, property ?? undefined)
+    ? getWizardStepStatus(getCachedTemplateSections(detail.inspection.templateId), detail.checklistResponses, property ?? undefined, detail.sectionSkips)
     : null;
   const unlockedCategories = wizardStatus ? wizardStatus.steps.slice(0, wizardStatus.furthestUnlockedIndex + 1).map((s) => s.category) : [];
   const checklistItemCount = wizardStatus ? wizardStatus.steps.reduce((sum, s) => sum + s.itemsTotal, 0) : 0;
