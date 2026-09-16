@@ -1,3 +1,4 @@
+import { RecommendationOwnerType, severityToRecommendationPriority } from "@pest-app/shared";
 import { getDb, isLocalDbAvailable } from "./database";
 import { generateId } from "../lib/uuid";
 import type {
@@ -238,6 +239,7 @@ export function addLocalFinding(inspectionId: string, input: NewFindingInput): L
     ]
   );
   touchInspection(inspectionId);
+  upsertRecommendationFromFinding(inspectionId, finding);
   return finding;
 }
 
@@ -287,16 +289,21 @@ export function updateLocalFinding(id: string, input: Partial<NewFindingInput>):
     ]
   );
   touchInspection(merged.inspectionId);
+  upsertRecommendationFromFinding(merged.inspectionId, merged);
 }
 
 // Hard delete, mirroring deleteLocalChecklistResponse - the caller is
-// responsible for also firing a best-effort remote delete (see
-// api/inspections.ts's deleteFinding) since removing the local row here
-// forfeits any further chance to sync it.
-export function deleteLocalFinding(id: string): void {
+// responsible for also firing a best-effort remote delete for both the
+// finding (api/inspections.ts's deleteFinding) and, if one was returned
+// here, its auto-generated recommendation (deleteRecommendation) - removing
+// either local row here forfeits any further chance to sync it.
+export function deleteLocalFinding(id: string): { recommendationId: string | null } {
   const db = getDb();
+  const linkedRecommendation = db.getFirstSync<LocalRecommendation>(`SELECT * FROM recommendations WHERE findingId = ?`, [id]);
   db.runSync(`DELETE FROM finding_photos WHERE findingId = ?`, [id]);
   db.runSync(`DELETE FROM findings WHERE id = ?`, [id]);
+  if (linkedRecommendation) db.runSync(`DELETE FROM recommendations WHERE id = ?`, [linkedRecommendation.id]);
+  return { recommendationId: linkedRecommendation?.id ?? null };
 }
 
 export function addLocalFindingPhoto(
@@ -370,6 +377,39 @@ export function addLocalRecommendation(inspectionId: string, input: NewRecommend
   );
   touchInspection(inspectionId);
   return recommendation;
+}
+
+// Matt's ask: a finding automatically becomes its recommendation - the
+// technician never re-types the same area/notes/severity a second time
+// under Recommendations. One recommendation per finding (matched by
+// findingId): the first save creates it, every later edit keeps it in sync
+// with the finding's current area/description/severity rather than letting
+// the two drift apart. ownerType/deadline/status are recommendation-only
+// concerns with no finding equivalent, so they're left alone here - only
+// set once, on creation.
+function upsertRecommendationFromFinding(inspectionId: string, finding: LocalFinding): void {
+  const db = getDb();
+  const existing = db.getFirstSync<LocalRecommendation>(`SELECT * FROM recommendations WHERE findingId = ?`, [finding.id]);
+  const priority = severityToRecommendationPriority(finding.severity);
+  if (existing) {
+    db.runSync(`UPDATE recommendations SET title = ?, description = ?, priority = ?, updatedAt = ?, syncStatus = 'pending' WHERE id = ?`, [
+      finding.areaLocation,
+      finding.description,
+      priority,
+      nowIso(),
+      existing.id,
+    ]);
+    touchInspection(inspectionId);
+    return;
+  }
+  addLocalRecommendation(inspectionId, {
+    findingId: finding.id,
+    title: finding.areaLocation,
+    description: finding.description,
+    priority,
+    ownerType: RecommendationOwnerType.CUSTOMER,
+    deadline: null,
+  });
 }
 
 export interface NewTreatmentInput {

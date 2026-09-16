@@ -68,6 +68,13 @@ export function deleteFinding(findingId: string): Promise<void> {
   return apiRequest(`/api/findings/${findingId}`, { method: "DELETE" });
 }
 
+// Best-effort immediate delete for the recommendation auto-generated from a
+// finding, fired alongside deleteFinding when that finding is removed - see
+// deleteLocalFinding's cascade to recommendations in db/inspectionStore.ts.
+export function deleteRecommendation(recommendationId: string): Promise<void> {
+  return apiRequest(`/api/recommendations/${recommendationId}`, { method: "DELETE" });
+}
+
 // Best-effort immediate delete for discarding a stray/duplicate in-progress
 // inspection from InspectionWorkspaceScreen. Same reasoning as deleteFinding
 // above: an inspection that never synced simply 404s here, which is fine

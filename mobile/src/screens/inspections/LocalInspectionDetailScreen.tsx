@@ -94,12 +94,26 @@ export default function LocalInspectionDetailScreen({ route }: Props) {
       ))}
 
       <Text style={styles.sectionTitle}>Recommendations ({detail.recommendations.length})</Text>
-      {detail.recommendations.map((r) => (
-        <Card key={r.id} style={styles.card}>
-          <Text style={styles.cardTitle}>{r.title}</Text>
-          <Text style={styles.meta}>{r.priority}</Text>
-        </Card>
-      ))}
+      {detail.recommendations.map((r) => {
+        // Auto-generated from a finding (Matt's ask - no re-typing the same
+        // area/notes/severity a second time) inherit their photo(s) by
+        // reference to that finding rather than duplicating storage.
+        const sourceFinding = r.findingId ? detail.findings.find((f) => f.id === r.findingId) : null;
+        return (
+          <Card key={r.id} style={styles.card}>
+            <Text style={styles.cardTitle}>{r.title}</Text>
+            <Text style={styles.meta}>{r.priority}</Text>
+            {r.description ? <Text style={styles.body}>{r.description}</Text> : null}
+            {sourceFinding && sourceFinding.photos.length > 0 ? (
+              <View style={styles.photoRow}>
+                {sourceFinding.photos.map((p) => (
+                  <Image key={p.id} source={{ uri: p.localUri }} style={styles.photoThumb} />
+                ))}
+              </View>
+            ) : null}
+          </Card>
+        );
+      })}
 
       <Text style={styles.sectionTitle}>Treatments ({detail.treatments.length})</Text>
       {detail.treatments.map((t) => (

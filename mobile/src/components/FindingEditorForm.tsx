@@ -3,7 +3,7 @@ import React, { useMemo, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { getCachedTemplateSections } from "../db/cache";
 import { addLocalFinding, addLocalFindingPhoto, deleteLocalFinding, getLocalInspectionDetail, updateLocalFinding } from "../db/inspectionStore";
-import { deleteFinding } from "../api/inspections";
+import { deleteFinding, deleteRecommendation } from "../api/inspections";
 import { capturePhoto } from "../lib/photo";
 import { getCurrentCoords } from "../lib/location";
 import { CHECKLIST_CATEGORY_SHORT_LABEL, findChecklistResponseSummary, listChecklistResponseSummaries } from "../lib/checklist";
@@ -177,8 +177,9 @@ export function FindingEditorForm({
 
   function handleDelete() {
     if (!existingFinding) return;
-    deleteLocalFinding(existingFinding.id);
+    const { recommendationId } = deleteLocalFinding(existingFinding.id);
     deleteFinding(existingFinding.id).catch(() => {});
+    if (recommendationId) deleteRecommendation(recommendationId).catch(() => {});
     onSaved();
   }
 

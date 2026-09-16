@@ -147,15 +147,29 @@ export default function InspectionDetailScreen({ route }: Props) {
       ))}
 
       <Text style={styles.sectionTitle}>Recommendations ({inspection.recommendations.length})</Text>
-      {inspection.recommendations.map((rec) => (
-        <Card key={rec.id} style={styles.card}>
-          <View style={styles.rowTop}>
-            <Text style={styles.cardTitle}>{rec.title}</Text>
-            <Badge label={rec.priority} tone={rec.priority === "URGENT" || rec.priority === "HIGH" ? "danger" : "default"} />
-          </View>
-          <Text style={styles.meta}>Status: {rec.status.replace(/_/g, " ")}</Text>
-        </Card>
-      ))}
+      {inspection.recommendations.map((rec) => {
+        // Auto-generated from a finding (Matt's ask - no re-typing the same
+        // area/notes/severity a second time) inherit their photo(s) by
+        // reference to that finding rather than duplicating storage.
+        const sourceFinding = rec.findingId ? inspection.findings.find((f) => f.id === rec.findingId) : null;
+        return (
+          <Card key={rec.id} style={styles.card}>
+            <View style={styles.rowTop}>
+              <Text style={styles.cardTitle}>{rec.title}</Text>
+              <Badge label={rec.priority} tone={rec.priority === "URGENT" || rec.priority === "HIGH" ? "danger" : "default"} />
+            </View>
+            {rec.description ? <Text style={styles.body}>{rec.description}</Text> : null}
+            <Text style={styles.meta}>Status: {rec.status.replace(/_/g, " ")}</Text>
+            {sourceFinding && sourceFinding.photos.length > 0 ? (
+              <View style={styles.photoRow}>
+                {sourceFinding.photos.map((p) => (
+                  <Image key={p.id} source={{ uri: `${API_BASE_URL}${p.fileUrl}` }} style={styles.photoThumb} />
+                ))}
+              </View>
+            ) : null}
+          </Card>
+        );
+      })}
 
       <Text style={styles.sectionTitle}>Treatments ({inspection.treatmentRecords.length})</Text>
       {inspection.treatmentRecords.map((treatment) => (

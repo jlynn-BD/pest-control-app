@@ -160,12 +160,20 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
         onAdd={() => navigation.navigate("RecommendationForm", { inspectionId })}
         addLabel="+ Add recommendation"
       >
-        {detail.recommendations.map((r) => (
-          <Card key={r.id} style={styles.itemCard}>
-            <Text style={styles.itemTitle}>{r.title}</Text>
-            <Text style={styles.itemMeta}>{r.priority}</Text>
-          </Card>
-        ))}
+        {detail.recommendations.map((r) => {
+          // Auto-generated from a finding (Matt's ask - no re-typing the
+          // same area/notes/severity a second time under Recommendations).
+          const sourceFinding = r.findingId ? detail.findings.find((f) => f.id === r.findingId) : null;
+          return (
+            <Card key={r.id} style={styles.itemCard}>
+              <Text style={styles.itemTitle}>{r.title}</Text>
+              <Text style={styles.itemMeta}>
+                {r.priority}
+                {sourceFinding ? ` · From finding · ${sourceFinding.photos.length} photo(s)` : ""}
+              </Text>
+            </Card>
+          );
+        })}
       </WorkspaceSection>
 
       <WorkspaceSection
