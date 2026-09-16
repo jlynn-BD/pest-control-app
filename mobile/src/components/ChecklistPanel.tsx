@@ -120,25 +120,6 @@ export function ChecklistPanel({
     });
   }
 
-  // Matt/the field team's ask: answering every item one at a time is slow
-  // when the whole area is in fine shape - one tap marks every
-  // not-yet-answered item in this category SATISFACTORY (with no notes),
-  // and the technician can still uncheck or add notes/photos to the one
-  // item that actually needs attention afterward. Scoped to whatever's
-  // currently visible (respects an active search filter) rather than the
-  // category's full unfiltered item list.
-  function handleCheckAllInCategory(items: LocalTemplateItem[]) {
-    const newlyChecked: ResponseWithPhotos[] = [];
-    for (const item of items) {
-      if (responseByItem.has(item.id)) continue;
-      const response = upsertLocalChecklistResponse(inspectionId, item.id, "SATISFACTORY", null);
-      newlyChecked.push({ ...response, photos: [] });
-    }
-    if (newlyChecked.length === 0) return;
-    setResponses((prev) => [...prev, ...newlyChecked]);
-    onChange?.();
-  }
-
   function handleCheck(item: LocalTemplateItem, notes: string | null) {
     const response = upsertLocalChecklistResponse(inspectionId, item.id, "SATISFACTORY", notes);
     const existingPhotos = responseByItem.get(item.id)?.photos ?? [];
@@ -219,7 +200,6 @@ export function ChecklistPanel({
         if (isSearching) anyMatches = true;
 
         const categoryExpanded = hideCategoryHeader || isSearching || expandedCategories.has(category);
-        const visibleUncheckedItems = visibleSections.flatMap(({ items }) => items.filter((i) => !responseByItem.has(i.id)));
 
         return (
           <View key={category} style={styles.categoryBlock}>
@@ -233,11 +213,6 @@ export function ChecklistPanel({
                   tone={checkedCount === totalItems && totalItems > 0 ? "success" : "default"}
                 />
               </Pressable>
-            ) : null}
-            {categoryExpanded && visibleUncheckedItems.length > 0 ? (
-              <Text style={styles.checkAllLink} onPress={() => handleCheckAllInCategory(visibleUncheckedItems)}>
-                ✓ Check all as satisfactory ({visibleUncheckedItems.length} remaining)
-              </Text>
             ) : null}
             {categoryExpanded
               ? visibleSections.map(({ section, items }) => {
@@ -356,7 +331,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   categoryTitle: { fontSize: 16, fontWeight: "700", color: colors.text },
-  checkAllLink: { color: colors.primary, fontWeight: "600", fontSize: 13, marginBottom: 10 },
   sectionBlock: { marginBottom: 8, marginLeft: 8 },
   sectionHeaderRow: {
     flexDirection: "row",
