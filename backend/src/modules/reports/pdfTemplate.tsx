@@ -67,7 +67,6 @@ const styles = StyleSheet.create({
   },
   photoRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 },
   photo: { width: 90, height: 90, borderRadius: 4 },
-  productLine: { fontSize: 9.5, marginTop: 2 },
   signatureRow: { flexDirection: "row", gap: 24, marginTop: 8 },
   signatureBlock: { flex: 1 },
   signatureImage: { width: 180, height: 70, borderWidth: 1, borderColor: "#E1E6E3", objectFit: "contain" },
@@ -201,15 +200,6 @@ export interface ReportRecommendation {
   deadline: string | null;
 }
 
-export interface ReportTreatment {
-  method: string;
-  targetPest: string | null;
-  areaTreated: string | null;
-  appliedAt: string;
-  safetyInstructions: string | null;
-  products: { productName: string; quantity: number; unit: string; applicationMethod: string | null }[];
-}
-
 // Matt's accountability ask: a per-inspection audit entry for every
 // conditional wizard step (Second/Third Floor, Basement, Crawl Space) the
 // technician marked not present, with who signed off and when - see
@@ -244,7 +234,6 @@ export interface ReportData {
   skippedSections: ReportSkippedSection[];
   findings: ReportFinding[];
   recommendations: ReportRecommendation[];
-  treatments: ReportTreatment[];
   signatures: ReportSignature[];
 }
 
@@ -456,28 +445,6 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
               </View>
               {r.description ? <Text style={styles.cardBody}>{r.description}</Text> : null}
               {r.deadline ? <Text style={styles.cardMeta}>Deadline: {new Date(r.deadline).toLocaleDateString()}</Text> : null}
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Treatments ({data.treatments.length})</Text>
-          {data.treatments.length === 0 ? <Text style={styles.cardBody}>No treatments applied.</Text> : null}
-          {data.treatments.map((t, i) => (
-            <View key={i} style={styles.card} wrap={false}>
-              <Text style={styles.cardTitle}>{t.method}</Text>
-              <Text style={styles.cardMeta}>
-                {t.targetPest ? `Target: ${t.targetPest} · ` : ""}
-                {t.areaTreated ? `Area: ${t.areaTreated} · ` : ""}
-                Applied {new Date(t.appliedAt).toLocaleDateString()}
-              </Text>
-              {t.safetyInstructions ? <Text style={styles.cardBody}>Safety: {t.safetyInstructions}</Text> : null}
-              {t.products.map((p, pi) => (
-                <Text key={pi} style={styles.productLine}>
-                  • {p.productName} — {p.quantity} {p.unit}
-                  {p.applicationMethod ? ` (${p.applicationMethod})` : ""}
-                </Text>
-              ))}
             </View>
           ))}
         </View>

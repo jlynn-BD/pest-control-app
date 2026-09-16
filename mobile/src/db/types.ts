@@ -118,35 +118,6 @@ export interface LocalRecommendation {
   syncStatus: "pending" | "synced";
 }
 
-export interface LocalTreatmentRecord {
-  id: string;
-  inspectionId: string;
-  findingId: string | null;
-  technicianId: string;
-  method: string;
-  targetPest: string | null;
-  areaTreated: string | null;
-  appliedAt: string;
-  safetyInstructions: string | null;
-  notes: string | null;
-  approvalStatus: string;
-  createdAt: string;
-  updatedAt: string;
-  syncStatus: "pending" | "synced";
-}
-
-export interface LocalTreatmentProduct {
-  id: string;
-  treatmentRecordId: string;
-  productName: string;
-  epaRegistrationNumber: string | null;
-  activeIngredient: string | null;
-  quantity: number;
-  unit: string;
-  concentration: string | null;
-  applicationMethod: string | null;
-}
-
 export interface LocalSignature {
   id: string;
   inspectionId: string;

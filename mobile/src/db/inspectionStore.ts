@@ -10,8 +10,6 @@ import type {
   LocalInspectionSectionSkip,
   LocalRecommendation,
   LocalSignature,
-  LocalTreatmentProduct,
-  LocalTreatmentRecord,
 } from "./types";
 
 function nowIso(): string {
@@ -80,11 +78,6 @@ export function deleteLocalInspection(id: string): void {
   db.runSync(`DELETE FROM finding_photos WHERE findingId IN (SELECT id FROM findings WHERE inspectionId = ?)`, [id]);
   db.runSync(`DELETE FROM findings WHERE inspectionId = ?`, [id]);
   db.runSync(`DELETE FROM recommendations WHERE inspectionId = ?`, [id]);
-  db.runSync(
-    `DELETE FROM treatment_products WHERE treatmentRecordId IN (SELECT id FROM treatment_records WHERE inspectionId = ?)`,
-    [id]
-  );
-  db.runSync(`DELETE FROM treatment_records WHERE inspectionId = ?`, [id]);
   db.runSync(`DELETE FROM signatures WHERE inspectionId = ?`, [id]);
   db.runSync(
     `DELETE FROM checklist_response_photos WHERE checklistResponseId IN (SELECT id FROM checklist_responses WHERE inspectionId = ?)`,
@@ -117,7 +110,6 @@ export interface LocalInspectionDetail {
   inspection: LocalInspection;
   findings: (LocalFinding & { photos: LocalFindingPhoto[] })[];
   recommendations: LocalRecommendation[];
-  treatments: (LocalTreatmentRecord & { products: LocalTreatmentProduct[] })[];
   signatures: LocalSignature[];
   checklistResponses: (LocalChecklistResponse & { photos: LocalChecklistResponsePhoto[] })[];
   sectionSkips: LocalInspectionSectionSkip[];
@@ -139,15 +131,6 @@ export function getLocalInspectionDetail(inspectionId: string): LocalInspectionD
     `SELECT * FROM recommendations WHERE inspectionId = ? ORDER BY createdAt ASC`,
     [inspectionId]
   );
-
-  const treatments = db.getAllSync<LocalTreatmentRecord>(
-    `SELECT * FROM treatment_records WHERE inspectionId = ? ORDER BY createdAt ASC`,
-    [inspectionId]
-  );
-  const treatmentsWithProducts = treatments.map((t) => ({
-    ...t,
-    products: db.getAllSync<LocalTreatmentProduct>(`SELECT * FROM treatment_products WHERE treatmentRecordId = ?`, [t.id]),
-  }));
 
   const signatures = db.getAllSync<LocalSignature>(`SELECT * FROM signatures WHERE inspectionId = ? ORDER BY signedAt ASC`, [
     inspectionId,
@@ -174,7 +157,6 @@ export function getLocalInspectionDetail(inspectionId: string): LocalInspectionD
     inspection,
     findings: findingsWithPhotos,
     recommendations,
-    treatments: treatmentsWithProducts,
     signatures,
     checklistResponses: checklistResponsesWithPhotos,
     sectionSkips,
@@ -412,77 +394,6 @@ function upsertRecommendationFromFinding(inspectionId: string, finding: LocalFin
   });
 }
 
-export interface NewTreatmentInput {
-  findingId: string | null;
-  technicianId: string;
-  method: string;
-  targetPest: string | null;
-  areaTreated: string | null;
-  appliedAt: string;
-  safetyInstructions: string | null;
-  notes: string | null;
-  products: Array<{
-    productName: string;
-    epaRegistrationNumber: string | null;
-    activeIngredient: string | null;
-    quantity: number;
-    unit: string;
-    concentration: string | null;
-    applicationMethod: string | null;
-  }>;
-}
-
-export function addLocalTreatment(inspectionId: string, input: NewTreatmentInput): LocalTreatmentRecord {
-  const db = getDb();
-  const now = nowIso();
-  const treatment: LocalTreatmentRecord = {
-    id: generateId(),
-    inspectionId,
-    findingId: input.findingId,
-    technicianId: input.technicianId,
-    method: input.method,
-    targetPest: input.targetPest,
-    areaTreated: input.areaTreated,
-    appliedAt: input.appliedAt,
-    safetyInstructions: input.safetyInstructions,
-    notes: input.notes,
-    approvalStatus: "PENDING",
-    createdAt: now,
-    updatedAt: now,
-    syncStatus: "pending",
-  };
-  db.withTransactionSync(() => {
-    db.runSync(
-      `INSERT INTO treatment_records (id, inspectionId, findingId, technicianId, method, targetPest, areaTreated, appliedAt, safetyInstructions, notes, approvalStatus, createdAt, updatedAt, syncStatus)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        treatment.id,
-        treatment.inspectionId,
-        treatment.findingId,
-        treatment.technicianId,
-        treatment.method,
-        treatment.targetPest,
-        treatment.areaTreated,
-        treatment.appliedAt,
-        treatment.safetyInstructions,
-        treatment.notes,
-        treatment.approvalStatus,
-        treatment.createdAt,
-        treatment.updatedAt,
-        treatment.syncStatus,
-      ]
-    );
-    for (const p of input.products) {
-      db.runSync(
-        `INSERT INTO treatment_products (id, treatmentRecordId, productName, epaRegistrationNumber, activeIngredient, quantity, unit, concentration, applicationMethod)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [generateId(), treatment.id, p.productName, p.epaRegistrationNumber, p.activeIngredient, p.quantity, p.unit, p.concentration, p.applicationMethod]
-      );
-    }
-  });
-  touchInspection(inspectionId);
-  return treatment;
-}
 
 export function addLocalSignature(
   inspectionId: string,
@@ -683,16 +594,6 @@ export function getPendingRecommendations(): LocalRecommendation[] {
   if (!isLocalDbAvailable()) return [];
   return getDb().getAllSync<LocalRecommendation>(`SELECT * FROM recommendations WHERE syncStatus = 'pending'`);
 }
-export function getPendingTreatments(): (LocalTreatmentRecord & { products: LocalTreatmentProduct[] })[] {
-  if (!isLocalDbAvailable()) return [];
-  const db = getDb();
-  const treatments = db.getAllSync<LocalTreatmentRecord>(`SELECT * FROM treatment_records WHERE syncStatus = 'pending'`);
-  return treatments.map((t) => ({
-    ...t,
-    products: db.getAllSync<LocalTreatmentProduct>(`SELECT * FROM treatment_products WHERE treatmentRecordId = ?`, [t.id]),
-  }));
-}
-
 export function getPendingChecklistResponses(): LocalChecklistResponse[] {
   if (!isLocalDbAvailable()) return [];
   return getDb().getAllSync<LocalChecklistResponse>(`SELECT * FROM checklist_responses WHERE syncStatus = 'pending'`);
@@ -704,7 +605,7 @@ export function getPendingInspectionSectionSkips(): LocalInspectionSectionSkip[]
 }
 
 export function markSynced(
-  table: "inspections" | "findings" | "recommendations" | "treatment_records" | "checklist_responses" | "inspection_section_skips",
+  table: "inspections" | "findings" | "recommendations" | "checklist_responses" | "inspection_section_skips",
   id: string
 ): void {
   getDb().runSync(`UPDATE ${table} SET syncStatus = 'synced' WHERE id = ?`, [id]);
@@ -762,7 +663,6 @@ export function countPendingSyncRows(): number {
     "inspections",
     "findings",
     "recommendations",
-    "treatment_records",
     "finding_photos",
     "signatures",
     "checklist_responses",

@@ -10,8 +10,6 @@ import type {
   Signature,
   TemplateItem,
   TemplateSection,
-  TreatmentProduct,
-  TreatmentRecord,
 } from "@pest-app/shared";
 import { apiRequest } from "./client";
 
@@ -24,7 +22,6 @@ export type InspectionSummary = Inspection & {
 export type InspectionDetail = InspectionSummary & {
   findings: (Finding & { photos: FindingPhoto[] })[];
   recommendations: Recommendation[];
-  treatmentRecords: (TreatmentRecord & { products: TreatmentProduct[] })[];
   signatures: Signature[];
   report: { id: string; pdfUrl: string } | null;
   template: (InspectionTemplate & { sections: (TemplateSection & { items: TemplateItem[] })[] }) | null;

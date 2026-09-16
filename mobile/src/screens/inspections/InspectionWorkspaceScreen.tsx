@@ -176,20 +176,6 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
         })}
       </WorkspaceSection>
 
-      <WorkspaceSection
-        title="Treatments"
-        count={detail.treatments.length}
-        onAdd={() => navigation.navigate("TreatmentForm", { inspectionId })}
-        addLabel="+ Add treatment"
-      >
-        {detail.treatments.map((t) => (
-          <Card key={t.id} style={styles.itemCard}>
-            <Text style={styles.itemTitle}>{t.method}</Text>
-            <Text style={styles.itemMeta}>{t.products.length} product(s)</Text>
-          </Card>
-        ))}
-      </WorkspaceSection>
-
       <Text style={styles.sectionTitle}>Signatures</Text>
       <View style={styles.signatureRow}>
         <SignatureSlot

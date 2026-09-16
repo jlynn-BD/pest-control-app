@@ -115,17 +115,6 @@ export default function LocalInspectionDetailScreen({ route }: Props) {
         );
       })}
 
-      <Text style={styles.sectionTitle}>Treatments ({detail.treatments.length})</Text>
-      {detail.treatments.map((t) => (
-        <Card key={t.id} style={styles.card}>
-          <Text style={styles.cardTitle}>{t.method}</Text>
-          {t.products.map((p) => (
-            <Text key={p.id} style={styles.body}>
-              • {p.productName} — {p.quantity} {p.unit}
-            </Text>
-          ))}
-        </Card>
-      ))}
 
       <Text style={styles.sectionTitle}>Signatures ({detail.signatures.length})</Text>
       {detail.signatures.map((s) => (

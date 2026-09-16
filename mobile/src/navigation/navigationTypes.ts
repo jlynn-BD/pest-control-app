@@ -46,7 +46,6 @@ export type InspectionsStackParamList = {
     editingFindingId?: string;
   };
   RecommendationForm: { inspectionId: string };
-  TreatmentForm: { inspectionId: string };
   SignatureCapture: { inspectionId: string; signerType: "CUSTOMER" | "TECHNICIAN" };
   EstimateDetail: { estimateId: string };
   EstimateForm: { estimateId: string };

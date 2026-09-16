@@ -28,7 +28,6 @@ async function buildReportData(inspectionId: string): Promise<ReportData> {
       technician: true,
       findings: { where: { deletedAt: null }, include: { photos: true } },
       recommendations: { where: { deletedAt: null } },
-      treatmentRecords: { where: { deletedAt: null }, include: { products: true } },
       signatures: true,
       followUpsFrom: { orderBy: { createdAt: "desc" }, take: 1 },
       checklistResponses: {
@@ -141,19 +140,6 @@ async function buildReportData(inspectionId: string): Promise<ReportData> {
       priority: r.priority,
       status: r.status,
       deadline: r.deadline?.toISOString() ?? null,
-    })),
-    treatments: inspection.treatmentRecords.map((t) => ({
-      method: t.method,
-      targetPest: t.targetPest,
-      areaTreated: t.areaTreated,
-      appliedAt: t.appliedAt.toISOString(),
-      safetyInstructions: t.safetyInstructions,
-      products: t.products.map((p) => ({
-        productName: p.productName,
-        quantity: p.quantity,
-        unit: p.unit,
-        applicationMethod: p.applicationMethod,
-      })),
     })),
     signatures: inspection.signatures.map((s) => ({
       signerType: s.signerType,

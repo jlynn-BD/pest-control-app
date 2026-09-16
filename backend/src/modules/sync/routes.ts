@@ -8,7 +8,7 @@ export const syncRouter = Router();
 syncRouter.use(requireAuth);
 
 const changeSchema = z.object({
-  entity: z.enum(["Inspection", "Finding", "Recommendation", "TreatmentRecord", "TreatmentProduct", "ChecklistResponse", "InspectionSectionSkip"]),
+  entity: z.enum(["Inspection", "Finding", "Recommendation", "ChecklistResponse", "InspectionSectionSkip"]),
   op: z.enum(["create", "update", "delete"]),
   id: z.string(),
   data: z.record(z.string(), z.unknown()).optional(),
@@ -27,8 +27,6 @@ const DATE_FIELDS: Record<string, string[]> = {
   Inspection: ["scheduledAt", "startedAt", "completedAt"],
   Finding: [],
   Recommendation: ["deadline"],
-  TreatmentRecord: ["appliedAt"],
-  TreatmentProduct: [],
   ChecklistResponse: [],
   InspectionSectionSkip: ["confirmedAt"],
 };
@@ -47,14 +45,6 @@ const ALLOWED_FIELDS: Record<string, string[]> = {
   Recommendation: [
     "inspectionId", "findingId", "title", "description", "priority", "ownerType",
     "ownerUserId", "ownerContactId", "deadline", "status",
-  ],
-  TreatmentRecord: [
-    "inspectionId", "findingId", "technicianId", "method", "targetPest", "areaTreated",
-    "appliedAt", "safetyInstructions", "notes", "approvalStatus",
-  ],
-  TreatmentProduct: [
-    "treatmentRecordId", "productName", "epaRegistrationNumber", "activeIngredient",
-    "quantity", "unit", "concentration", "applicationMethod",
   ],
   ChecklistResponse: ["inspectionId", "templateItemId", "status", "notes"],
   InspectionSectionSkip: ["inspectionId", "category", "technicianId", "initials", "confirmedAt"],
@@ -92,10 +82,6 @@ function getModel(entity: string): any {
       return prisma.finding;
     case "Recommendation":
       return prisma.recommendation;
-    case "TreatmentRecord":
-      return prisma.treatmentRecord;
-    case "TreatmentProduct":
-      return prisma.treatmentProduct;
     case "ChecklistResponse":
       return prisma.checklistResponse;
     case "InspectionSectionSkip":
@@ -105,11 +91,11 @@ function getModel(entity: string): any {
   }
 }
 
-const SUPPORTS_SOFT_DELETE = new Set(["Inspection", "Finding", "Recommendation", "TreatmentRecord", "ChecklistResponse"]);
-const SUPPORTS_UPDATED_AT = new Set(["Inspection", "Finding", "Recommendation", "TreatmentRecord", "ChecklistResponse"]);
-// InspectionSectionSkip is immutable once created, same as TreatmentProduct -
-// an accountability record shouldn't be silently overwritten by a later
-// "update," only removed (undo) and re-created fresh.
+const SUPPORTS_SOFT_DELETE = new Set(["Inspection", "Finding", "Recommendation", "ChecklistResponse"]);
+const SUPPORTS_UPDATED_AT = new Set(["Inspection", "Finding", "Recommendation", "ChecklistResponse"]);
+// InspectionSectionSkip is immutable once created - an accountability
+// record shouldn't be silently overwritten by a later "update," only
+// removed (undo) and re-created fresh.
 
 async function applyChange(change: Change): Promise<PushResult> {
   const model = getModel(change.entity);
@@ -137,7 +123,7 @@ async function applyChange(change: Change): Promise<PushResult> {
   }
 
   if (!SUPPORTS_UPDATED_AT.has(change.entity)) {
-    // No updatedAt to compare (e.g. TreatmentProduct line items) - treat as
+    // No updatedAt to compare (e.g. InspectionSectionSkip) - treat as
     // immutable once created rather than guessing at conflict resolution.
     return { entity: change.entity, id: change.id, result: "applied" };
   }
@@ -175,7 +161,6 @@ const ENTITY_QUERIES: Record<string, (since: Date) => Promise<unknown[]>> = {
   Inspection: (since) => prisma.inspection.findMany({ where: { updatedAt: { gt: since } } }),
   Finding: (since) => prisma.finding.findMany({ where: { updatedAt: { gt: since } } }),
   Recommendation: (since) => prisma.recommendation.findMany({ where: { updatedAt: { gt: since } } }),
-  TreatmentRecord: (since) => prisma.treatmentRecord.findMany({ where: { updatedAt: { gt: since } } }),
   ChecklistResponse: (since) => prisma.checklistResponse.findMany({ where: { updatedAt: { gt: since } } }),
   InspectionSectionSkip: (since) => prisma.inspectionSectionSkip.findMany({ where: { createdAt: { gt: since } } }),
 };

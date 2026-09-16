@@ -431,8 +431,8 @@ async function main() {
   }
 
   // A fully realized example inspection so a fresh deploy shows working
-  // findings/checklist/site-map/treatment/signatures out of the box instead
-  // of an empty database - report and estimate are left for the viewer to
+  // findings/checklist/site-map/signatures out of the box instead of an
+  // empty database - report and estimate are left for the viewer to
   // generate themselves (one click each) as a live demo of those features.
   const existingDemoInspection = await prisma.inspection.findFirst({
     where: { propertyId: property.id, generalNotes: { contains: "Seeded demo inspection" } },
@@ -493,34 +493,6 @@ async function main() {
         ownerType: "CUSTOMER",
         deadline: new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000),
         status: "OPEN",
-      },
-    });
-
-    const treatment = await prisma.treatmentRecord.create({
-      data: {
-        id: uuidv4(),
-        inspectionId: inspection.id,
-        findingId: kitchenFinding.id,
-        technicianId: tech.id,
-        method: "Gel bait application",
-        targetPest: "German Cockroach",
-        areaTreated: "Kitchen cabinets and under sink",
-        appliedAt: now,
-        safetyInstructions: "Keep pets away from treated area for 2 hours.",
-        approvalStatus: "APPROVED",
-        approvedAt: now,
-      },
-    });
-    await prisma.treatmentProduct.create({
-      data: {
-        id: uuidv4(),
-        treatmentRecordId: treatment.id,
-        productName: "Advion Cockroach Gel Bait",
-        epaRegistrationNumber: "100-1484",
-        activeIngredient: "Indoxacarb 0.6%",
-        quantity: 5,
-        unit: "g",
-        applicationMethod: "Spot application",
       },
     });
 

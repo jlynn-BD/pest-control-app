@@ -13,7 +13,6 @@ import { findingsOnInspectionRouter, findingsRouter } from "./modules/findings/r
 import { checklistResponsesOnInspectionRouter, checklistResponsesRouter } from "./modules/checklist/routes";
 import { estimateDraftOnInspectionRouter, estimatesRouter } from "./modules/estimates/routes";
 import { recommendationsOnInspectionRouter, recommendationsRouter } from "./modules/recommendations/routes";
-import { treatmentsOnInspectionRouter, treatmentsRouter } from "./modules/treatments/routes";
 import { signaturesOnInspectionRouter } from "./modules/signatures/routes";
 import { followUpsOnInspectionRouter, followUpsRouter } from "./modules/followups/routes";
 import { mediaRouter } from "./modules/media/routes";
@@ -39,7 +38,6 @@ app.use("/api/inspections/:inspectionId/checklist-responses", checklistResponses
 app.use("/api/inspections/:inspectionId/estimate-draft", estimateDraftOnInspectionRouter);
 app.use("/api/estimates", estimatesRouter);
 app.use("/api/inspections/:inspectionId/recommendations", recommendationsOnInspectionRouter);
-app.use("/api/inspections/:inspectionId/treatments", treatmentsOnInspectionRouter);
 app.use("/api/inspections/:inspectionId/signatures", signaturesOnInspectionRouter);
 app.use("/api/inspections/:inspectionId/followups", followUpsOnInspectionRouter);
 app.use("/api/inspections", inspectionsRouter);
@@ -47,7 +45,6 @@ app.use("/api", reportsRouter);
 app.use("/api/findings", findingsRouter);
 app.use("/api/checklist-responses", checklistResponsesRouter);
 app.use("/api/recommendations", recommendationsRouter);
-app.use("/api/treatments", treatmentsRouter);
 app.use("/api/followups", followUpsRouter);
 app.use("/api/media", mediaRouter);
 app.use("/api/sync", syncRouter);

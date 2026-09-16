@@ -7,7 +7,6 @@ import {
   getPendingInspections,
   getPendingInspectionSectionSkips,
   getPendingRecommendations,
-  getPendingTreatments,
   getUploadableChecklistResponsePhotos,
   getUploadableFindingPhotos,
   getUploadableSignatures,
@@ -22,8 +21,6 @@ import type {
   LocalInspection,
   LocalInspectionSectionSkip,
   LocalRecommendation,
-  LocalTreatmentProduct,
-  LocalTreatmentRecord,
 } from "../db/types";
 
 interface SyncChangePayload {
@@ -104,44 +101,6 @@ function recommendationToChange(r: LocalRecommendation): SyncChangePayload {
   };
 }
 
-function treatmentToChanges(t: LocalTreatmentRecord & { products: LocalTreatmentProduct[] }): SyncChangePayload[] {
-  const recordChange: SyncChangePayload = {
-    entity: "TreatmentRecord",
-    op: "create",
-    id: t.id,
-    updatedAt: t.updatedAt,
-    data: {
-      inspectionId: t.inspectionId,
-      findingId: t.findingId,
-      technicianId: t.technicianId,
-      method: t.method,
-      targetPest: t.targetPest,
-      areaTreated: t.areaTreated,
-      appliedAt: t.appliedAt,
-      safetyInstructions: t.safetyInstructions,
-      notes: t.notes,
-      approvalStatus: t.approvalStatus,
-    },
-  };
-  const productChanges: SyncChangePayload[] = t.products.map((p) => ({
-    entity: "TreatmentProduct",
-    op: "create",
-    id: p.id,
-    updatedAt: t.updatedAt,
-    data: {
-      treatmentRecordId: p.treatmentRecordId,
-      productName: p.productName,
-      epaRegistrationNumber: p.epaRegistrationNumber,
-      activeIngredient: p.activeIngredient,
-      quantity: p.quantity,
-      unit: p.unit,
-      concentration: p.concentration,
-      applicationMethod: p.applicationMethod,
-    },
-  }));
-  return [recordChange, ...productChanges];
-}
-
 function checklistResponseToChange(c: LocalChecklistResponse): SyncChangePayload {
   return {
     entity: "ChecklistResponse",
@@ -175,12 +134,11 @@ function sectionSkipToChange(s: LocalInspectionSectionSkip): SyncChangePayload {
 
 const TABLE_BY_ENTITY: Record<
   string,
-  "inspections" | "findings" | "recommendations" | "treatment_records" | "checklist_responses" | "inspection_section_skips"
+  "inspections" | "findings" | "recommendations" | "checklist_responses" | "inspection_section_skips"
 > = {
   Inspection: "inspections",
   Finding: "findings",
   Recommendation: "recommendations",
-  TreatmentRecord: "treatment_records",
   ChecklistResponse: "checklist_responses",
   InspectionSectionSkip: "inspection_section_skips",
 };
@@ -192,11 +150,11 @@ export interface SyncResult {
   error: string | null;
 }
 
-// Push order matters: Inspections first (Findings/Recommendations/Treatments
-// reference inspectionId), then Findings (Recommendations/Treatments may
-// reference findingId). The backend applies a batch sequentially for the
-// same reason. Media (photos/signatures) uploads only after their parent
-// row is confirmed synced, since those endpoints are nested under it.
+// Push order matters: Inspections first (Findings/Recommendations
+// reference inspectionId), then Findings (Recommendations may reference
+// findingId). The backend applies a batch sequentially for the same
+// reason. Media (photos/signatures) uploads only after their parent row is
+// confirmed synced, since those endpoints are nested under it.
 export async function runSync(): Promise<SyncResult> {
   let pushed = 0;
   let uploaded = 0;
@@ -207,7 +165,6 @@ export async function runSync(): Promise<SyncResult> {
       ...getPendingInspections().map(inspectionToChange),
       ...getPendingFindings().map(findingToChange),
       ...getPendingRecommendations().map(recommendationToChange),
-      ...getPendingTreatments().flatMap(treatmentToChanges),
       ...getPendingChecklistResponses().map(checklistResponseToChange),
       ...getPendingInspectionSectionSkips().map(sectionSkipToChange),
     ];
@@ -266,7 +223,7 @@ export async function runSync(): Promise<SyncResult> {
     }
 
     // Also refreshes reference data, picking up server-side edits made to
-    // customers/properties/templates/pest types while this device was offline.
+    // customers/properties/templates while this device was offline.
     await primeCache();
 
     return { pushed, uploaded, conflicts, error: null };

@@ -36,7 +36,6 @@ model User {
   technicianAppointments Appointment[]      @relation("AppointmentTechnician")
   createdAppointments  Appointment[]      @relation("AppointmentCreatedBy")
   technicianInspections Inspection[]
-  technicianTreatments TreatmentRecord[]
   signaturesAsUser     Signature[]
   generatedReports     Report[]
   ownedRecommendations Recommendation[]
@@ -96,7 +95,6 @@ model Contact {
 
   customer                Customer         @relation(fields: [customerId], references: [id])
   ownedRecommendations    Recommendation[]
-  approvedTreatments      TreatmentRecord[]
   signaturesAsContact     Signature[]
 
   @@index([customerId])
@@ -269,7 +267,6 @@ model Inspection {
 
   findings           Finding[]
   recommendations    Recommendation[]
-  treatmentRecords   TreatmentRecord[]
   signatures         Signature[]
   report             Report?
   followUpsFrom      FollowUp[]          @relation("FollowUpSource")
@@ -339,7 +336,6 @@ model Finding {
   device          MonitoringDevice? @relation(fields: [deviceId], references: [id])
   photos          FindingPhoto[]
   recommendations Recommendation[]
-  treatmentRecords TreatmentRecord[]
 
   @@index([inspectionId])
 }
@@ -386,50 +382,6 @@ model Recommendation {
 
   @@index([inspectionId])
   @@index([status])
-}
-
-model TreatmentRecord {
-  id                 String    @id
-  inspectionId       String
-  findingId          String?
-  technicianId       String
-  method             String
-  targetPest         String?
-  areaTreated        String?
-  appliedAt          DateTime
-  safetyInstructions String?
-  notes              String?
-  approvalStatus     String    @default("PENDING") // PENDING | APPROVED | DECLINED
-  approvedByContactId String?
-  approvedAt         DateTime?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  deletedAt          DateTime?
-
-  inspection      Inspection        @relation(fields: [inspectionId], references: [id])
-  finding         Finding?          @relation(fields: [findingId], references: [id])
-  technician      User              @relation(fields: [technicianId], references: [id])
-  approvedByContact Contact?        @relation(fields: [approvedByContactId], references: [id])
-  products        TreatmentProduct[]
-
-  @@index([inspectionId])
-}
-
-model TreatmentProduct {
-  id                    String   @id
-  treatmentRecordId     String
-  productName           String
-  epaRegistrationNumber String?
-  activeIngredient      String?
-  quantity              Float
-  unit                  String
-  concentration         String?
-  applicationMethod     String?
-  createdAt             DateTime @default(now())
-
-  treatmentRecord TreatmentRecord @relation(fields: [treatmentRecordId], references: [id])
-
-  @@index([treatmentRecordId])
 }
 
 model Signature {

@@ -171,19 +171,6 @@ export default function InspectionDetailScreen({ route }: Props) {
         );
       })}
 
-      <Text style={styles.sectionTitle}>Treatments ({inspection.treatmentRecords.length})</Text>
-      {inspection.treatmentRecords.map((treatment) => (
-        <Card key={treatment.id} style={styles.card}>
-          <Text style={styles.cardTitle}>{treatment.method}</Text>
-          <Text style={styles.meta}>Approval: {treatment.approvalStatus}</Text>
-          {treatment.products.map((p) => (
-            <Text key={p.id} style={styles.body}>
-              • {p.productName} — {p.quantity} {p.unit}
-            </Text>
-          ))}
-        </Card>
-      ))}
-
       <Text style={styles.sectionTitle}>Signatures ({inspection.signatures.length})</Text>
       {inspection.signatures.map((sig) => (
         <Card key={sig.id} style={styles.card}>

@@ -79,15 +79,6 @@ CREATE TABLE IF NOT EXISTS recommendations (
   ownerType TEXT, deadline TEXT, status TEXT DEFAULT 'OPEN', createdAt TEXT, updatedAt TEXT,
   syncStatus TEXT DEFAULT 'pending'
 );
-CREATE TABLE IF NOT EXISTS treatment_records (
-  id TEXT PRIMARY KEY, inspectionId TEXT, findingId TEXT, technicianId TEXT, method TEXT, targetPest TEXT,
-  areaTreated TEXT, appliedAt TEXT, safetyInstructions TEXT, notes TEXT, approvalStatus TEXT DEFAULT 'PENDING',
-  createdAt TEXT, updatedAt TEXT, syncStatus TEXT DEFAULT 'pending'
-);
-CREATE TABLE IF NOT EXISTS treatment_products (
-  id TEXT PRIMARY KEY, treatmentRecordId TEXT, productName TEXT, epaRegistrationNumber TEXT,
-  activeIngredient TEXT, quantity REAL, unit TEXT, concentration TEXT, applicationMethod TEXT
-);
 CREATE TABLE IF NOT EXISTS signatures (
   id TEXT PRIMARY KEY, inspectionId TEXT, signerType TEXT, signerName TEXT, imageBase64 TEXT,
   remoteUrl TEXT, signedAt TEXT, syncStatus TEXT DEFAULT 'pending'

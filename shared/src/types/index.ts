@@ -1,5 +1,4 @@
 import type {
-  ApprovalStatus,
   AppointmentStatus,
   AppointmentType,
   ChecklistResponseStatus,
@@ -249,32 +248,6 @@ export interface Recommendation extends BaseEntity {
   completedAt?: string | null;
   verifiedAt?: string | null;
   verifiedByFollowUpId?: string | null;
-}
-
-export interface TreatmentRecord extends BaseEntity {
-  inspectionId: string;
-  findingId?: string | null;
-  technicianId: string;
-  method: string;
-  targetPest?: string | null;
-  areaTreated?: string | null;
-  appliedAt: string;
-  safetyInstructions?: string | null;
-  notes?: string | null;
-  approvalStatus: ApprovalStatus;
-  approvedByContactId?: string | null;
-  approvedAt?: string | null;
-}
-
-export interface TreatmentProduct extends BaseEntity {
-  treatmentRecordId: string;
-  productName: string;
-  epaRegistrationNumber?: string | null;
-  activeIngredient?: string | null;
-  quantity: number;
-  unit: string;
-  concentration?: string | null;
-  applicationMethod?: string | null;
 }
 
 export interface Signature extends BaseEntity {

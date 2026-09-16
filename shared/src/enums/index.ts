@@ -90,13 +90,6 @@ export const RecommendationStatus = {
 } as const;
 export type RecommendationStatus = (typeof RecommendationStatus)[keyof typeof RecommendationStatus];
 
-export const ApprovalStatus = {
-  PENDING: "PENDING",
-  APPROVED: "APPROVED",
-  DECLINED: "DECLINED",
-} as const;
-export type ApprovalStatus = (typeof ApprovalStatus)[keyof typeof ApprovalStatus];
-
 export const SignerType = {
   CUSTOMER: "CUSTOMER",
   TECHNICIAN: "TECHNICIAN",
@@ -180,8 +173,6 @@ export const SyncEntity = {
   Finding: "Finding",
   FindingPhoto: "FindingPhoto",
   Recommendation: "Recommendation",
-  TreatmentRecord: "TreatmentRecord",
-  TreatmentProduct: "TreatmentProduct",
   Signature: "Signature",
   FollowUp: "FollowUp",
   ChecklistResponse: "ChecklistResponse",

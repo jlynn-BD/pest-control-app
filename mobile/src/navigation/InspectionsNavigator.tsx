@@ -13,7 +13,6 @@ import RecommendationFormScreen from "../screens/inspections/RecommendationFormS
 import EstimateDetailScreen from "../screens/estimates/EstimateDetailScreen";
 import EstimateFormScreen from "../screens/estimates/EstimateFormScreen";
 import SignatureCaptureScreen from "../screens/inspections/SignatureCaptureScreen";
-import TreatmentFormScreen from "../screens/inspections/TreatmentFormScreen";
 import { InspectionsStackParamList } from "./navigationTypes";
 import { colors } from "../components/ui";
 
@@ -32,7 +31,6 @@ export default function InspectionsNavigator() {
       <Stack.Screen name="SiteMap" component={SiteMapScreen} options={{ title: "Site Map" }} />
       <Stack.Screen name="FindingForm" component={FindingFormScreen} options={{ title: "New Finding" }} />
       <Stack.Screen name="RecommendationForm" component={RecommendationFormScreen} options={{ title: "New Recommendation" }} />
-      <Stack.Screen name="TreatmentForm" component={TreatmentFormScreen} options={{ title: "New Treatment" }} />
       <Stack.Screen name="SignatureCapture" component={SignatureCaptureScreen} options={{ title: "Signature" }} />
       <Stack.Screen name="EstimateDetail" component={EstimateDetailScreen} options={{ title: "Estimate" }} />
       <Stack.Screen name="EstimateForm" component={EstimateFormScreen} options={{ title: "Edit Estimate" }} />

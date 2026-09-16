@@ -15,7 +15,6 @@ const fullInclude = {
   technician: { select: { id: true, firstName: true, lastName: true } },
   findings: { include: { photos: true }, where: { deletedAt: null } },
   recommendations: { where: { deletedAt: null } },
-  treatmentRecords: { include: { products: true }, where: { deletedAt: null } },
   signatures: true,
   report: true,
   followUpsFrom: true,
