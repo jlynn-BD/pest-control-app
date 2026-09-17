@@ -1,10 +1,10 @@
 import { useFocusEffect } from "@react-navigation/native";
 import { useQuery } from "@tanstack/react-query";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { listInspections } from "../../api/inspections";
-import { listLocalInspections, LocalInspectionListItem } from "../../db/inspectionStore";
+import { deleteLocalInspection, listLocalInspections, LocalInspectionListItem } from "../../db/inspectionStore";
 import { useAuth } from "../../context/AuthContext";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { Badge, ErrorView, LoadingView, colors } from "../../components/ui";
@@ -44,6 +44,22 @@ export default function InspectionListScreen({ navigation }: Props) {
     enabled: !!user,
     retry: false,
   });
+
+  // A local row that already made it to the server (syncStatus "synced") but
+  // no longer appears in a successful remote fetch was deleted server-side
+  // by someone/something else - the local copy is a stale ghost with no
+  // further syncing to do, so prune it here rather than showing it forever.
+  // A "pending" row is left alone even if absent remotely: that's just an
+  // unsynced local inspection that hasn't had a chance to reach the server.
+  useEffect(() => {
+    if (!user || !data) return;
+    const remoteIds = new Set(data.map((r) => r.id));
+    const current = listLocalInspections(user.id);
+    const staleIds = current.filter((r) => r.syncStatus === "synced" && !remoteIds.has(r.id)).map((r) => r.id);
+    if (staleIds.length === 0) return;
+    for (const id of staleIds) deleteLocalInspection(id);
+    setLocalRows(listLocalInspections(user.id));
+  }, [data, user]);
 
   const localRowIds = new Set(localRows.map((r) => r.id));
   const rows: Row[] = [
