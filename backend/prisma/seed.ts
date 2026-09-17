@@ -202,18 +202,6 @@ async function main() {
       items: [{ prompt: "Living areas free of pest activity (baseboards, wall voids, flooring, thresholds)", itemType: "CHECKBOX", required: true }],
     },
     {
-      name: "Garage",
-      category: "FIRST_FLOOR",
-      sortOrder: 3,
-      items: [{ prompt: "Interior garage sealed and pest-free (firewall, storage areas, man door)", itemType: "CHECKBOX", required: true }],
-    },
-    {
-      name: "Entry points",
-      category: "FIRST_FLOOR",
-      sortOrder: 4,
-      items: [{ prompt: "Interior entry points sealed (thresholds, baseboards, penetrations behind appliances)", itemType: "CHECKBOX", required: true }],
-    },
-    {
       name: "Living areas",
       category: "SECOND_FLOOR",
       sortOrder: 0,
