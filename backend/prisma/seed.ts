@@ -454,7 +454,7 @@ async function main() {
       },
     });
 
-    await prisma.finding.create({
+    const garageFinding = await prisma.finding.create({
       data: {
         id: uuidv4(),
         inspectionId: inspection.id,
@@ -470,19 +470,27 @@ async function main() {
       },
     });
 
-    await prisma.recommendation.create({
-      data: {
-        id: uuidv4(),
-        inspectionId: inspection.id,
-        findingId: kitchenFinding.id,
-        title: "Fix under-sink leak",
-        description: "Repair slow leak to remove moisture source attracting roaches.",
-        priority: "HIGH",
-        ownerType: "CUSTOMER",
-        deadline: new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000),
-        status: "OPEN",
-      },
-    });
+    // Matt's "one source of truth" ask: a recommendation is never
+    // hand-authored separately from its finding - title/description/priority
+    // always mirror the finding that spawned it (see mobile's
+    // upsertRecommendationFromFinding, the client-side equivalent of this).
+    // Seeded here rather than left for the mobile app to generate so a fresh
+    // deploy's demo data isn't inconsistent with the feature it's supposed
+    // to be demonstrating.
+    for (const finding of [kitchenFinding, garageFinding]) {
+      await prisma.recommendation.create({
+        data: {
+          id: uuidv4(),
+          inspectionId: inspection.id,
+          findingId: finding.id,
+          title: finding.areaLocation,
+          description: finding.description,
+          priority: finding.severity === "CRITICAL" ? "URGENT" : finding.severity,
+          ownerType: "CUSTOMER",
+          status: "OPEN",
+        },
+      });
+    }
 
     for (const signer of [
       { type: "CUSTOMER", name: customer.name },
