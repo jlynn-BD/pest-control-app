@@ -138,6 +138,18 @@ export async function primeCache(): Promise<void> {
       }
     }
 
+    // Full replace, not incremental: templates are pure server-mirrored
+    // reference data (no local-only fields to preserve, unlike properties'
+    // siteMapLocalUri above), so wiping and rebuilding from this fetch is
+    // safe and necessary - INSERT OR REPLACE alone only ever adds/updates
+    // rows present in the current response, it never removes a section or
+    // item that was renamed/retired server-side (e.g. this session's
+    // checklist restructuring work), which is exactly how stale duplicates
+    // like "Exterior Perimeter" alongside the current "Exterior structure"
+    // were able to linger forever in a device's local cache.
+    db.runSync(`DELETE FROM local_template_items`);
+    db.runSync(`DELETE FROM local_template_sections`);
+    db.runSync(`DELETE FROM local_templates`);
     for (const t of templates) {
       db.runSync(`INSERT OR REPLACE INTO local_templates (id, name, description) VALUES (?, ?, ?)`, [t.id, t.name, t.description]);
       for (const s of t.sections) {
