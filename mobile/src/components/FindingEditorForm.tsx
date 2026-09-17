@@ -1,6 +1,7 @@
 import { FINDING_NOTES_GUIDANCE, Severity } from "@pest-app/shared";
-import React, { useMemo, useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from "expo-speech-recognition";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { getCachedTemplateSections } from "../db/cache";
 import { addLocalFinding, addLocalFindingPhoto, deleteLocalFinding, getLocalInspectionDetail, updateLocalFinding } from "../db/inspectionStore";
 import { deleteFinding, deleteRecommendation } from "../api/inspections";
@@ -100,6 +101,65 @@ export function FindingEditorForm({
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  // Matt's ask: Marker -> Photo -> Note -> Severity, fast enough that
+  // technicians actually use it - dictating the note beats typing on a
+  // phone while walking a property. `isRecognitionAvailable()` reflects
+  // actual browser support on web (Chrome yes, Firefox/older Safari no),
+  // so the mic button simply doesn't render rather than throwing when
+  // tapped - see expo-speech-recognition's web shim, which surfaces
+  // unsupported browsers as this returning false rather than an error event.
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  // Notes text as it stood before this recording session started, and the
+  // finalized (non-interim) transcript segments spoken so far in it - kept
+  // separately since each `result` event only carries the current
+  // utterance/segment, not the whole session's cumulative text (confirmed
+  // against the web shim's event mapping), so the running note has to be
+  // rebuilt by hand on every event rather than trusted from one payload.
+  const baseNotesRef = useRef("");
+  const finalizedTranscriptRef = useRef("");
+
+  useEffect(() => {
+    setVoiceSupported(ExpoSpeechRecognitionModule.isRecognitionAvailable());
+  }, []);
+
+  useSpeechRecognitionEvent("start", () => setRecording(true));
+  useSpeechRecognitionEvent("end", () => setRecording(false));
+  useSpeechRecognitionEvent("result", (event) => {
+    const transcript = event.results[0]?.transcript ?? "";
+    if (event.isFinal) {
+      finalizedTranscriptRef.current = finalizedTranscriptRef.current ? `${finalizedTranscriptRef.current} ${transcript}` : transcript;
+      setDescription(baseNotesRef.current + finalizedTranscriptRef.current);
+    } else {
+      const preview = finalizedTranscriptRef.current ? `${finalizedTranscriptRef.current} ${transcript}` : transcript;
+      setDescription(baseNotesRef.current + preview);
+    }
+  });
+  useSpeechRecognitionEvent("error", (event) => {
+    setRecording(false);
+    setVoiceError(
+      event.error === "not-allowed" || event.error === "service-not-allowed"
+        ? "Microphone/voice permission was denied."
+        : event.error === "no-speech" || event.error === "speech-timeout"
+          ? "Didn't catch any speech - try again."
+          : event.error === "network"
+            ? "Voice input needs a network connection."
+            : "Voice input isn't available right now."
+    );
+  });
+
+  function handleMicPress() {
+    if (recording) {
+      ExpoSpeechRecognitionModule.stop();
+      return;
+    }
+    setVoiceError(null);
+    finalizedTranscriptRef.current = "";
+    baseNotesRef.current = description.trim() ? `${description.trim()} ` : "";
+    ExpoSpeechRecognitionModule.start({ lang: "en-US", interimResults: true, continuous: true, addsPunctuation: true });
+  }
 
   async function handleAddPhoto() {
     const uri = await capturePhoto();
@@ -220,7 +280,25 @@ export function FindingEditorForm({
       <SegmentedControl label="Severity" options={SEVERITY_OPTIONS} value={severity} onChange={setSeverity} />
 
       <Text style={styles.notesGuidance}>{FINDING_NOTES_GUIDANCE}</Text>
-      <Field label="Notes" value={description} onChangeText={setDescription} multiline numberOfLines={4} />
+      <View style={styles.notesLabelRow}>
+        <Text style={styles.label}>Notes</Text>
+        {voiceSupported ? (
+          <Pressable onPress={handleMicPress} style={[styles.micButton, recording && styles.micButtonActive]}>
+            <Text style={[styles.micButtonText, recording && styles.micButtonTextActive]}>{recording ? "⏹ Stop" : "🎙 Speak notes"}</Text>
+          </Pressable>
+        ) : null}
+      </View>
+      <TextInput
+        style={styles.notesInput}
+        placeholder="Optional notes"
+        placeholderTextColor={colors.textMuted}
+        value={description}
+        onChangeText={setDescription}
+        multiline
+        numberOfLines={4}
+      />
+      {recording ? <Text style={styles.voiceHint}>Listening… tap Stop when finished.</Text> : null}
+      {voiceError ? <Text style={styles.voiceErrorText}>{voiceError}</Text> : null}
 
       <Text style={styles.label}>Location</Text>
       <Pressable onPress={handleCaptureLocation} style={styles.secondaryButton}>
@@ -287,6 +365,33 @@ const styles = StyleSheet.create({
   dismissLink: { color: colors.primary, fontWeight: "600", fontSize: 13, marginBottom: 12 },
   label: { fontSize: 13, color: colors.textMuted, marginBottom: 8, fontWeight: "500" },
   notesGuidance: { fontSize: 12, color: colors.textMuted, marginBottom: 8, fontStyle: "italic" },
+  notesLabelRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 },
+  notesInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: colors.text,
+    backgroundColor: "#fff",
+    minHeight: 90,
+    textAlignVertical: "top",
+    marginBottom: 14,
+  },
+  micButton: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.chip,
+  },
+  micButtonActive: { backgroundColor: colors.danger, borderColor: colors.danger },
+  micButtonText: { fontSize: 12, fontWeight: "600", color: colors.primary },
+  micButtonTextActive: { color: "#fff" },
+  voiceHint: { fontSize: 12, color: colors.primary, fontWeight: "500", marginTop: -8, marginBottom: 14 },
+  voiceErrorText: { fontSize: 12, color: colors.danger, marginTop: -8, marginBottom: 14 },
   secondaryButton: {
     borderWidth: 1,
     borderColor: colors.border,
