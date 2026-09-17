@@ -59,6 +59,7 @@ export function ChecklistPanel({
   const [search, setSearch] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const [confirmingCheckAll, setConfirmingCheckAll] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -170,6 +171,17 @@ export function ChecklistPanel({
     onAddToSiteMap(response.id);
   }
 
+  function handleCheckAllInCategory(items: LocalTemplateItem[]) {
+    const unanswered = items.filter((i) => !responseByItem.has(i.id));
+    const newResponses = unanswered.map((item) => ({
+      ...upsertLocalChecklistResponse(inspectionId, item.id, "SATISFACTORY", null),
+      photos: [] as LocalChecklistResponsePhoto[],
+    }));
+    setResponses((prev) => [...prev, ...newResponses]);
+    setConfirmingCheckAll(null);
+    onChange?.();
+  }
+
   if (!templateId) {
     return <Text style={styles.emptyText}>This inspection has no template assigned, so there's no checklist to fill out.</Text>;
   }
@@ -200,6 +212,9 @@ export function ChecklistPanel({
         if (isSearching) anyMatches = true;
 
         const categoryExpanded = hideCategoryHeader || isSearching || expandedCategories.has(category);
+        const visibleUncheckedItems = visibleSections
+          .flatMap(({ items }) => items)
+          .filter((i) => !responseByItem.has(i.id));
 
         return (
           <View key={category} style={styles.categoryBlock}>
@@ -251,6 +266,25 @@ export function ChecklistPanel({
                   );
                 })
               : null}
+            {categoryExpanded && visibleUncheckedItems.length > 0 ? (
+              confirmingCheckAll === category ? (
+                <View style={styles.checkAllConfirmRow}>
+                  <Text style={styles.checkAllConfirmText}>
+                    Mark {visibleUncheckedItems.length} item{visibleUncheckedItems.length === 1 ? "" : "s"} satisfactory?
+                  </Text>
+                  <Text style={styles.checkAllConfirmAction} onPress={() => handleCheckAllInCategory(visibleUncheckedItems)}>
+                    Confirm
+                  </Text>
+                  <Text style={styles.checkAllCancelAction} onPress={() => setConfirmingCheckAll(null)}>
+                    Cancel
+                  </Text>
+                </View>
+              ) : (
+                <Text style={styles.checkAllLink} onPress={() => setConfirmingCheckAll(category)}>
+                  ✓ Check all as satisfactory ({visibleUncheckedItems.length} remaining)
+                </Text>
+              )
+            ) : null}
           </View>
         );
       })}
@@ -345,4 +379,9 @@ const styles = StyleSheet.create({
   photoRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 4 },
   photoThumb: { width: 48, height: 48, borderRadius: 6 },
   addPhotoLink: { color: colors.primary, fontWeight: "600", fontSize: 13 },
+  checkAllLink: { color: colors.primary, fontWeight: "600", fontSize: 13, marginLeft: 8, marginTop: 4 },
+  checkAllConfirmRow: { flexDirection: "row", alignItems: "center", gap: 12, marginLeft: 8, marginTop: 4 },
+  checkAllConfirmText: { fontSize: 13, color: colors.text, flexShrink: 1 },
+  checkAllConfirmAction: { color: colors.primary, fontWeight: "700", fontSize: 13 },
+  checkAllCancelAction: { color: colors.textMuted, fontWeight: "600", fontSize: 13 },
 });

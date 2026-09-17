@@ -5,7 +5,7 @@ import React, { useCallback, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { patchPropertyApplicability } from "../../api/properties";
 import { ChecklistPanel } from "../../components/ChecklistPanel";
-import { Card, Field, PrimaryButton, colors } from "../../components/ui";
+import { Card, Checkbox, Field, PrimaryButton, colors } from "../../components/ui";
 import { useAuth } from "../../context/AuthContext";
 import { getCachedProperty, getCachedTemplateSections, updateLocalPropertyApplicability } from "../../db/cache";
 import {
@@ -196,9 +196,13 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
             onAddToSiteMap={(responseId) => navigation.navigate("SiteMap", { inspectionId, fromChecklistResponseId: responseId })}
           />
           {!step.required ? (
-            <Text style={styles.secondaryLink} onPress={() => setConfirmingNotApplicable(true)}>
-              This property doesn't have a {step.shortLabel.toLowerCase()}
-            </Text>
+            <Card style={styles.naTriggerCard}>
+              <Checkbox
+                label={`This property doesn't have a ${step.shortLabel.toLowerCase()}`}
+                checked={false}
+                onChange={() => setConfirmingNotApplicable(true)}
+              />
+            </Card>
           ) : null}
         </>
       )}
@@ -256,6 +260,7 @@ const styles = StyleSheet.create({
   naText: { fontSize: 14, color: colors.text },
   naMeta: { fontSize: 12, color: colors.textMuted },
   naConfirmCard: { marginTop: 12, gap: 8 },
+  naTriggerCard: { marginTop: 12 },
   naConfirmText: { fontSize: 13, color: colors.text },
   secondaryLink: { color: colors.textMuted, fontWeight: "500", fontSize: 12, marginTop: 12, textAlign: "center" },
   blockedHint: { color: colors.textMuted, fontSize: 12, textAlign: "center", marginTop: 16 },
