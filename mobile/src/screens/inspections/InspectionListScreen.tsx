@@ -3,8 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React, { useCallback, useEffect, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
-import { listInspections } from "../../api/inspections";
-import { deleteLocalInspection, listLocalInspections, LocalInspectionListItem } from "../../db/inspectionStore";
+import { getInspection, listInspections } from "../../api/inspections";
+import {
+  deleteLocalInspection,
+  hydrateLocalInspectionFromRemote,
+  listLocalInspections,
+  LocalInspectionListItem,
+} from "../../db/inspectionStore";
 import { useAuth } from "../../context/AuthContext";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { Badge, ErrorView, LoadingView, colors } from "../../components/ui";
@@ -31,6 +36,8 @@ type Row = {
 export default function InspectionListScreen({ navigation }: Props) {
   const { user } = useAuth();
   const [localRows, setLocalRows] = useState<LocalInspectionListItem[]>([]);
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -91,6 +98,7 @@ export default function InspectionListScreen({ navigation }: Props) {
         <Text style={styles.addButtonText}>+ New Inspection</Text>
       </Pressable>
 
+      {openError ? <Text style={styles.openError}>{openError}</Text> : null}
       {isLoading && localRows.length === 0 ? (
         <LoadingView />
       ) : isError && rows.length === 0 ? (
@@ -109,7 +117,24 @@ export default function InspectionListScreen({ navigation }: Props) {
           renderItem={({ item }) => (
             <Pressable
               style={styles.row}
-              onPress={() => {
+              onPress={async () => {
+                if (item.kind === "remote" && item.status === "IN_PROGRESS") {
+                  // Exists only server-side (e.g. started on another device) -
+                  // pull it into local storage so it opens in the editable
+                  // workspace and can be continued, not the read-only view.
+                  if (openingId) return;
+                  setOpeningId(item.id);
+                  setOpenError(null);
+                  try {
+                    hydrateLocalInspectionFromRemote(await getInspection(item.id));
+                    navigation.navigate("InspectionWorkspace", { inspectionId: item.id });
+                  } catch {
+                    setOpenError("Couldn't open this inspection - check your connection and try again.");
+                  } finally {
+                    setOpeningId(null);
+                  }
+                  return;
+                }
                 if (item.kind === "local" && item.status !== "COMPLETED") {
                   // Unfinished - drop back into the editable workspace
                   // (checklist, findings, signatures, etc.) instead of the
@@ -131,6 +156,7 @@ export default function InspectionListScreen({ navigation }: Props) {
               <View style={styles.badgeCol}>
                 <Badge label={item.status.replace(/_/g, " ")} tone={STATUS_TONE[item.status] ?? "default"} />
                 {!item.synced ? <Badge label="Not synced" tone="warning" /> : null}
+                {openingId === item.id ? <Text style={styles.meta}>Opening…</Text> : null}
               </View>
             </Pressable>
           )}
@@ -147,6 +173,7 @@ const styles = StyleSheet.create({
   centerFill: { flex: 1, alignItems: "center", justifyContent: "center" },
   emptyTitle: { fontSize: 16, fontWeight: "600", color: colors.text },
   list: { gap: 10, paddingBottom: 24 },
+  openError: { color: colors.danger, fontSize: 13, marginBottom: 8 },
   row: {
     flexDirection: "row",
     alignItems: "center",

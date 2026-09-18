@@ -16,6 +16,7 @@ const fullInclude = {
   findings: { include: { photos: true }, where: { deletedAt: null } },
   recommendations: { where: { deletedAt: null } },
   signatures: true,
+  sectionSkips: true,
   report: true,
   followUpsFrom: true,
   checklistResponses: { where: { deletedAt: null }, include: { photos: { orderBy: { sortOrder: "asc" as const } } } },

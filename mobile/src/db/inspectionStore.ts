@@ -1,5 +1,7 @@
 import { RecommendationOwnerType, severityToRecommendationPriority } from "@pest-app/shared";
 import { getDb, isLocalDbAvailable } from "./database";
+import { API_BASE_URL } from "../api/config";
+import type { InspectionDetail } from "../api/inspections";
 import { generateId } from "../lib/uuid";
 import type {
   LocalChecklistResponse,
@@ -104,6 +106,85 @@ export function listLocalInspections(technicianId: string): LocalInspectionListI
      ORDER BY i.createdAt DESC`,
     [technicianId]
   );
+}
+
+// Loads an inspection that only exists server-side (started on another
+// device, or its local copy was cleared) into local storage so it can be
+// picked up in the editable workspace instead of the read-only detail view.
+// Every row is marked 'synced' since it came from the server - the sync
+// engine only pushes 'pending' rows, so nothing gets re-uploaded. A no-op if
+// the inspection is already local (the local copy may hold newer edits).
+export function hydrateLocalInspectionFromRemote(detail: InspectionDetail): void {
+  const db = getDb();
+  if (db.getFirstSync<LocalInspection>(`SELECT id FROM inspections WHERE id = ?`, [detail.id])) return;
+  const iso = (d: string | Date | null | undefined) => (d ? new Date(d).toISOString() : null);
+  db.withTransactionSync(() => {
+    db.runSync(
+      `INSERT INTO inspections (id, propertyId, customerId, templateId, technicianId, status, scheduledAt, startedAt, completedAt, generalNotes, weatherConditions, checklistCategories, createdAt, updatedAt, syncStatus)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced')`,
+      [
+        detail.id, detail.propertyId, detail.customerId, detail.templateId ?? null, detail.technicianId, detail.status,
+        iso(detail.scheduledAt), iso(detail.startedAt), iso(detail.completedAt), detail.generalNotes ?? null,
+        detail.weatherConditions ?? null, detail.checklistCategories ?? null, iso(detail.createdAt), iso(detail.updatedAt),
+      ]
+    );
+    for (const f of detail.findings) {
+      db.runSync(
+        `INSERT INTO findings (id, inspectionId, areaLocation, locationDetail, severity, description, lat, lng, floorPlanX, floorPlanY, siteMapArrowStartX, siteMapArrowStartY, siteMapLevel, createdAt, updatedAt, syncStatus)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced')`,
+        [
+          f.id, detail.id, f.areaLocation, f.locationDetail ?? null, f.severity, f.description ?? null, f.lat ?? null, f.lng ?? null,
+          f.floorPlanX ?? null, f.floorPlanY ?? null, f.siteMapArrowStartX ?? null, f.siteMapArrowStartY ?? null, f.siteMapLevel ?? null,
+          iso(f.createdAt), iso(f.updatedAt),
+        ]
+      );
+      for (const p of f.photos) {
+        db.runSync(
+          `INSERT INTO finding_photos (id, findingId, localUri, remoteUrl, caption, takenAt, lat, lng, sortOrder, syncStatus)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced')`,
+          [p.id, f.id, `${API_BASE_URL}${p.fileUrl}`, p.fileUrl, p.caption ?? null, iso(p.takenAt), p.lat ?? null, p.lng ?? null, p.sortOrder]
+        );
+      }
+    }
+    for (const r of detail.recommendations) {
+      db.runSync(
+        `INSERT INTO recommendations (id, inspectionId, findingId, title, description, priority, ownerType, deadline, status, createdAt, updatedAt, syncStatus)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced')`,
+        [
+          r.id, detail.id, r.findingId ?? null, r.title, r.description ?? null, r.priority, r.ownerType, iso(r.deadline), r.status,
+          iso(r.createdAt), iso(r.updatedAt),
+        ]
+      );
+    }
+    for (const s of detail.signatures) {
+      db.runSync(
+        `INSERT INTO signatures (id, inspectionId, signerType, signerName, imageBase64, remoteUrl, signedAt, syncStatus)
+         VALUES (?, ?, ?, ?, '', ?, ?, 'synced')`,
+        [s.id, detail.id, s.signerType, s.signerName, s.imageUrl, iso(s.signedAt)]
+      );
+    }
+    for (const r of detail.checklistResponses) {
+      db.runSync(
+        `INSERT INTO checklist_responses (id, inspectionId, templateItemId, status, notes, createdAt, updatedAt, syncStatus)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'synced')`,
+        [r.id, detail.id, r.templateItemId, r.status, r.notes ?? null, iso(r.createdAt), iso(r.updatedAt)]
+      );
+      for (const p of r.photos ?? []) {
+        db.runSync(
+          `INSERT INTO checklist_response_photos (id, checklistResponseId, localUri, remoteUrl, caption, takenAt, sortOrder, syncStatus)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'synced')`,
+          [p.id, r.id, `${API_BASE_URL}${p.fileUrl}`, p.fileUrl, p.caption ?? null, iso(p.takenAt), p.sortOrder]
+        );
+      }
+    }
+    for (const k of detail.sectionSkips ?? []) {
+      db.runSync(
+        `INSERT INTO inspection_section_skips (id, inspectionId, category, technicianId, initials, confirmedAt, createdAt, syncStatus)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'synced')`,
+        [k.id, detail.id, k.category, k.technicianId, k.initials, iso(k.confirmedAt), iso(k.createdAt)]
+      );
+    }
+  });
 }
 
 export interface LocalInspectionDetail {
