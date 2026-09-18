@@ -144,53 +144,59 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
         </Card>
       </View>
 
+      {/* One list, not two: every finding automatically becomes its
+          recommendation (Matt's "no second entry" ask), so showing a Findings
+          card and a Recommendations card for the same item was pure
+          repetition. Each card is the finding plus the recommendation it
+          generated; tap to edit or delete the finding. */}
       <WorkspaceSection
-        title="Findings"
-        count={detail.findings.length}
+        title="Findings & Recommendations"
+        count={detail.findings.length + detail.recommendations.filter((r) => !r.findingId || !detail.findings.some((f) => f.id === r.findingId)).length}
         onAdd={() => navigation.navigate("FindingForm", { inspectionId })}
         addLabel="+ Add finding"
       >
-        {detail.findings.map((f) => (
-          <Card key={f.id} style={styles.itemCard}>
-            <Text style={styles.itemTitle}>{f.areaLocation}</Text>
-            <Text style={styles.itemMeta}>
-              {f.severity} · {f.photos.length} photo(s)
-            </Text>
-          </Card>
-        ))}
-      </WorkspaceSection>
-
-      <WorkspaceSection title="Recommendations" count={detail.recommendations.length}>
-        {detail.recommendations.length === 0 ? (
-          <Text style={styles.itemMeta}>Created automatically from each finding - nothing to enter here.</Text>
+        {detail.findings.length === 0 && detail.recommendations.length === 0 ? (
+          <Text style={styles.itemMeta}>Add a finding - its recommendation is created automatically, nothing to enter twice.</Text>
         ) : null}
-        {detail.recommendations.map((r) => {
-          // Auto-generated from a finding (Matt's ask - no re-typing the
-          // same area/notes/severity a second time under Recommendations),
-          // so the notes and photos shown here are the finding's own.
-          const sourceFinding = r.findingId ? detail.findings.find((f) => f.id === r.findingId) : null;
+        {detail.findings.map((f) => {
+          const rec = detail.recommendations.find((r) => r.findingId === f.id);
           return (
+            <Pressable key={f.id} onPress={() => navigation.navigate("FindingForm", { inspectionId, editingFindingId: f.id })}>
+              <Card style={styles.itemCard}>
+                <Text style={styles.itemTitle}>{f.areaLocation}</Text>
+                <Text style={styles.itemMeta}>
+                  {f.severity}
+                  {rec ? ` · Recommendation: ${rec.priority}` : ""}
+                </Text>
+                {f.description ? (
+                  <Text style={styles.itemMeta} numberOfLines={3}>
+                    {f.description}
+                  </Text>
+                ) : null}
+                {f.photos.length > 0 ? (
+                  <View style={styles.recPhotoRow}>
+                    {f.photos.map((p) => (
+                      <Image key={p.id} source={{ uri: p.localUri }} style={styles.recPhoto} />
+                    ))}
+                  </View>
+                ) : null}
+              </Card>
+            </Pressable>
+          );
+        })}
+        {detail.recommendations
+          .filter((r) => !r.findingId || !detail.findings.some((f) => f.id === r.findingId))
+          .map((r) => (
             <Card key={r.id} style={styles.itemCard}>
               <Text style={styles.itemTitle}>{r.title}</Text>
-              <Text style={styles.itemMeta}>
-                {r.priority}
-                {sourceFinding ? " · From finding" : ""}
-              </Text>
+              <Text style={styles.itemMeta}>{r.priority} · Recommendation</Text>
               {r.description ? (
                 <Text style={styles.itemMeta} numberOfLines={3}>
                   {r.description}
                 </Text>
               ) : null}
-              {sourceFinding && sourceFinding.photos.length > 0 ? (
-                <View style={styles.recPhotoRow}>
-                  {sourceFinding.photos.map((p) => (
-                    <Image key={p.id} source={{ uri: p.localUri }} style={styles.recPhoto} />
-                  ))}
-                </View>
-              ) : null}
             </Card>
-          );
-        })}
+          ))}
       </WorkspaceSection>
 
       <Text style={styles.sectionTitle}>Signatures</Text>
