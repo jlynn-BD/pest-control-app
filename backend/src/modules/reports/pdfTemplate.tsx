@@ -190,6 +190,10 @@ export interface ReportFinding {
   severity: string;
   description: string | null;
   photoPaths: string[];
+  // The recommendation generated from this finding (Matt's "no second
+  // entry" ask), shown on the finding's own card rather than in a
+  // separate section that repeated it.
+  recommendation: ReportRecommendation | null;
 }
 
 export interface ReportRecommendation {
@@ -233,7 +237,9 @@ export interface ReportData {
   checklistSections: ReportChecklistSection[];
   skippedSections: ReportSkippedSection[];
   findings: ReportFinding[];
-  recommendations: ReportRecommendation[];
+  // Recommendations not tied to any finding (created before they were
+  // generated automatically) - the rest live on their finding above.
+  standaloneRecommendations: ReportRecommendation[];
   signatures: ReportSignature[];
 }
 
@@ -409,8 +415,12 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
         ) : null}
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Findings ({data.findings.length})</Text>
-          {data.findings.length === 0 ? <Text style={styles.cardBody}>No findings recorded.</Text> : null}
+          <Text style={styles.sectionTitle}>
+            Findings & Recommendations ({data.findings.length + data.standaloneRecommendations.length})
+          </Text>
+          {data.findings.length === 0 && data.standaloneRecommendations.length === 0 ? (
+            <Text style={styles.cardBody}>No findings or recommendations recorded.</Text>
+          ) : null}
           {data.findings.map((f, i) => (
             <View key={i} style={styles.card} wrap={false}>
               <View style={styles.cardHeaderRow}>
@@ -420,6 +430,12 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
                 </Text>
                 <Text style={severityStyle(f.severity)}>{f.severity}</Text>
               </View>
+              {f.recommendation ? (
+                <Text style={styles.cardMeta}>
+                  Recommendation: {f.recommendation.priority} · {f.recommendation.status}
+                  {f.recommendation.deadline ? ` · Deadline: ${new Date(f.recommendation.deadline).toLocaleDateString()}` : ""}
+                </Text>
+              ) : null}
               {f.description ? <Text style={styles.cardBody}>{f.description}</Text> : null}
               {f.photoPaths.length > 0 ? (
                 <View style={styles.photoRow}>
@@ -430,13 +446,8 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
               ) : null}
             </View>
           ))}
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recommendations ({data.recommendations.length})</Text>
-          {data.recommendations.length === 0 ? <Text style={styles.cardBody}>No recommendations.</Text> : null}
-          {data.recommendations.map((r, i) => (
-            <View key={i} style={styles.card} wrap={false}>
+          {data.standaloneRecommendations.map((r, i) => (
+            <View key={`r${i}`} style={styles.card} wrap={false}>
               <View style={styles.cardHeaderRow}>
                 <Text style={styles.cardTitle}>{r.title}</Text>
                 <Text style={styles.cardMeta}>

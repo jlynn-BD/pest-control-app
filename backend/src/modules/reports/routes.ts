@@ -19,6 +19,16 @@ function mediaUrlToAbsolutePath(fileUrl: string): string {
   return storage.getAbsolutePath(key);
 }
 
+function toReportRecommendation(r: { title: string; description: string | null; priority: string; status: string; deadline: Date | null }) {
+  return {
+    title: r.title,
+    description: r.description,
+    priority: r.priority,
+    status: r.status,
+    deadline: r.deadline?.toISOString() ?? null,
+  };
+}
+
 async function buildReportData(inspectionId: string): Promise<ReportData> {
   const inspection = await prisma.inspection.findFirst({
     where: { id: inspectionId, deletedAt: null },
@@ -127,20 +137,20 @@ async function buildReportData(inspectionId: string): Promise<ReportData> {
       initials: s.initials,
       confirmedAt: s.confirmedAt.toISOString(),
     })),
-    findings: inspection.findings.map((f) => ({
-      areaLocation: f.areaLocation,
-      locationDetail: f.locationDetail,
-      severity: f.severity,
-      description: f.description,
-      photoPaths: f.photos.map((p) => mediaUrlToAbsolutePath(p.fileUrl)),
-    })),
-    recommendations: inspection.recommendations.map((r) => ({
-      title: r.title,
-      description: r.description,
-      priority: r.priority,
-      status: r.status,
-      deadline: r.deadline?.toISOString() ?? null,
-    })),
+    findings: inspection.findings.map((f) => {
+      const rec = inspection.recommendations.find((r) => r.findingId === f.id);
+      return {
+        areaLocation: f.areaLocation,
+        locationDetail: f.locationDetail,
+        severity: f.severity,
+        description: f.description,
+        photoPaths: f.photos.map((p) => mediaUrlToAbsolutePath(p.fileUrl)),
+        recommendation: rec ? toReportRecommendation(rec) : null,
+      };
+    }),
+    standaloneRecommendations: inspection.recommendations
+      .filter((r) => !r.findingId || !inspection.findings.some((f) => f.id === r.findingId))
+      .map(toReportRecommendation),
     signatures: inspection.signatures.map((s) => ({
       signerType: s.signerType,
       signerName: s.signerName,
