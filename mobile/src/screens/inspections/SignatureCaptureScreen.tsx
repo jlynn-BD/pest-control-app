@@ -45,7 +45,15 @@ export default function SignatureCaptureScreen({ route, navigation }: Props) {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.heading}>{signerType === "CUSTOMER" ? "Customer signature" : "Technician signature"}</Text>
       <Field label="Signer name" value={signerName} onChangeText={setSignerName} />
-      <SignatureBox ref={svgRef} panHandlers={pad.panHandlers} paths={pad.paths} isEmpty={pad.isEmpty} onClear={pad.clear} />
+      <SignatureBox
+        ref={svgRef}
+        panHandlers={pad.panHandlers}
+        paths={pad.paths}
+        isEmpty={pad.isEmpty}
+        onClear={pad.clear}
+        strokes={pad.strokes}
+        onStroke={pad.addStroke}
+      />
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <PrimaryButton title="Save signature" onPress={handleSave} loading={saving} />
     </ScrollView>

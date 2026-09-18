@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { PanResponder } from "react-native";
 
-type Point = { x: number; y: number };
+import type { SignaturePoint as Point } from "./signatureTypes";
 
 function pointsToPath(points: Point[]): string {
   if (points.length === 0) return "";
@@ -43,6 +43,8 @@ export function useSignaturePad() {
   return {
     panHandlers: panResponder.panHandlers,
     paths,
+    strokes,
+    addStroke: (stroke: Point[]) => setStrokes((prev) => [...prev, stroke]),
     isEmpty: strokes.length === 0,
     clear: () => {
       setStrokes([]);

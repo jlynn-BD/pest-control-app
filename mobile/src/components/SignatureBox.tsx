@@ -3,15 +3,18 @@ import { StyleSheet, Text, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { colors } from "./ui";
 
-export interface SignatureSvgHandle {
-  toDataURL: (callback: (base64: string) => void) => void;
-}
+import type { SignaturePoint, SignatureSvgHandle } from "./signatureTypes";
+export type { SignatureSvgHandle } from "./signatureTypes";
 
 export const SignatureBox = forwardRef<SignatureSvgHandle, {
   panHandlers: object;
   paths: string[];
   isEmpty: boolean;
   onClear: () => void;
+  // Only used by the web version (SignatureBox.web.tsx), which draws with
+  // pointer events instead of PanResponder.
+  strokes?: SignaturePoint[][];
+  onStroke?: (stroke: SignaturePoint[]) => void;
 }>(function SignatureBox({ panHandlers, paths, isEmpty, onClear }, ref) {
   return (
     <View>
