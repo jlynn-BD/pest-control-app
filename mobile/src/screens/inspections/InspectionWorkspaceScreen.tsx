@@ -1,7 +1,7 @@
 import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React, { useCallback, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getWizardStepStatus } from "@pest-app/shared";
 import { getCachedCustomer, getCachedProperty, getCachedTemplateSections, getCachedTemplates } from "../../db/cache";
 import {
@@ -160,23 +160,34 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
         ))}
       </WorkspaceSection>
 
-      <WorkspaceSection
-        title="Recommendations"
-        count={detail.recommendations.length}
-        onAdd={() => navigation.navigate("RecommendationForm", { inspectionId })}
-        addLabel="+ Add recommendation"
-      >
+      <WorkspaceSection title="Recommendations" count={detail.recommendations.length}>
+        {detail.recommendations.length === 0 ? (
+          <Text style={styles.itemMeta}>Created automatically from each finding - nothing to enter here.</Text>
+        ) : null}
         {detail.recommendations.map((r) => {
           // Auto-generated from a finding (Matt's ask - no re-typing the
-          // same area/notes/severity a second time under Recommendations).
+          // same area/notes/severity a second time under Recommendations),
+          // so the notes and photos shown here are the finding's own.
           const sourceFinding = r.findingId ? detail.findings.find((f) => f.id === r.findingId) : null;
           return (
             <Card key={r.id} style={styles.itemCard}>
               <Text style={styles.itemTitle}>{r.title}</Text>
               <Text style={styles.itemMeta}>
                 {r.priority}
-                {sourceFinding ? ` · From finding · ${sourceFinding.photos.length} photo(s)` : ""}
+                {sourceFinding ? " · From finding" : ""}
               </Text>
+              {r.description ? (
+                <Text style={styles.itemMeta} numberOfLines={3}>
+                  {r.description}
+                </Text>
+              ) : null}
+              {sourceFinding && sourceFinding.photos.length > 0 ? (
+                <View style={styles.recPhotoRow}>
+                  {sourceFinding.photos.map((p) => (
+                    <Image key={p.id} source={{ uri: p.localUri }} style={styles.recPhoto} />
+                  ))}
+                </View>
+              ) : null}
             </Card>
           );
         })}
@@ -244,8 +255,8 @@ function WorkspaceSection({
 }: {
   title: string;
   count: number;
-  addLabel: string;
-  onAdd: () => void;
+  addLabel?: string;
+  onAdd?: () => void;
   children: React.ReactNode;
 }) {
   return (
@@ -254,9 +265,11 @@ function WorkspaceSection({
         <Text style={styles.sectionTitle}>
           {title} ({count})
         </Text>
-        <Text style={styles.addLink} onPress={onAdd}>
-          {addLabel}
-        </Text>
+        {onAdd && addLabel ? (
+          <Text style={styles.addLink} onPress={onAdd}>
+            {addLabel}
+          </Text>
+        ) : null}
       </View>
       {children}
     </View>
@@ -303,6 +316,8 @@ const styles = StyleSheet.create({
   wizardStepLabel: { fontSize: 13, fontWeight: "600", color: colors.text },
   itemTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
   itemMeta: { fontSize: 12, color: colors.textMuted },
+  recPhotoRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 },
+  recPhoto: { width: 48, height: 48, borderRadius: 6 },
   signatureRow: { flexDirection: "row", gap: 10, marginTop: 4 },
   signatureCard: { flex: 1, alignItems: "flex-start", gap: 8 },
   signatureCardDone: { borderColor: colors.primary },

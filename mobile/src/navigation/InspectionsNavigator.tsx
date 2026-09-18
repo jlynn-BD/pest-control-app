@@ -9,7 +9,6 @@ import InspectionWizardScreen from "../screens/inspections/InspectionWizardScree
 import InspectionWorkspaceScreen from "../screens/inspections/InspectionWorkspaceScreen";
 import LocalInspectionDetailScreen from "../screens/inspections/LocalInspectionDetailScreen";
 import NewInspectionScreen from "../screens/inspections/NewInspectionScreen";
-import RecommendationFormScreen from "../screens/inspections/RecommendationFormScreen";
 import EstimateDetailScreen from "../screens/estimates/EstimateDetailScreen";
 import EstimateFormScreen from "../screens/estimates/EstimateFormScreen";
 import SignatureCaptureScreen from "../screens/inspections/SignatureCaptureScreen";
@@ -30,7 +29,6 @@ export default function InspectionsNavigator() {
       <Stack.Screen name="Checklist" component={ChecklistScreen} options={{ title: "Checklist" }} />
       <Stack.Screen name="SiteMap" component={SiteMapScreen} options={{ title: "Site Map" }} />
       <Stack.Screen name="FindingForm" component={FindingFormScreen} options={{ title: "New Finding" }} />
-      <Stack.Screen name="RecommendationForm" component={RecommendationFormScreen} options={{ title: "New Recommendation" }} />
       <Stack.Screen name="SignatureCapture" component={SignatureCaptureScreen} options={{ title: "Signature" }} />
       <Stack.Screen name="EstimateDetail" component={EstimateDetailScreen} options={{ title: "Estimate" }} />
       <Stack.Screen name="EstimateForm" component={EstimateFormScreen} options={{ title: "Edit Estimate" }} />
