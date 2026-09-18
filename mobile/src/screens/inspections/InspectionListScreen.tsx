@@ -33,6 +33,9 @@ type Row = {
   synced: boolean;
 };
 
+type Header = { kind: "header"; id: string; title: string };
+type ListItem = Row | Header;
+
 export default function InspectionListScreen({ navigation }: Props) {
   const { user } = useAuth();
   const [localRows, setLocalRows] = useState<LocalInspectionListItem[]>([]);
@@ -92,6 +95,19 @@ export default function InspectionListScreen({ navigation }: Props) {
       })),
   ].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 
+  // Two inspections for the same customer (one finished, one still going)
+  // looked like a duplicate account when listed together. Splitting into
+  // "In progress" / "Completed" sections makes it obvious which one is the
+  // active visit to continue and which is history.
+  const inProgressRows = rows.filter((r) => r.status !== "COMPLETED");
+  const completedRows = rows.filter((r) => r.status === "COMPLETED");
+  const listItems: ListItem[] = [
+    ...(inProgressRows.length > 0 ? [{ kind: "header" as const, id: "h-progress", title: `In progress (${inProgressRows.length})` }] : []),
+    ...inProgressRows,
+    ...(completedRows.length > 0 ? [{ kind: "header" as const, id: "h-completed", title: `Completed (${completedRows.length})` }] : []),
+    ...completedRows,
+  ];
+
   return (
     <View style={styles.container}>
       <Pressable style={styles.addButton} onPress={() => navigation.navigate("NewInspection")}>
@@ -109,12 +125,15 @@ export default function InspectionListScreen({ navigation }: Props) {
         </View>
       ) : (
         <FlatList
-          data={rows}
+          data={listItems}
           keyExtractor={(item) => item.id}
           refreshing={isRefetching}
           onRefresh={refetch}
           contentContainerStyle={styles.list}
-          renderItem={({ item }) => (
+          renderItem={({ item }) =>
+            item.kind === "header" ? (
+              <Text style={styles.sectionHeader}>{item.title}</Text>
+            ) : (
             <Pressable
               style={styles.row}
               onPress={async () => {
@@ -159,7 +178,8 @@ export default function InspectionListScreen({ navigation }: Props) {
                 {openingId === item.id ? <Text style={styles.meta}>Opening…</Text> : null}
               </View>
             </Pressable>
-          )}
+            )
+          }
         />
       )}
     </View>
@@ -173,6 +193,7 @@ const styles = StyleSheet.create({
   centerFill: { flex: 1, alignItems: "center", justifyContent: "center" },
   emptyTitle: { fontSize: 16, fontWeight: "600", color: colors.text },
   list: { gap: 10, paddingBottom: 24 },
+  sectionHeader: { fontSize: 13, fontWeight: "700", color: colors.textMuted, textTransform: "uppercase", marginTop: 6 },
   openError: { color: colors.danger, fontSize: 13, marginBottom: 8 },
   row: {
     flexDirection: "row",
