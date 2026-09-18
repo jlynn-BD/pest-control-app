@@ -190,8 +190,43 @@ export function ChecklistPanel({
   const visibleCategories = CHECKLIST_CATEGORY_DISPLAY_ORDER.filter((c) => sectionsByCategory.has(c));
   let anyMatches = false;
 
+  // Unanswered items the technician can currently see in a category (a
+  // search narrows this, so "check all" never touches hidden items).
+  function visibleUnchecked(category: string): LocalTemplateItem[] {
+    return (sectionsByCategory.get(category) ?? [])
+      .flatMap((section) => (isSearching ? section.items.filter((i) => itemMatches(i, section, category)) : section.items))
+      .filter((i) => !responseByItem.has(i.id));
+  }
+
+  // The bulk "check all" control with its inline confirm step - see
+  // handleCheckAllInCategory. Rendered once at the very top when the panel
+  // is scoped to a single category (the wizard step), otherwise under each
+  // category.
+  function renderCheckAll(category: string, items: LocalTemplateItem[], atTop: boolean) {
+    if (items.length === 0) return null;
+    const spacing = atTop ? styles.checkAllTop : null;
+    return confirmingCheckAll === category ? (
+      <View style={[styles.checkAllConfirmRow, spacing]}>
+        <Text style={styles.checkAllConfirmText}>
+          Mark {items.length} item{items.length === 1 ? "" : "s"} satisfactory?
+        </Text>
+        <Text style={styles.checkAllConfirmAction} onPress={() => handleCheckAllInCategory(items)}>
+          Confirm
+        </Text>
+        <Text style={styles.checkAllCancelAction} onPress={() => setConfirmingCheckAll(null)}>
+          Cancel
+        </Text>
+      </View>
+    ) : (
+      <Text style={[styles.checkAllLink, spacing]} onPress={() => setConfirmingCheckAll(category)}>
+        ✓ Check all as satisfactory ({items.length} remaining)
+      </Text>
+    );
+  }
+
   return (
     <View>
+      {categoryFilter ? renderCheckAll(categoryFilter, visibleUnchecked(categoryFilter), true) : null}
       <Field label="" placeholder="Search checklist (e.g. door, weep hole, foundation)" value={search} onChangeText={setSearch} />
 
       {visibleCategories.map((category) => {
@@ -267,25 +302,7 @@ export function ChecklistPanel({
                   );
                 })
               : null}
-            {categoryExpanded && visibleUncheckedItems.length > 0 ? (
-              confirmingCheckAll === category ? (
-                <View style={styles.checkAllConfirmRow}>
-                  <Text style={styles.checkAllConfirmText}>
-                    Mark {visibleUncheckedItems.length} item{visibleUncheckedItems.length === 1 ? "" : "s"} satisfactory?
-                  </Text>
-                  <Text style={styles.checkAllConfirmAction} onPress={() => handleCheckAllInCategory(visibleUncheckedItems)}>
-                    Confirm
-                  </Text>
-                  <Text style={styles.checkAllCancelAction} onPress={() => setConfirmingCheckAll(null)}>
-                    Cancel
-                  </Text>
-                </View>
-              ) : (
-                <Text style={styles.checkAllLink} onPress={() => setConfirmingCheckAll(category)}>
-                  ✓ Check all as satisfactory ({visibleUncheckedItems.length} remaining)
-                </Text>
-              )
-            ) : null}
+            {!categoryFilter && categoryExpanded ? renderCheckAll(category, visibleUncheckedItems, false) : null}
           </View>
         );
       })}
@@ -380,6 +397,7 @@ const styles = StyleSheet.create({
   photoRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 4 },
   photoThumb: { width: 48, height: 48, borderRadius: 6 },
   addPhotoLink: { color: colors.primary, fontWeight: "600", fontSize: 13 },
+  checkAllTop: { marginLeft: 0, marginTop: 0, marginBottom: 12, fontSize: 15 },
   checkAllLink: { color: colors.primary, fontWeight: "600", fontSize: 13, marginLeft: 8, marginTop: 4 },
   checkAllConfirmRow: { flexDirection: "row", alignItems: "center", gap: 12, marginLeft: 8, marginTop: 4 },
   checkAllConfirmText: { fontSize: 13, color: colors.text, flexShrink: 1 },
