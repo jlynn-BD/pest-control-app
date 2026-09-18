@@ -2,6 +2,8 @@ import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React, { useCallback, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { listInspections } from "../../api/inspections";
+import { ensureLocalInspection } from "../../lib/resumeInspection";
 import { getCachedCustomer, getCachedProperties, getCachedTemplates, primeCache } from "../../db/cache";
 import type { LocalProperty, LocalTemplate } from "../../db/types";
 import { createLocalInspection, listLocalInspections } from "../../db/inspectionStore";
@@ -18,7 +20,12 @@ export default function NewInspectionScreen({ navigation }: Props) {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [properties, setProperties] = useState<LocalProperty[]>([]);
   const [templates, setTemplates] = useState<LocalTemplate[]>([]);
-  const [inProgressByProperty, setInProgressByProperty] = useState<Map<string, string>>(new Map());
+  const [localInProgress, setLocalInProgress] = useState<Map<string, string>>(new Map());
+  const [remoteInProgress, setRemoteInProgress] = useState<Map<string, string>>(new Map());
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
+  // Local copies win over the server list (they may hold newer edits).
+  const inProgressByProperty = useMemo(() => new Map([...remoteInProgress, ...localInProgress]), [remoteInProgress, localInProgress]);
 
   useFocusEffect(
     useCallback(() => {
@@ -51,7 +58,14 @@ export default function NewInspectionScreen({ navigation }: Props) {
         for (const i of listLocalInspections(user.id)) {
           if (i.status !== "COMPLETED") inProgress.set(i.propertyId, i.id);
         }
-        setInProgressByProperty(inProgress);
+        setLocalInProgress(inProgress);
+        // Also ask the server: an in-progress inspection started on another
+        // device (or not on this one yet) isn't in local storage, and
+        // missing it is how a second, empty one got created for the same
+        // property. Offline just means falling back to the local check.
+        listInspections({ technicianId: user.id, status: "IN_PROGRESS" })
+          .then((rows) => setRemoteInProgress(new Map(rows.map((r) => [r.propertyId, r.id]))))
+          .catch(() => {});
       }
     }, [user])
   );
@@ -71,21 +85,42 @@ export default function NewInspectionScreen({ navigation }: Props) {
 
   const existingInspectionId = selectedPropertyId ? inProgressByProperty.get(selectedPropertyId) ?? null : null;
 
-  function handleStart() {
-    if (!selectedPropertyId || !user) return;
-    if (existingInspectionId) {
-      navigation.replace("InspectionWorkspace", { inspectionId: existingInspectionId });
-      return;
+  async function handleStart() {
+    if (!selectedPropertyId || !user || starting) return;
+    setStarting(true);
+    setStartError(null);
+    try {
+      let existingId = existingInspectionId;
+      if (!existingId) {
+        // The list above may not have loaded yet (or is stale), so ask the
+        // server right before creating - never start a second inspection
+        // where one is already open.
+        try {
+          const open = await listInspections({ technicianId: user.id, status: "IN_PROGRESS" });
+          existingId = open.find((r) => r.propertyId === selectedPropertyId)?.id ?? null;
+        } catch {
+          // offline - the local check above is all there is
+        }
+      }
+      if (existingId) {
+        await ensureLocalInspection(existingId);
+        navigation.replace("InspectionWorkspace", { inspectionId: existingId });
+        return;
+      }
+      const property = properties.find((p) => p.id === selectedPropertyId);
+      if (!property) return;
+      const inspection = createLocalInspection({
+        propertyId: property.id,
+        customerId: property.customerId,
+        templateId: selectedTemplateId,
+        technicianId: user.id,
+      });
+      navigation.replace("InspectionWorkspace", { inspectionId: inspection.id });
+    } catch {
+      setStartError("Couldn't open the existing inspection - check your connection and try again.");
+    } finally {
+      setStarting(false);
     }
-    const property = properties.find((p) => p.id === selectedPropertyId);
-    if (!property) return;
-    const inspection = createLocalInspection({
-      propertyId: property.id,
-      customerId: property.customerId,
-      templateId: selectedTemplateId,
-      technicianId: user.id,
-    });
-    navigation.replace("InspectionWorkspace", { inspectionId: inspection.id });
   }
 
   return (
@@ -147,7 +182,9 @@ export default function NewInspectionScreen({ navigation }: Props) {
         title={existingInspectionId ? "Continue inspection" : "Start inspection"}
         onPress={handleStart}
         disabled={!selectedPropertyId}
+        loading={starting}
       />
+      {startError ? <Text style={styles.startError}>{startError}</Text> : null}
     </ScrollView>
   );
 }
@@ -171,6 +208,7 @@ const styles = StyleSheet.create({
   },
   inProgressHint: { fontSize: 12, color: colors.textMuted, marginTop: 4, fontStyle: "italic" },
   meta: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  startError: { color: colors.danger, fontSize: 13, textAlign: "center", marginTop: 8 },
   emptyText: { color: colors.textMuted, fontStyle: "italic" },
   spacer: { height: 8 },
 });

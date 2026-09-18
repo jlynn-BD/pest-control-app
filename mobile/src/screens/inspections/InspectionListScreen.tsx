@@ -3,10 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React, { useCallback, useEffect, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
-import { getInspection, listInspections } from "../../api/inspections";
+import { listInspections } from "../../api/inspections";
+import { ensureLocalInspection } from "../../lib/resumeInspection";
 import {
   deleteLocalInspection,
-  hydrateLocalInspectionFromRemote,
   listLocalInspections,
   LocalInspectionListItem,
 } from "../../db/inspectionStore";
@@ -145,7 +145,7 @@ export default function InspectionListScreen({ navigation }: Props) {
                   setOpeningId(item.id);
                   setOpenError(null);
                   try {
-                    hydrateLocalInspectionFromRemote(await getInspection(item.id));
+                    await ensureLocalInspection(item.id);
                     navigation.navigate("InspectionWorkspace", { inspectionId: item.id });
                   } catch {
                     setOpenError("Couldn't open this inspection - check your connection and try again.");
