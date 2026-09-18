@@ -747,7 +747,12 @@ export function getUploadableSignatures(): (LocalSignature & { inspectionSyncSta
     `SELECT s.*, i.syncStatus as inspectionSyncStatus
      FROM signatures s
      JOIN inspections i ON i.id = s.inspectionId
-     WHERE s.syncStatus = 'pending' AND i.syncStatus = 'synced'`
+     WHERE s.syncStatus = 'pending' AND i.syncStatus = 'synced'
+       AND NOT EXISTS (
+         SELECT 1 FROM signatures s2
+         WHERE s2.inspectionId = s.inspectionId AND s2.signerType = s.signerType AND s2.signedAt > s.signedAt
+       )
+     ORDER BY s.signedAt ASC`
   );
 }
 export function markSignatureSynced(id: string, remoteUrl: string): void {
