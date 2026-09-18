@@ -11,6 +11,7 @@ import { CHECKLIST_CATEGORY_LABEL, CHECKLIST_STATUS_LABEL, groupChecklistForDisp
 import { buildSiteMapPanels, parseSiteMapSketch } from "../../lib/siteMapSketch";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { SiteMapCanvas } from "../../components/ArrowCanvas";
+import { AuthImage } from "../../components/AuthImage";
 import { Badge, Card, ErrorView, LoadingView, PrimaryButton, colors } from "../../components/ui";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "InspectionDetail">;
@@ -122,7 +123,7 @@ export default function InspectionDetailScreen({ route }: Props) {
               {item.photos.length > 0 ? (
                 <View style={styles.photoRow}>
                   {item.photos.map((p) => (
-                    <Image key={p.id} source={{ uri: `${API_BASE_URL}${p.fileUrl}` }} style={styles.photoThumb} />
+                    <AuthImage key={p.id} uri={`${API_BASE_URL}${p.fileUrl}`} style={styles.photoThumb} />
                   ))}
                 </View>
               ) : null}
@@ -163,7 +164,7 @@ export default function InspectionDetailScreen({ route }: Props) {
             {sourceFinding && sourceFinding.photos.length > 0 ? (
               <View style={styles.photoRow}>
                 {sourceFinding.photos.map((p) => (
-                  <Image key={p.id} source={{ uri: `${API_BASE_URL}${p.fileUrl}` }} style={styles.photoThumb} />
+                  <AuthImage key={p.id} uri={`${API_BASE_URL}${p.fileUrl}`} style={styles.photoThumb} />
                 ))}
               </View>
             ) : null}

@@ -187,6 +187,13 @@ export function hydrateLocalInspectionFromRemote(detail: InspectionDetail): void
   });
 }
 
+// A signature drawn on this device carries its image locally; one loaded
+// from the server (see hydrateLocalInspectionFromRemote) only has the URL.
+export function signatureImageUri(s: LocalSignature): string | null {
+  if (s.imageBase64) return s.imageBase64;
+  return s.remoteUrl ? `${API_BASE_URL}${s.remoteUrl}` : null;
+}
+
 export interface LocalInspectionDetail {
   inspection: LocalInspection;
   findings: (LocalFinding & { photos: LocalFindingPhoto[] })[];

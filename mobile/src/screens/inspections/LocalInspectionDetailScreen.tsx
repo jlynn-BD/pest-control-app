@@ -2,11 +2,12 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React, { useMemo } from "react";
 import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getCachedCustomer, getCachedProperty, getCachedTemplateSections } from "../../db/cache";
-import { getLocalInspectionDetail } from "../../db/inspectionStore";
+import { getLocalInspectionDetail, signatureImageUri } from "../../db/inspectionStore";
 import { CHECKLIST_CATEGORY_LABEL, CHECKLIST_STATUS_LABEL, groupChecklistForDisplay } from "../../lib/checklist";
 import { buildSiteMapPanels, parseSiteMapSketch } from "../../lib/siteMapSketch";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { SiteMapCanvas } from "../../components/ArrowCanvas";
+import { AuthImage } from "../../components/AuthImage";
 import { Badge, Card, colors } from "../../components/ui";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "LocalInspectionDetail">;
@@ -68,7 +69,7 @@ export default function LocalInspectionDetailScreen({ route }: Props) {
               {item.photos.length > 0 ? (
                 <View style={styles.photoRow}>
                   {item.photos.map((p) => (
-                    <Image key={p.id} source={{ uri: p.localUri }} style={styles.photoThumb} />
+                    <AuthImage key={p.id} uri={p.localUri} style={styles.photoThumb} />
                   ))}
                 </View>
               ) : null}
@@ -87,7 +88,7 @@ export default function LocalInspectionDetailScreen({ route }: Props) {
           {f.description ? <Text style={styles.body}>{f.description}</Text> : null}
           <View style={styles.photoRow}>
             {f.photos.map((p) => (
-              <Image key={p.id} source={{ uri: p.localUri }} style={styles.photoThumb} />
+              <AuthImage key={p.id} uri={p.localUri} style={styles.photoThumb} />
             ))}
           </View>
         </Card>
@@ -107,7 +108,7 @@ export default function LocalInspectionDetailScreen({ route }: Props) {
             {sourceFinding && sourceFinding.photos.length > 0 ? (
               <View style={styles.photoRow}>
                 {sourceFinding.photos.map((p) => (
-                  <Image key={p.id} source={{ uri: p.localUri }} style={styles.photoThumb} />
+                  <AuthImage key={p.id} uri={p.localUri} style={styles.photoThumb} />
                 ))}
               </View>
             ) : null}
@@ -122,7 +123,7 @@ export default function LocalInspectionDetailScreen({ route }: Props) {
           <Text style={styles.cardTitle}>
             {s.signerName} ({s.signerType})
           </Text>
-          <Image source={{ uri: s.imageBase64 }} style={styles.signatureImage} resizeMode="contain" />
+          {signatureImageUri(s) ? <AuthImage uri={signatureImageUri(s)!} style={styles.signatureImage} resizeMode="contain" /> : null}
         </Card>
       ))}
     </ScrollView>

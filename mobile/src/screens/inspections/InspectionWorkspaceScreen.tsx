@@ -10,9 +10,12 @@ import {
   getLocalInspectionDetail,
   LocalInspectionDetail,
   setLocalInspectionTemplate,
+  signatureImageUri,
 } from "../../db/inspectionStore";
 import { deleteInspection } from "../../api/inspections";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
+import type { LocalSignature } from "../../db/types";
+import { AuthImage } from "../../components/AuthImage";
 import { Badge, Card, PrimaryButton, colors } from "../../components/ui";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "InspectionWorkspace">;
@@ -43,6 +46,9 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
   const checklistResolved = !detail.inspection.templateId || Boolean(wizardStatus?.canComplete);
   const siteMapMarkerCount = detail.findings.filter((f) => f.floorPlanX != null).length;
   const hasSiteMapImage = Boolean(property?.siteMapLocalUri || property?.siteMapImageUrl);
+  // signatures come back oldest-first, so the last one is the current
+  // (re-signing adds a new one rather than replacing the old).
+  const latestSignature = (type: string) => [...detail.signatures].reverse().find((s) => s.signerType === type) ?? null;
   const hasCustomerSignature = detail.signatures.some((s) => s.signerType === "CUSTOMER");
   const hasTechnicianSignature = detail.signatures.some((s) => s.signerType === "TECHNICIAN");
   const isCompleted = detail.inspection.status === "COMPLETED";
@@ -176,7 +182,7 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
                 {f.photos.length > 0 ? (
                   <View style={styles.recPhotoRow}>
                     {f.photos.map((p) => (
-                      <Image key={p.id} source={{ uri: p.localUri }} style={styles.recPhoto} />
+                      <AuthImage key={p.id} uri={p.localUri} style={styles.recPhoto} />
                     ))}
                   </View>
                 ) : null}
@@ -203,12 +209,12 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
       <View style={styles.signatureRow}>
         <SignatureSlot
           label="Customer"
-          signed={hasCustomerSignature}
+          signature={latestSignature("CUSTOMER")}
           onPress={() => navigation.navigate("SignatureCapture", { inspectionId, signerType: "CUSTOMER" })}
         />
         <SignatureSlot
           label="Technician"
-          signed={hasTechnicianSignature}
+          signature={latestSignature("TECHNICIAN")}
           onPress={() => navigation.navigate("SignatureCapture", { inspectionId, signerType: "TECHNICIAN" })}
         />
       </View>
@@ -282,12 +288,21 @@ function WorkspaceSection({
   );
 }
 
-function SignatureSlot({ label, signed, onPress }: { label: string; signed: boolean; onPress: () => void }) {
+function SignatureSlot({ label, signature, onPress }: { label: string; signature: LocalSignature | null; onPress: () => void }) {
+  const uri = signature ? signatureImageUri(signature) : null;
   return (
-    <Card style={[styles.signatureCard, signed && styles.signatureCardDone]}>
+    <Card style={[styles.signatureCard, signature && styles.signatureCardDone]}>
       <Text style={styles.itemTitle}>{label}</Text>
+      {signature ? (
+        <>
+          {uri ? <AuthImage uri={uri} style={styles.signatureImage} resizeMode="contain" /> : null}
+          <Text style={styles.itemMeta}>
+            Signed by {signature.signerName} · {new Date(signature.signedAt).toLocaleString()}
+          </Text>
+        </>
+      ) : null}
       <Text style={styles.addLink} onPress={onPress}>
-        {signed ? "Re-sign" : "Capture signature"}
+        {signature ? "Re-sign" : "Capture signature"}
       </Text>
     </Card>
   );
@@ -327,6 +342,7 @@ const styles = StyleSheet.create({
   signatureRow: { flexDirection: "row", gap: 10, marginTop: 4 },
   signatureCard: { flex: 1, alignItems: "flex-start", gap: 8 },
   signatureCardDone: { borderColor: colors.primary },
+  signatureImage: { width: "100%", height: 70, backgroundColor: "#fff", borderRadius: 6 },
   spacer: { height: 20 },
   hint: { color: colors.textMuted, fontSize: 12, textAlign: "center", marginTop: 8 },
   buttonRow: { flexDirection: "row", gap: 10 },
