@@ -12,6 +12,7 @@ import { buildSiteMapPanels, parseSiteMapSketch } from "../../lib/siteMapSketch"
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { SiteMapCanvas } from "../../components/ArrowCanvas";
 import { AuthImage } from "../../components/AuthImage";
+import { FindingsAndRecommendations } from "../../components/FindingsAndRecommendations";
 import { Badge, Card, ErrorView, LoadingView, PrimaryButton, colors } from "../../components/ui";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "InspectionDetail">;
@@ -132,45 +133,19 @@ export default function InspectionDetailScreen({ route }: Props) {
         </View>
       ))}
 
-      <Text style={styles.sectionTitle}>Findings ({inspection.findings.length})</Text>
-      {inspection.findings.map((finding) => (
-        <Card key={finding.id} style={styles.card}>
-          <View style={styles.rowTop}>
-            <Text style={styles.cardTitle}>{finding.areaLocation}</Text>
-            <Badge
-              label={finding.severity}
-              tone={finding.severity === "CRITICAL" || finding.severity === "HIGH" ? "danger" : "warning"}
-            />
-          </View>
-          {finding.description ? <Text style={styles.body}>{finding.description}</Text> : null}
-          <Text style={styles.meta}>{finding.photos.length} photo(s)</Text>
-        </Card>
-      ))}
-
-      <Text style={styles.sectionTitle}>Recommendations ({inspection.recommendations.length})</Text>
-      {inspection.recommendations.map((rec) => {
-        // Auto-generated from a finding (Matt's ask - no re-typing the same
-        // area/notes/severity a second time) inherit their photo(s) by
-        // reference to that finding rather than duplicating storage.
-        const sourceFinding = rec.findingId ? inspection.findings.find((f) => f.id === rec.findingId) : null;
-        return (
-          <Card key={rec.id} style={styles.card}>
-            <View style={styles.rowTop}>
-              <Text style={styles.cardTitle}>{rec.title}</Text>
-              <Badge label={rec.priority} tone={rec.priority === "URGENT" || rec.priority === "HIGH" ? "danger" : "default"} />
-            </View>
-            {rec.description ? <Text style={styles.body}>{rec.description}</Text> : null}
-            <Text style={styles.meta}>Status: {rec.status.replace(/_/g, " ")}</Text>
-            {sourceFinding && sourceFinding.photos.length > 0 ? (
-              <View style={styles.photoRow}>
-                {sourceFinding.photos.map((p) => (
-                  <AuthImage key={p.id} uri={`${API_BASE_URL}${p.fileUrl}`} style={styles.photoThumb} />
-                ))}
-              </View>
-            ) : null}
-          </Card>
-        );
-      })}
+      <FindingsAndRecommendations
+        findings={inspection.findings.map((f) => ({
+          id: f.id,
+          areaLocation: f.areaLocation,
+          severity: f.severity,
+          description: f.description ?? null,
+          photoUris: f.photos.map((p) => `${API_BASE_URL}${p.fileUrl}`),
+          recommendationPriority: inspection.recommendations.find((r) => r.findingId === f.id)?.priority ?? null,
+        }))}
+        standalone={inspection.recommendations
+          .filter((r) => !r.findingId || !inspection.findings.some((f) => f.id === r.findingId))
+          .map((r) => ({ id: r.id, title: r.title, priority: r.priority, description: r.description ?? null }))}
+      />
 
       <Text style={styles.sectionTitle}>Signatures ({inspection.signatures.length})</Text>
       {inspection.signatures.map((sig) => (
@@ -178,6 +153,7 @@ export default function InspectionDetailScreen({ route }: Props) {
           <Text style={styles.cardTitle}>
             {sig.signerName} ({sig.signerType})
           </Text>
+          <AuthImage uri={`${API_BASE_URL}${sig.imageUrl}`} style={styles.signatureImage} resizeMode="contain" />
           <Text style={styles.meta}>{new Date(sig.signedAt).toLocaleString()}</Text>
         </Card>
       ))}
@@ -203,4 +179,5 @@ const styles = StyleSheet.create({
   spacerSmall: { height: 8 },
   photoRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
   photoThumb: { width: 60, height: 60, borderRadius: 6 },
+  signatureImage: { width: "100%", height: 80, marginTop: 8, backgroundColor: "#fff" },
 });

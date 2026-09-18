@@ -40,6 +40,11 @@ signaturesOnInspectionRouter.post(
     const key = `signatures/${req.params.inspectionId}/${signatureId}.png`;
     await storage.save(buffer, key);
 
+    // Re-signing replaces the earlier signature for that signer instead of
+    // stacking - otherwise the report and detail pages list every attempt.
+    await prisma.signature.deleteMany({
+      where: { inspectionId: req.params.inspectionId, signerType: body.signerType },
+    });
     const signature = await prisma.signature.create({
       data: {
         id: signatureId,

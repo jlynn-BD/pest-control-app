@@ -220,9 +220,14 @@ export function getLocalInspectionDetail(inspectionId: string): LocalInspectionD
     [inspectionId]
   );
 
-  const signatures = db.getAllSync<LocalSignature>(`SELECT * FROM signatures WHERE inspectionId = ? ORDER BY signedAt ASC`, [
+  // Only the current signature per signer counts - a re-sign supersedes
+  // (and, once synced, replaces on the server) the earlier attempts.
+  const allSignatures = db.getAllSync<LocalSignature>(`SELECT * FROM signatures WHERE inspectionId = ? ORDER BY signedAt ASC`, [
     inspectionId,
   ]);
+  const signatures = [...new Set(allSignatures.map((s) => s.signerType))].map(
+    (type) => [...allSignatures].reverse().find((s) => s.signerType === type)!
+  );
 
   const checklistResponses = db.getAllSync<LocalChecklistResponse>(
     `SELECT * FROM checklist_responses WHERE inspectionId = ?`,
@@ -488,6 +493,11 @@ export function addLocalSignature(
   input: { signerType: string; signerName: string; imageBase64: string }
 ): LocalSignature {
   const db = getDb();
+  // A superseded attempt that never reached the server has nothing to keep.
+  db.runSync(`DELETE FROM signatures WHERE inspectionId = ? AND signerType = ? AND syncStatus = 'pending'`, [
+    inspectionId,
+    input.signerType,
+  ]);
   const signature: LocalSignature = {
     id: generateId(),
     inspectionId,

@@ -8,6 +8,7 @@ import { buildSiteMapPanels, parseSiteMapSketch } from "../../lib/siteMapSketch"
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { SiteMapCanvas } from "../../components/ArrowCanvas";
 import { AuthImage } from "../../components/AuthImage";
+import { FindingsAndRecommendations } from "../../components/FindingsAndRecommendations";
 import { Badge, Card, colors } from "../../components/ui";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "LocalInspectionDetail">;
@@ -78,44 +79,19 @@ export default function LocalInspectionDetailScreen({ route }: Props) {
         </View>
       ))}
 
-      <Text style={styles.sectionTitle}>Findings ({detail.findings.length})</Text>
-      {detail.findings.map((f) => (
-        <Card key={f.id} style={styles.card}>
-          <View style={styles.rowTop}>
-            <Text style={styles.cardTitle}>{f.areaLocation}</Text>
-            <Badge label={f.severity} tone={f.severity === "CRITICAL" || f.severity === "HIGH" ? "danger" : "warning"} />
-          </View>
-          {f.description ? <Text style={styles.body}>{f.description}</Text> : null}
-          <View style={styles.photoRow}>
-            {f.photos.map((p) => (
-              <AuthImage key={p.id} uri={p.localUri} style={styles.photoThumb} />
-            ))}
-          </View>
-        </Card>
-      ))}
-
-      <Text style={styles.sectionTitle}>Recommendations ({detail.recommendations.length})</Text>
-      {detail.recommendations.map((r) => {
-        // Auto-generated from a finding (Matt's ask - no re-typing the same
-        // area/notes/severity a second time) inherit their photo(s) by
-        // reference to that finding rather than duplicating storage.
-        const sourceFinding = r.findingId ? detail.findings.find((f) => f.id === r.findingId) : null;
-        return (
-          <Card key={r.id} style={styles.card}>
-            <Text style={styles.cardTitle}>{r.title}</Text>
-            <Text style={styles.meta}>{r.priority}</Text>
-            {r.description ? <Text style={styles.body}>{r.description}</Text> : null}
-            {sourceFinding && sourceFinding.photos.length > 0 ? (
-              <View style={styles.photoRow}>
-                {sourceFinding.photos.map((p) => (
-                  <AuthImage key={p.id} uri={p.localUri} style={styles.photoThumb} />
-                ))}
-              </View>
-            ) : null}
-          </Card>
-        );
-      })}
-
+      <FindingsAndRecommendations
+        findings={detail.findings.map((f) => ({
+          id: f.id,
+          areaLocation: f.areaLocation,
+          severity: f.severity,
+          description: f.description,
+          photoUris: f.photos.map((p) => p.localUri),
+          recommendationPriority: detail.recommendations.find((r) => r.findingId === f.id)?.priority ?? null,
+        }))}
+        standalone={detail.recommendations
+          .filter((r) => !r.findingId || !detail.findings.some((f) => f.id === r.findingId))
+          .map((r) => ({ id: r.id, title: r.title, priority: r.priority, description: r.description }))}
+      />
 
       <Text style={styles.sectionTitle}>Signatures ({detail.signatures.length})</Text>
       {detail.signatures.map((s) => (
