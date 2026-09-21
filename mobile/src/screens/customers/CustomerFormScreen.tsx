@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { createCustomer } from "../../api/customers";
 import { ApiError } from "../../api/client";
+import { ADDRESS_FORMAT_ERROR, ADDRESS_LABEL, ADDRESS_PLACEHOLDER, parseSingleLineAddress } from "../../lib/address";
 import { CustomersStackParamList } from "../../navigation/navigationTypes";
 import { Field, PrimaryButton, colors } from "../../components/ui";
 
@@ -15,8 +16,7 @@ export default function CustomerFormScreen({ navigation }: Props) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [city, setCity] = useState("");
-  const [state, setState] = useState("");
+  const [address, setAddress] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const mutation = useMutation({
@@ -33,14 +33,20 @@ export default function CustomerFormScreen({ navigation }: Props) {
       setError("Name is required");
       return;
     }
+    // The billing address is optional, but if one is typed it has to be
+    // readable as street, city, state and ZIP.
+    const parsed = address.trim() ? parseSingleLineAddress(address) : null;
+    if (address.trim() && !parsed) {
+      setError(ADDRESS_FORMAT_ERROR);
+      return;
+    }
     setError(null);
     mutation.mutate({
       type,
       name: name.trim(),
       email: email.trim() || undefined,
       phone: phone.trim() || undefined,
-      city: city.trim() || undefined,
-      state: state.trim() || undefined,
+      ...(parsed ? { billingAddressLine1: parsed.addressLine1, city: parsed.city, state: parsed.state, postalCode: parsed.postalCode } : {}),
     });
   }
 
@@ -63,8 +69,7 @@ export default function CustomerFormScreen({ navigation }: Props) {
       <Field label="Customer / Business name" value={name} onChangeText={setName} />
       <Field label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
       <Field label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
-      <Field label="City" value={city} onChangeText={setCity} />
-      <Field label="State" value={state} onChangeText={setState} autoCapitalize="characters" />
+      <Field label={`${ADDRESS_LABEL} (optional)`} value={address} onChangeText={setAddress} placeholder={ADDRESS_PLACEHOLDER} />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <PrimaryButton title="Create customer" onPress={handleSubmit} loading={mutation.isPending} />

@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { createProperty } from "../../api/properties";
 import { ApiError } from "../../api/client";
+import { ADDRESS_FORMAT_ERROR, ADDRESS_LABEL, ADDRESS_PLACEHOLDER, parseSingleLineAddress } from "../../lib/address";
 import { CustomersStackParamList } from "../../navigation/navigationTypes";
 import { Field, PrimaryButton, colors } from "../../components/ui";
 
@@ -15,10 +16,7 @@ export default function PropertyFormScreen({ route, navigation }: Props) {
   const { customerId } = route.params;
   const queryClient = useQueryClient();
   const [label, setLabel] = useState("");
-  const [addressLine1, setAddressLine1] = useState("");
-  const [city, setCity] = useState("");
-  const [state, setState] = useState("");
-  const [postalCode, setPostalCode] = useState("");
+  const [address, setAddress] = useState("");
   const [propertyType, setPropertyType] = useState<(typeof PROPERTY_TYPES)[number]>("RESIDENTIAL_SINGLE");
   const [accessNotes, setAccessNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -33,18 +31,16 @@ export default function PropertyFormScreen({ route, navigation }: Props) {
   });
 
   function handleSubmit() {
-    if (!addressLine1.trim() || !city.trim() || !state.trim() || !postalCode.trim()) {
-      setError("Address, city, state, and postal code are required");
+    const parsed = parseSingleLineAddress(address);
+    if (!parsed) {
+      setError(ADDRESS_FORMAT_ERROR);
       return;
     }
     setError(null);
     mutation.mutate({
       customerId,
       label: label.trim() || undefined,
-      addressLine1: addressLine1.trim(),
-      city: city.trim(),
-      state: state.trim(),
-      postalCode: postalCode.trim(),
+      ...parsed,
       propertyType,
       accessNotes: accessNotes.trim() || undefined,
     });
@@ -53,10 +49,7 @@ export default function PropertyFormScreen({ route, navigation }: Props) {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Field label="Label (optional)" value={label} onChangeText={setLabel} placeholder="e.g. Main Residence" />
-      <Field label="Address" value={addressLine1} onChangeText={setAddressLine1} />
-      <Field label="City" value={city} onChangeText={setCity} />
-      <Field label="State" value={state} onChangeText={setState} autoCapitalize="characters" />
-      <Field label="Postal code" value={postalCode} onChangeText={setPostalCode} keyboardType="number-pad" />
+      <Field label={ADDRESS_LABEL} value={address} onChangeText={setAddress} placeholder={ADDRESS_PLACEHOLDER} />
 
       <Text style={styles.label}>Property type</Text>
       <View style={styles.typeRow}>
