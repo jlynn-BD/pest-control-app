@@ -1,5 +1,5 @@
 import { useFocusEffect } from "@react-navigation/native";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { deleteChecklistResponse } from "../api/inspections";
 import { getCachedTemplateSections } from "../db/cache";
@@ -61,6 +61,9 @@ export function ChecklistPanel({
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [confirmingCheckAll, setConfirmingCheckAll] = useState<string | null>(null);
+  // The item the technician is working on. An "Issues" item with notes or
+  // photos folds shut once they move on to a different item.
+  const [activeItemId, setActiveItemId] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -292,6 +295,8 @@ export function ChecklistPanel({
                                 key={item.id}
                                 item={item}
                                 status={response?.status ?? null}
+                                active={activeItemId === item.id}
+                                onActivate={() => setActiveItemId(item.id)}
                                 notes={response?.notes ?? null}
                                 photos={response?.photos ?? []}
                                 onChoose={(status, notes) => handleSetStatus(item, status, notes)}
@@ -325,6 +330,8 @@ export function ChecklistPanel({
 function ChecklistItemRow({
   item,
   status,
+  active,
+  onActivate,
   notes,
   photos,
   onChoose,
@@ -335,6 +342,8 @@ function ChecklistItemRow({
 }: {
   item: LocalTemplateItem;
   status: string | null;
+  active: boolean;
+  onActivate: () => void;
   notes: string | null;
   photos: LocalChecklistResponsePhoto[];
   onChoose: (status: "SATISFACTORY" | "NEEDS_ATTENTION", notes: string | null) => void;
@@ -345,8 +354,24 @@ function ChecklistItemRow({
 }) {
   const [localNotes, setLocalNotes] = useState(notes ?? "");
   const hasIssue = status === "NEEDS_ATTENTION";
+  const hasDetails = !!(notes && notes.trim()) || photos.length > 0;
+  // Open while it's being filled in; once notes/photos exist and the
+  // technician has moved on, fold down to a one-line summary.
+  const detailsOpen = hasIssue && (active || !hasDetails);
+
+  // Some phone browsers don't fire the field's "lost focus" event when a
+  // button elsewhere is tapped, so save any typed note the moment the
+  // technician moves on to another item instead of relying on that.
+  const wasActive = useRef(active);
+  useEffect(() => {
+    if (wasActive.current && !active && hasIssue && (localNotes.trim() || null) !== ((notes ?? "").trim() || null)) {
+      onNotesChange(localNotes.trim() || null);
+    }
+    wasActive.current = active;
+  }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function choose(next: "SATISFACTORY" | "NEEDS_ATTENTION") {
+    onActivate();
     if (status === next) onUncheck();
     else onChoose(next, localNotes.trim() || null);
   }
@@ -361,7 +386,18 @@ function ChecklistItemRow({
         <ChoiceButton label="No visible issues" checked={status === "SATISFACTORY"} tone="ok" onPress={() => choose("SATISFACTORY")} />
         <ChoiceButton label="Issues" checked={hasIssue} tone="issue" onPress={() => choose("NEEDS_ATTENTION")} />
       </View>
-      {hasIssue ? (
+      {hasIssue && !detailsOpen ? (
+        <View style={styles.issueSummary}>
+          <Text style={styles.issueSummaryText} numberOfLines={2}>
+            {notes && notes.trim() ? notes.trim() : "Photo added"}
+            {photos.length > 0 ? `  ·  ${photos.length} photo${photos.length === 1 ? "" : "s"}` : ""}
+          </Text>
+          <Text style={styles.addPhotoLink} onPress={onActivate}>
+            Edit
+          </Text>
+        </View>
+      ) : null}
+      {detailsOpen ? (
         <View style={styles.issueDetails}>
           <Field
             label="Notes"
@@ -374,10 +410,22 @@ function ChecklistItemRow({
             {photos.map((p) => (
               <AuthImage key={p.id} uri={p.localUri} style={styles.photoThumb} />
             ))}
-            <Text style={styles.addPhotoLink} onPress={() => onAddPhoto(localNotes.trim() || null)}>
+            <Text
+              style={styles.addPhotoLink}
+              onPress={() => {
+                onActivate();
+                onAddPhoto(localNotes.trim() || null);
+              }}
+            >
               + Photo
             </Text>
-            <Text style={styles.addPhotoLink} onPress={() => onAddToSiteMap(localNotes.trim() || null)}>
+            <Text
+              style={styles.addPhotoLink}
+              onPress={() => {
+                onActivate();
+                onAddToSiteMap(localNotes.trim() || null);
+              }}
+            >
               📍 Add to Site Map
             </Text>
           </View>
@@ -460,6 +508,8 @@ const styles = StyleSheet.create({
   choiceMark: { color: "#fff", fontSize: 15, fontWeight: "800", lineHeight: 16 },
   choiceLabel: { flexShrink: 1, fontSize: 14, fontWeight: "600", color: colors.text },
   issueDetails: { gap: 4 },
+  issueSummary: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  issueSummaryText: { flex: 1, fontSize: 13, color: colors.textMuted },
   photoRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 4 },
   photoThumb: { width: 48, height: 48, borderRadius: 6 },
   addPhotoLink: { color: colors.primary, fontWeight: "600", fontSize: 13 },
