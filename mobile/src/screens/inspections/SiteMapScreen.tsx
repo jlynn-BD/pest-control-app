@@ -12,7 +12,7 @@ import { findChecklistResponseSummary } from "../../lib/checklist";
 import { capturePhoto } from "../../lib/photo";
 import { ApiError } from "../../api/client";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
-import { siteMapHintText, SiteMapArrow, SiteMapCanvas, SiteMapMode } from "../../components/ArrowCanvas";
+import { Geometry, siteMapHintText, SiteMapArrow, SiteMapCanvas, SiteMapMode } from "../../components/ArrowCanvas";
 import { ChecklistPanel } from "../../components/ChecklistPanel";
 import { FindingEditorForm } from "../../components/FindingEditorForm";
 import { Badge, Card, Field, PrimaryButton, colors } from "../../components/ui";
@@ -308,6 +308,30 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     setSelectedAnnotationId(null);
   }
 
+  // Moving or resizing a selected shape: called once when the finger lifts,
+  // and saved like every other edit on this screen.
+  function handleUpdateAnnotation(id: string, g: Geometry) {
+    return persistSelectedLevel((l) => ({
+      ...l,
+      annotations: l.annotations.map((a) =>
+        a.id === id ? (a.type === "x" ? { ...a, x1: g.x1, y1: g.y1 } : { ...a, x1: g.x1, y1: g.y1, x2: g.x2, y2: g.y2 }) : a
+      ),
+    }));
+  }
+
+  function handleUpdateWall(id: string, g: Required<Geometry>) {
+    return persistSelectedLevel((l) => ({
+      ...l,
+      lines: l.lines.map((line) => (line.id === id ? { ...line, x1: g.x1, y1: g.y1, x2: g.x2, y2: g.y2 } : line)),
+    }));
+  }
+
+  function handleRecolorSelectedAnnotation(color: string) {
+    const id = selectedAnnotationId;
+    if (!id) return;
+    persistSelectedLevel((l) => ({ ...l, annotations: l.annotations.map((a) => (a.id === id ? { ...a, color } : a)) }));
+  }
+
   function handleDeleteSavedWall(id: string) {
     persistSelectedLevel((l) => ({ ...l, lines: l.lines.filter((line) => line.id !== id) }));
   }
@@ -437,8 +461,13 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           an overlay on top of it - a technician found that an in-canvas
           instructional banner sitting over the drawing surface could
           swallow the touch used to draw through that spot. */}
-      {canDraw && !editorOpen && siteMapHintText(mode, annotationType) ? (
-        <Text style={styles.drawHint}>{siteMapHintText(mode, annotationType)}</Text>
+      {/* Always rendered (with a calm idle message) so the map keeps the same
+          spot on screen - it used to appear only while a drawing tool was
+          active, which shoved the whole map down and back up each time. */}
+      {canDraw && !editorOpen ? (
+        <Text style={[styles.drawHint, !siteMapHintText(mode, annotationType) && styles.drawHintIdle]}>
+          {siteMapHintText(mode, annotationType) ?? "Tap a shape or wall to move, resize or recolor it"}
+        </Text>
       ) : null}
 
       <SiteMapCanvas
@@ -457,6 +486,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         onLabelPress={handleLabelPress}
         onWallPress={handleWallPress}
         onAnnotationPress={handleAnnotationPress}
+        onAnnotationChange={handleUpdateAnnotation}
+        onWallChange={handleUpdateWall}
         selectedLabelId={editingLabel?.id ?? null}
         selectedWallId={selectedWallId}
         selectedAnnotationId={selectedAnnotationId}
@@ -587,12 +618,13 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       {selectedWallId ? (
         <Card style={styles.labelPromptCard}>
           <Text style={styles.editorTitle}>Wall segment</Text>
+          <Text style={styles.editHint}>Drag the wall to move it, or drag a dot to change its length or angle.</Text>
           <View style={styles.buttonRow}>
             <View style={styles.buttonHalf}>
               <PrimaryButton title="Delete" onPress={handleDeleteSelectedWall} loading={saving} />
             </View>
             <View style={styles.buttonHalf}>
-              <PrimaryButton title="Cancel" onPress={() => setSelectedWallId(null)} />
+              <PrimaryButton title="Done" onPress={() => setSelectedWallId(null)} />
             </View>
           </View>
         </Card>
@@ -600,13 +632,32 @@ export default function SiteMapScreen({ route, navigation }: Props) {
 
       {selectedAnnotationId ? (
         <Card style={styles.labelPromptCard}>
-          <Text style={styles.editorTitle}>Annotation</Text>
+          <Text style={styles.editorTitle}>Shape</Text>
+          <Text style={styles.editHint}>
+            {selectedLevel?.annotations.find((a) => a.id === selectedAnnotationId)?.type === "x"
+              ? "Drag the mark to move it."
+              : "Drag the shape to move it, or drag a dot to resize it."}
+          </Text>
+          <View style={styles.colorRow}>
+            {ANNOTATION_COLORS.map((c) => (
+              <Pressable
+                key={c.value}
+                onPress={() => handleRecolorSelectedAnnotation(c.value)}
+                accessibilityLabel={c.label}
+                style={[
+                  styles.colorSwatch,
+                  { backgroundColor: c.value },
+                  c.value === selectedLevel?.annotations.find((a) => a.id === selectedAnnotationId)?.color && styles.colorSwatchSelected,
+                ]}
+              />
+            ))}
+          </View>
           <View style={styles.buttonRow}>
             <View style={styles.buttonHalf}>
               <PrimaryButton title="Delete" onPress={handleDeleteSelectedAnnotation} loading={saving} />
             </View>
             <View style={styles.buttonHalf}>
-              <PrimaryButton title="Cancel" onPress={() => setSelectedAnnotationId(null)} />
+              <PrimaryButton title="Done" onPress={() => setSelectedAnnotationId(null)} />
             </View>
           </View>
         </Card>
@@ -681,7 +732,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       <Text style={styles.hint}>
         {visibleArrows.length} marker(s) · {wallCount} wall segment(s) · {annotationCount} annotation(s)
         {isPhotoMode ? "" : selectedLevel ? ` on ${selectedLevel.name}` : ""}
-        {(wallCount > 0 || annotationCount > 0) && mode === "view" && !editorOpen ? " · tap one to delete it" : ""}
+        {(wallCount > 0 || annotationCount > 0) && mode === "view" && !editorOpen ? " · tap one to edit it" : ""}
       </Text>
 
       {!imageUri && !editorOpen ? (
@@ -760,6 +811,8 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     marginBottom: 8,
   },
+  drawHintIdle: { backgroundColor: "transparent", color: colors.textMuted, fontWeight: "500" },
+  editHint: { fontSize: 12, color: colors.textMuted, marginBottom: 8 },
   uploadRow: { marginTop: 14 },
   labelPromptCard: { marginTop: 12, gap: 4 },
   editorCard: { marginTop: 14, gap: 4, borderColor: colors.primary, borderWidth: 2 },

@@ -1,6 +1,6 @@
 import type { SiteMapAnnotation, SiteMapAnnotationType } from "@pest-app/shared";
 import React, { useMemo, useRef, useState } from "react";
-import { Image, LayoutChangeEvent, PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, LayoutChangeEvent, PanResponder, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Line as SvgLine, Polygon, Rect } from "react-native-svg";
 import { arrowHeadPoints, gridLines, Line, Point } from "../lib/arrowGeometry";
 import { colors } from "./ui";
@@ -163,6 +163,98 @@ const SEVERITY_COLOR: Record<string, string> = {
   CRITICAL: colors.danger,
 };
 
+// On a phone the browser treats a finger drag as "scroll the page" unless the
+// element says otherwise - which made the whole screen slide around while
+// drawing or dragging a shape. touch-action: none on the drawing surface (and
+// the drag handles) keeps those touches for the app. Web only; the phone app
+// has no such default.
+const NO_PAGE_SCROLL = Platform.OS === "web" ? ({ touchAction: "none" } as object) : null;
+
+export type Geometry = { x1: number; y1: number; x2?: number; y2?: number };
+type HandleKind = "move" | "p1" | "p2" | "tl" | "tr" | "bl" | "br";
+
+const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
+
+// New shape geometry after dragging a handle by (dxn, dyn), both as fractions
+// of the map size. "move" slides the whole shape but stops at the map edge;
+// p1/p2 move one end of a line or arrow; the tl/tr/bl/br corners resize a
+// rectangle with the opposite corner held still.
+function applyDrag(base: Geometry, kind: HandleKind, dxn: number, dyn: number): Geometry {
+  const bx2 = base.x2 ?? base.x1;
+  const by2 = base.y2 ?? base.y1;
+  const minX = Math.min(base.x1, bx2);
+  const maxX = Math.max(base.x1, bx2);
+  const minY = Math.min(base.y1, by2);
+  const maxY = Math.max(base.y1, by2);
+  if (kind === "move") {
+    const sx = Math.min(1 - maxX, Math.max(-minX, dxn));
+    const sy = Math.min(1 - maxY, Math.max(-minY, dyn));
+    return base.x2 === undefined
+      ? { x1: base.x1 + sx, y1: base.y1 + sy }
+      : { x1: base.x1 + sx, y1: base.y1 + sy, x2: base.x2 + sx, y2: (base.y2 ?? base.y1) + sy };
+  }
+  if (kind === "p1") return { ...base, x1: clamp01(base.x1 + dxn), y1: clamp01(base.y1 + dyn) };
+  if (kind === "p2") return { ...base, x2: clamp01(bx2 + dxn), y2: clamp01(by2 + dyn) };
+  const left = kind === "tl" || kind === "bl";
+  const top = kind === "tl" || kind === "tr";
+  return {
+    x1: clamp01((left ? minX : maxX) + dxn),
+    y1: clamp01((top ? minY : maxY) + dyn),
+    x2: left ? maxX : minX,
+    y2: top ? maxY : minY,
+  };
+}
+
+// A touch target that reports how far the finger has travelled since it went
+// down (dx/dy in pixels) - used for both the resize handles and the "drag the
+// shape itself to move it" surface. It refuses to give the gesture up, so a
+// drag that drifts vertically can't be stolen by the page scroll.
+function DragSurface({
+  style,
+  onDrag,
+  onDrop,
+  onCancel,
+  children,
+}: {
+  style: object;
+  onDrag: (dx: number, dy: number) => void;
+  onDrop: (dx: number, dy: number) => void;
+  onCancel: () => void;
+  children?: React.ReactNode;
+}) {
+  const dragRef = useRef(onDrag);
+  dragRef.current = onDrag;
+  const dropRef = useRef(onDrop);
+  dropRef.current = onDrop;
+  const cancelRef = useRef(onCancel);
+  cancelRef.current = onCancel;
+  // Distance travelled is worked out from the finger's position at each
+  // event rather than the responder's running totals, which only update on
+  // move events - so a quick flick that jumps straight to its end point still
+  // reports the right distance.
+  const startRef = useRef({ x: 0, y: 0 });
+  const responder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (e) => {
+          startRef.current = { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY };
+        },
+        onPanResponderMove: (e) => dragRef.current(e.nativeEvent.pageX - startRef.current.x, e.nativeEvent.pageY - startRef.current.y),
+        onPanResponderRelease: (e) => dropRef.current(e.nativeEvent.pageX - startRef.current.x, e.nativeEvent.pageY - startRef.current.y),
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderTerminate: () => cancelRef.current(),
+      }),
+    []
+  );
+  return (
+    <View {...responder.panHandlers} style={[style, NO_PAGE_SCROLL]}>
+      {children}
+    </View>
+  );
+}
+
 export function SiteMapCanvas({
   imageUri,
   arrows,
@@ -181,6 +273,8 @@ export function SiteMapCanvas({
   onLabelPress,
   onWallPress,
   onAnnotationPress,
+  onAnnotationChange,
+  onWallChange,
   selectedLabelId = null,
   selectedWallId = null,
   selectedAnnotationId = null,
@@ -203,12 +297,23 @@ export function SiteMapCanvas({
   onLabelPress?: (labelId: string) => void;
   onWallPress?: (wallId: string) => void;
   onAnnotationPress?: (annotationId: string) => void;
+  // Called once, when a finger lifts after moving/resizing the selected
+  // shape; resolves once the change is saved.
+  onAnnotationChange?: (annotationId: string, geometry: Geometry) => Promise<unknown> | void;
+  onWallChange?: (wallId: string, geometry: Required<Geometry>) => Promise<unknown> | void;
   selectedLabelId?: string | null;
   selectedWallId?: string | null;
   selectedAnnotationId?: string | null;
   height?: number;
 }) {
   const [size, setSize] = useState({ width: 0, height: 0 });
+  // Shape being dragged right now: shown at its in-progress position, and
+  // only saved when the finger lifts.
+  const [draft, setDraft] = useState<{ kind: "annotation" | "wall"; id: string; g: Geometry } | null>(null);
+  const shownAnnotations = annotations.map((a) => (draft?.kind === "annotation" && draft.id === a.id ? { ...a, ...draft.g } : a));
+  const shownWalls = savedLines.map((l) =>
+    draft?.kind === "wall" && draft.id === l.id ? { ...l, ...(draft.g as Required<Geometry>) } : l
+  );
 
   function handleLayout(e: LayoutChangeEvent) {
     const { width, height: h } = e.nativeEvent.layout;
@@ -237,8 +342,83 @@ export function SiteMapCanvas({
     }
   );
 
+  // Handles + a move surface for whichever wall/annotation is selected, so a
+  // shape can be dragged to a new spot, or an end/corner dragged to resize it,
+  // instead of deleting and redrawing it.
+  function renderShapeEditor() {
+    const W = size.width;
+    const H = size.height;
+    const selAnn = selectedAnnotationId ? annotations.find((a) => a.id === selectedAnnotationId) : undefined;
+    const selWall = !selAnn && selectedWallId ? savedLines.find((l) => l.id === selectedWallId) : undefined;
+    const target = selAnn ?? selWall;
+    if (!target) return null;
+    const kind: "annotation" | "wall" = selAnn ? "annotation" : "wall";
+    const base: Geometry = { x1: target.x1, y1: target.y1, x2: (target as Geometry).x2, y2: (target as Geometry).y2 };
+    const shown = draft && draft.kind === kind && draft.id === target.id ? draft.g : base;
+    const sx2 = shown.x2 ?? shown.x1;
+    const sy2 = shown.y2 ?? shown.y1;
+
+    const drag = (handle: HandleKind) => (dx: number, dy: number) =>
+      setDraft({ kind, id: target.id, g: applyDrag(base, handle, dx / W, dy / H) });
+    const drop = (handle: HandleKind) => async (dx: number, dy: number) => {
+      if (Math.abs(dx) < 3 && Math.abs(dy) < 3) {
+        setDraft(null); // a tap, not a drag
+        return;
+      }
+      const g = applyDrag(base, handle, dx / W, dy / H);
+      setDraft({ kind, id: target.id, g });
+      try {
+        if (kind === "annotation") await onAnnotationChange?.(target.id, g);
+        else await onWallChange?.(target.id, g as Required<Geometry>);
+      } finally {
+        setDraft(null);
+      }
+    };
+    const cancel = () => setDraft(null);
+
+    const isRect = selAnn?.type === "rect";
+    const isPoint = selAnn?.type === "x";
+    const minX = Math.min(shown.x1, sx2) * W;
+    const maxX = Math.max(shown.x1, sx2) * W;
+    const minY = Math.min(shown.y1, sy2) * H;
+    const maxY = Math.max(shown.y1, sy2) * H;
+    const handles: { key: HandleKind; x: number; y: number }[] = isPoint
+      ? []
+      : isRect
+        ? [
+            { key: "tl", x: minX, y: minY },
+            { key: "tr", x: maxX, y: minY },
+            { key: "bl", x: minX, y: maxY },
+            { key: "br", x: maxX, y: maxY },
+          ]
+        : [
+            { key: "p1", x: shown.x1 * W, y: shown.y1 * H },
+            { key: "p2", x: sx2 * W, y: sy2 * H },
+          ];
+    const moveRect = selAnn
+      ? annotationHitRect({ ...selAnn, ...shown } as SiteMapAnnotation, W, H)
+      : wallHitRect({ ...(target as WallLine), ...(shown as Required<Geometry>) }, W, H);
+
+    return (
+      <>
+        <DragSurface style={[styles.wallHitArea, moveRect]} onDrag={drag("move")} onDrop={drop("move")} onCancel={cancel} />
+        {handles.map((h) => (
+          <DragSurface
+            key={h.key}
+            style={[styles.handleTouch, { left: h.x - 20, top: h.y - 20 }]}
+            onDrag={drag(h.key)}
+            onDrop={drop(h.key)}
+            onCancel={cancel}
+          >
+            <View style={styles.handleDot} />
+          </DragSurface>
+        ))}
+      </>
+    );
+  }
+
   return (
-    <View style={[styles.container, { height }]} onLayout={handleLayout} {...panHandlers}>
+    <View style={[styles.container, { height }, mode !== "view" ? NO_PAGE_SCROLL : null]} onLayout={handleLayout} {...panHandlers}>
       {imageUri ? <Image source={{ uri: imageUri }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : null}
       {size.width > 0 ? (
         <Svg width={size.width} height={size.height} style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -257,7 +437,7 @@ export function SiteMapCanvas({
                 );
               })()
             : null}
-          {savedLines.map((l) => (
+          {shownWalls.map((l) => (
             <SvgLine
               key={`wall-${l.id}`}
               x1={l.x1 * size.width}
@@ -293,7 +473,7 @@ export function SiteMapCanvas({
           {/* Lightweight X-mark/arrow/shape annotations, not tied to a
               Finding - Tate's "sometimes the technician simply needs to
               visually identify an area" ask. */}
-          {annotations.map((a) => {
+          {shownAnnotations.map((a) => {
             const selected = a.id === selectedAnnotationId;
             if (a.type === "x") {
               const cx = a.x1 * size.width;
@@ -369,7 +549,7 @@ export function SiteMapCanvas({
         </Svg>
       ) : null}
       {size.width > 0 && mode === "view"
-        ? [...savedLines, ...pendingLines].map((l) => (
+        ? [...shownWalls, ...pendingLines].filter((l) => l.id !== selectedWallId).map((l) => (
             <Pressable
               key={`wall-hit-${l.id}`}
               onPress={() => onWallPress?.(l.id)}
@@ -387,7 +567,7 @@ export function SiteMapCanvas({
           clean up a duplicate/misplaced X immediately without first
           backing out of X-mark mode. */}
       {size.width > 0 && (mode === "view" || (mode === "annotate" && annotationType === "x"))
-        ? annotations.map((a) => (
+        ? shownAnnotations.filter((a) => !(mode === "view" && a.id === selectedAnnotationId)).map((a) => (
             <Pressable
               key={`ann-hit-${a.id}`}
               onPress={() => onAnnotationPress?.(a.id)}
@@ -395,6 +575,7 @@ export function SiteMapCanvas({
             />
           ))
         : null}
+      {size.width > 0 && mode === "view" ? renderShapeEditor() : null}
       {/* pointerEvents is forced to "none" while actively drawing (any mode
           but "view") - otherwise an existing label or marker sitting under
           where a technician is trying to draw a new wall/arrow/label
@@ -477,4 +658,6 @@ const styles = StyleSheet.create({
   structureLabelText: { fontSize: 11, fontWeight: "700", color: colors.primary },
   structureLabelSelected: { borderWidth: 2, borderColor: colors.danger },
   wallHitArea: { position: "absolute" },
+  handleTouch: { position: "absolute", width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  handleDot: { width: 18, height: 18, borderRadius: 9, backgroundColor: "#fff", borderWidth: 3, borderColor: colors.primary },
 });
