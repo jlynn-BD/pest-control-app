@@ -2,8 +2,8 @@
 
 This repo deploys as three pieces, all provisioned in one shot by `render.yaml`:
 
-- **pestapp-db** — managed Postgres (free tier, expires after 30 days unless upgraded)
-- **pestapp-backend** — the Express/Prisma API (free tier, no persistent disk — see note below)
+- **pestapp-db** — managed Postgres (paid Basic-256mb plan; the free tier expires after 30 days and suspends the database)
+- **pestapp-backend** — the Express/Prisma API (paid Starter plan; still no persistent disk attached — see note below)
 - **pestapp-web** — the Expo app exported as a static site (always free on Render)
 
 ## One-time setup (manual — only you can do these)

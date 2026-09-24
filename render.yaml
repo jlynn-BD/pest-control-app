@@ -3,21 +3,24 @@
 # static site. See DEPLOY.md for the one-time manual steps (create the
 # Render account, connect GitHub, import this blueprint).
 #
-# Free-tier notes (flagged here so they're not a surprise later):
-#   - pestapp-db (free Postgres) expires 30 days after creation unless
-#     upgraded to a paid plan. Fine for a review/demo period, not for
-#     anything long-lived.
-#   - pestapp-backend has no persistent disk on the free plan, so uploaded
-#     photos/site-map images/PDF reports are stored on ephemeral local disk
-#     and are lost whenever the service restarts or redeploys (including the
-#     automatic spin-down after 15 min of inactivity on the free plan).
-#     Upgrading pestapp-backend to a paid instance type unlocks attaching a
-#     Render Disk for real persistence - ask if you want that wired in.
+# Plans (kept in step with what is actually paid for in the Render dashboard -
+# this file is read on Blueprint syncs, so a stale plan here could push a
+# resource back onto the free tier):
+#   - pestapp-db is on the paid Basic-256mb plan (Render's "0.1c-256mb",
+#     1 GB storage). The free Postgres tier expires 30 days after creation
+#     and suspends the database, which took the whole API down once.
+#   - pestapp-backend is on the paid Starter plan, so it no longer spins down
+#     after 15 minutes idle.
+#   - Uploaded photos/site-map images/PDF reports are still written to the
+#     service's local disk, which is wiped on every restart or redeploy. The
+#     paid plan now allows attaching a Render Disk for real persistence - not
+#     wired in yet.
 #   - pestapp-web (static site) is free on Render regardless of plan.
 
 databases:
   - name: pestapp-db
-    plan: free
+    plan: basic-256mb
+    diskSizeGB: 1
     databaseName: pestapp
     user: pestapp
 
@@ -25,7 +28,7 @@ services:
   - type: web
     name: pestapp-backend
     runtime: node
-    plan: free
+    plan: starter
     rootDir: .
     buildCommand: npm install && npm run prisma:generate -w backend
     # Shell/one-off jobs aren't available on Render's free plan, so the seed
