@@ -13,7 +13,7 @@ import type { LocalChecklistResponse, LocalChecklistResponsePhoto, LocalTemplate
 import { CHECKLIST_CATEGORY_DISPLAY_ORDER, CHECKLIST_CATEGORY_LABEL } from "../lib/checklist";
 import { capturePhoto } from "../lib/photo";
 import { AuthImage } from "./AuthImage";
-import { Badge, Card, Checkbox, Field, colors } from "./ui";
+import { Badge, Card, Field, colors } from "./ui";
 
 type ResponseWithPhotos = LocalChecklistResponse & { photos: LocalChecklistResponsePhoto[] };
 type TemplateSection = ReturnType<typeof getCachedTemplateSections>[number];
@@ -122,8 +122,8 @@ export function ChecklistPanel({
     });
   }
 
-  function handleCheck(item: LocalTemplateItem, notes: string | null) {
-    const response = upsertLocalChecklistResponse(inspectionId, item.id, "SATISFACTORY", notes);
+  function handleSetStatus(item: LocalTemplateItem, status: "SATISFACTORY" | "NEEDS_ATTENTION", notes: string | null) {
+    const response = upsertLocalChecklistResponse(inspectionId, item.id, status, notes);
     const existingPhotos = responseByItem.get(item.id)?.photos ?? [];
     setResponses((prev) => [...prev.filter((r) => r.templateItemId !== item.id), { ...response, photos: existingPhotos }]);
     onChange?.();
@@ -268,12 +268,17 @@ export function ChecklistPanel({
             {categoryExpanded
               ? visibleSections.map(({ section, items }) => {
                   const sectionChecked = section.items.filter((i) => responseByItem.has(i.id)).length;
-                  const sectionExpanded = isSearching || expandedSections.has(section.id);
+                  const sectionExpanded = isSearching || hideCategoryHeader || expandedSections.has(section.id);
                   return (
                     <View key={section.id} style={styles.sectionBlock}>
-                      <Pressable style={styles.sectionHeaderRow} onPress={() => toggleSection(section.id)}>
+                      <Pressable
+                        style={styles.sectionHeaderRow}
+                        onPress={() => (hideCategoryHeader ? undefined : toggleSection(section.id))}
+                        disabled={!!hideCategoryHeader}
+                      >
                         <Text style={styles.sectionName}>
-                          {sectionExpanded ? "▾" : "▸"} {section.name}
+                          {hideCategoryHeader ? "" : sectionExpanded ? "▾ " : "▸ "}
+                          {section.name}
                         </Text>
                         <Text style={styles.sectionCount}>
                           {sectionChecked}/{section.items.length}
@@ -286,10 +291,10 @@ export function ChecklistPanel({
                               <ChecklistItemRow
                                 key={item.id}
                                 item={item}
-                                checked={!!response}
+                                status={response?.status ?? null}
                                 notes={response?.notes ?? null}
                                 photos={response?.photos ?? []}
-                                onCheck={(notes) => handleCheck(item, notes)}
+                                onChoose={(status, notes) => handleSetStatus(item, status, notes)}
                                 onUncheck={() => handleUncheck(item)}
                                 onNotesChange={(notes) => handleNotesChange(item, notes)}
                                 onAddPhoto={(notes) => handleAddPhoto(item, notes)}
@@ -312,58 +317,100 @@ export function ChecklistPanel({
   );
 }
 
+// One tap per item for the normal case. "No visible issues" records a
+// satisfactory answer and that's it - the technician just moves to the next
+// item. "Issues" records a needs-attention answer and opens the details
+// (notes, photo, add to site map) right there, no extra taps to reveal them.
+// Tapping the chosen option again clears the answer.
 function ChecklistItemRow({
   item,
-  checked,
+  status,
   notes,
   photos,
-  onCheck,
+  onChoose,
   onUncheck,
   onNotesChange,
   onAddPhoto,
   onAddToSiteMap,
 }: {
   item: LocalTemplateItem;
-  checked: boolean;
+  status: string | null;
   notes: string | null;
   photos: LocalChecklistResponsePhoto[];
-  onCheck: (notes: string | null) => void;
+  onChoose: (status: "SATISFACTORY" | "NEEDS_ATTENTION", notes: string | null) => void;
   onUncheck: () => void;
   onNotesChange: (notes: string | null) => void;
   onAddPhoto: (notes: string | null) => void;
   onAddToSiteMap: (notes: string | null) => void;
 }) {
   const [localNotes, setLocalNotes] = useState(notes ?? "");
+  const hasIssue = status === "NEEDS_ATTENTION";
+
+  function choose(next: "SATISFACTORY" | "NEEDS_ATTENTION") {
+    if (status === next) onUncheck();
+    else onChoose(next, localNotes.trim() || null);
+  }
 
   return (
-    <Card style={styles.itemCard}>
-      <Checkbox
-        label={item.prompt}
-        required={!!item.required}
-        checked={checked}
-        onChange={(next) => (next ? onCheck(localNotes.trim() || null) : onUncheck())}
-      />
-      <Field
-        label="Notes"
-        placeholder="Optional notes"
-        value={localNotes}
-        onChangeText={setLocalNotes}
-        onBlur={() => {
-          if (checked) onNotesChange(localNotes.trim() || null);
-        }}
-      />
-      <View style={styles.photoRow}>
-        {photos.map((p) => (
-          <AuthImage key={p.id} uri={p.localUri} style={styles.photoThumb} />
-        ))}
-        <Text style={styles.addPhotoLink} onPress={() => onAddPhoto(localNotes.trim() || null)}>
-          + Photo
-        </Text>
-        <Text style={styles.addPhotoLink} onPress={() => onAddToSiteMap(localNotes.trim() || null)}>
-          📍 Add to Site Map
-        </Text>
+    <Card style={[styles.itemCard, hasIssue && styles.itemCardIssue]}>
+      <Text style={styles.itemPrompt}>
+        {item.prompt}
+        {item.required ? " *" : ""}
+      </Text>
+      <View style={styles.choiceRow}>
+        <ChoiceButton label="No visible issues" checked={status === "SATISFACTORY"} tone="ok" onPress={() => choose("SATISFACTORY")} />
+        <ChoiceButton label="Issues" checked={hasIssue} tone="issue" onPress={() => choose("NEEDS_ATTENTION")} />
       </View>
+      {hasIssue ? (
+        <View style={styles.issueDetails}>
+          <Field
+            label="Notes"
+            placeholder="Describe the issue"
+            value={localNotes}
+            onChangeText={setLocalNotes}
+            onBlur={() => onNotesChange(localNotes.trim() || null)}
+          />
+          <View style={styles.photoRow}>
+            {photos.map((p) => (
+              <AuthImage key={p.id} uri={p.localUri} style={styles.photoThumb} />
+            ))}
+            <Text style={styles.addPhotoLink} onPress={() => onAddPhoto(localNotes.trim() || null)}>
+              + Photo
+            </Text>
+            <Text style={styles.addPhotoLink} onPress={() => onAddToSiteMap(localNotes.trim() || null)}>
+              📍 Add to Site Map
+            </Text>
+          </View>
+        </View>
+      ) : null}
     </Card>
+  );
+}
+
+function ChoiceButton({
+  label,
+  checked,
+  tone,
+  onPress,
+}: {
+  label: string;
+  checked: boolean;
+  tone: "ok" | "issue";
+  onPress: () => void;
+}) {
+  const accent = tone === "ok" ? colors.primary : colors.danger;
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked }}
+      style={[styles.choice, checked && { borderColor: accent, backgroundColor: tone === "ok" ? colors.chip : "#FBEAE8" }]}
+    >
+      <View style={[styles.choiceBox, { borderColor: accent }, checked && { backgroundColor: accent }]}>
+        {checked ? <Text style={styles.choiceMark}>✓</Text> : null}
+      </View>
+      <Text style={[styles.choiceLabel, checked && { color: accent }]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -393,7 +440,26 @@ const styles = StyleSheet.create({
   },
   sectionName: { fontSize: 13, fontWeight: "600", color: colors.textMuted, textTransform: "uppercase" },
   sectionCount: { fontSize: 12, color: colors.textMuted, fontWeight: "600" },
-  itemCard: { marginBottom: 8, gap: 4 },
+  itemCard: { marginBottom: 8, gap: 8 },
+  itemCardIssue: { borderColor: colors.danger },
+  itemPrompt: { fontSize: 15, fontWeight: "600", color: colors.text },
+  choiceRow: { flexDirection: "row", gap: 10 },
+  choice: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    minHeight: 48,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  choiceBox: { width: 24, height: 24, borderRadius: 6, borderWidth: 2, alignItems: "center", justifyContent: "center", backgroundColor: "#fff" },
+  choiceMark: { color: "#fff", fontSize: 15, fontWeight: "800", lineHeight: 16 },
+  choiceLabel: { flexShrink: 1, fontSize: 14, fontWeight: "600", color: colors.text },
+  issueDetails: { gap: 4 },
   photoRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 4 },
   photoThumb: { width: 48, height: 48, borderRadius: 6 },
   addPhotoLink: { color: colors.primary, fontWeight: "600", fontSize: 13 },
