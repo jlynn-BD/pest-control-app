@@ -3,7 +3,7 @@
 // signal. The API and photo/report files live on a different origin and are
 // never touched here - the app keeps its own data on the device and syncs it.
 const CACHE = "pestapp-shell-v1";
-const CORE = ["/", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/sql-wasm-browser.wasm"];
+const CORE = ["/", "/manifest.json", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/sql-wasm-browser.wasm"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
