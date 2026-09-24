@@ -66,3 +66,20 @@ export function parseSingleLineAddress(input: string): ParsedAddress | null {
     postalCode,
   };
 }
+
+// The reverse of parseSingleLineAddress: "123 Main Street, Carmel, IN 46032".
+// Null unless every part is present - a half-filled address would just fail
+// to parse again in the form it's meant to prefill.
+export function formatSingleLineAddress(parts: {
+  addressLine1?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+}): string | null {
+  const street = parts.addressLine1?.trim();
+  const city = parts.city?.trim();
+  const state = parts.state?.trim();
+  const zip = parts.postalCode?.trim();
+  if (!street || !city || !state || !zip) return null;
+  return `${street}, ${city}, ${state} ${zip}`;
+}
