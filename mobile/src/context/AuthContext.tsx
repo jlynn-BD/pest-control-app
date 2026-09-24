@@ -1,7 +1,7 @@
 import type { User } from "@pest-app/shared";
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import * as authApi from "../api/auth";
-import { setSessionExpiredHandler } from "../api/client";
+import { ApiError, setSessionExpiredHandler } from "../api/client";
 import { tokenStore } from "../api/tokenStore";
 import { primeCache } from "../db/cache";
 
@@ -26,12 +26,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const me = await authApi.fetchMe();
           setUser(me);
+          tokenStore.setUser(me).catch(() => {});
           primeCache().catch((err) => {
             // offline or first-run before any sync - fine, cache stays stale
             console.warn("primeCache failed", err);
           });
-        } catch {
-          await tokenStore.clear();
+        } catch (err) {
+          // Only a server "no" means the login is dead. No connection (or a
+          // server that's down) must not sign the technician out - open with
+          // the remembered profile and the data already on the device.
+          const rejected = err instanceof ApiError && err.status >= 400 && err.status < 500 && err.status !== 0;
+          const remembered = rejected ? null : await tokenStore.getUser<User>();
+          if (remembered) setUser(remembered);
+          else await tokenStore.clear();
         }
       }
       setIsLoading(false);
@@ -45,6 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async login(email, password) {
         const res = await authApi.login(email, password);
         await tokenStore.setTokens(res.accessToken, res.refreshToken);
+        await tokenStore.setUser(res.user);
         setUser(res.user);
         primeCache().catch((err) => {
           // best-effort: worst case the technician primes on next login

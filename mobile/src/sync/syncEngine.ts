@@ -1,3 +1,4 @@
+import { appendPhotoFile } from "../lib/photoUpload";
 import { apiRequest } from "../api/client";
 import { primeCache } from "../db/cache";
 import {
@@ -187,7 +188,7 @@ export async function runSync(): Promise<SyncResult> {
 
     for (const photo of getUploadableFindingPhotos()) {
       const form = new FormData();
-      form.append("file", { uri: photo.localUri, name: `photo-${photo.id}.jpg`, type: "image/jpeg" } as unknown as Blob);
+      await appendPhotoFile(form, photo.localUri, `photo-${photo.id}.jpg`);
       if (photo.caption) form.append("caption", photo.caption);
       if (photo.lat != null) form.append("lat", String(photo.lat));
       if (photo.lng != null) form.append("lng", String(photo.lng));
@@ -202,7 +203,7 @@ export async function runSync(): Promise<SyncResult> {
 
     for (const photo of getUploadableChecklistResponsePhotos()) {
       const form = new FormData();
-      form.append("file", { uri: photo.localUri, name: `photo-${photo.id}.jpg`, type: "image/jpeg" } as unknown as Blob);
+      await appendPhotoFile(form, photo.localUri, `photo-${photo.id}.jpg`);
       if (photo.caption) form.append("caption", photo.caption);
       const created = await apiRequest<{ fileUrl: string }>(`/api/checklist-responses/${photo.checklistResponseId}/photos`, {
         method: "POST",

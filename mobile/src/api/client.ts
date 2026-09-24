@@ -14,23 +14,27 @@ export function setSessionExpiredHandler(handler: () => void) {
   onSessionExpired = handler;
 }
 
-let refreshPromise: Promise<boolean> | null = null;
+let refreshPromise: Promise<"ok" | "rejected" | "unreachable"> | null = null;
 
-async function refreshTokens(): Promise<boolean> {
+// "rejected" means the server said the refresh token is no good (log the
+// user out); "unreachable" means there was no connection, which says nothing
+// about the session - a technician with no signal must stay logged in.
+async function refreshTokens(): Promise<"ok" | "rejected" | "unreachable"> {
   const refreshToken = await tokenStore.getRefreshToken();
-  if (!refreshToken) return false;
+  if (!refreshToken) return "rejected";
   try {
     const res = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refreshToken }),
     });
-    if (!res.ok) return false;
+    if (res.status >= 500) return "unreachable";
+    if (!res.ok) return "rejected";
     const data = await res.json();
     await tokenStore.setTokens(data.accessToken, data.refreshToken);
-    return true;
+    return "ok";
   } catch {
-    return false;
+    return "unreachable";
   }
 }
 
@@ -60,7 +64,8 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}, 
   if (res.status === 401 && !skipAuth && !isRetry) {
     if (!refreshPromise) refreshPromise = refreshTokens().finally(() => (refreshPromise = null));
     const refreshed = await refreshPromise;
-    if (refreshed) return apiRequest<T>(path, options, true);
+    if (refreshed === "ok") return apiRequest<T>(path, options, true);
+    if (refreshed === "unreachable") throw new ApiError(0, "Unable to reach the server");
     await tokenStore.clear();
     onSessionExpired?.();
     throw new ApiError(401, "Session expired");
