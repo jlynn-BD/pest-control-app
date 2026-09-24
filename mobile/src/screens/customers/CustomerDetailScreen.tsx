@@ -43,13 +43,6 @@ export default function CustomerDetailScreen({ route, navigation }: Props) {
       )}
 
       <View style={styles.sectionHeaderRow}>
-        <Text style={styles.sectionTitle}>Estimates</Text>
-        <Pressable onPress={() => navigation.navigate("EstimateList", { customerId })}>
-          <Text style={styles.addLink}>View estimates</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.sectionHeaderRow}>
         <Text style={styles.sectionTitle}>Properties</Text>
         <Pressable onPress={() => navigation.navigate("PropertyForm", { customerId })}>
           <Text style={styles.addLink}>+ Add property</Text>
