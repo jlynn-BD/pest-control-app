@@ -24,7 +24,9 @@ const head = `
       html, body { height: 100%; height: 100dvh; }
       #root { height: 100%; height: 100dvh; }
       body { overscroll-behavior: none; -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
-      [role="button"], [role="link"], [role="tab"] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+      /* Long-presses and drags on the site map were selecting text (blue handles + Copy / Look Up menu) - it's an app, not a page, so nothing but form fields is selectable. */
+      * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+      input, textarea, [contenteditable="true"] { -webkit-user-select: text; user-select: text; }
     </style>
     <script>
       if ("serviceWorker" in navigator) {

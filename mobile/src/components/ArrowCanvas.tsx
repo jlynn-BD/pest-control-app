@@ -168,6 +168,9 @@ const SEVERITY_COLOR: Record<string, string> = {
 // drawing or dragging a shape. touch-action: none on the drawing surface (and
 // the drag handles) keeps those touches for the app. Web only; the phone app
 // has no such default.
+// Keeps iOS from selecting text / showing the Copy-Look Up callout when a
+// finger rests or drags on the map (seen on a technician's iPad).
+const NO_SELECT = Platform.OS === "web" ? ({ userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" } as object) : null;
 const NO_PAGE_SCROLL = Platform.OS === "web" ? ({ touchAction: "none" } as object) : null;
 
 export type Geometry = { x1: number; y1: number; x2?: number; y2?: number };
@@ -418,7 +421,7 @@ export function SiteMapCanvas({
   }
 
   return (
-    <View style={[styles.container, { height }, mode !== "view" ? NO_PAGE_SCROLL : null]} onLayout={handleLayout} {...panHandlers}>
+    <View style={[styles.container, { height }, NO_SELECT, mode !== "view" ? NO_PAGE_SCROLL : null]} onLayout={handleLayout} {...panHandlers}>
       {imageUri ? <Image source={{ uri: imageUri }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : null}
       {size.width > 0 ? (
         <Svg width={size.width} height={size.height} style={StyleSheet.absoluteFill} pointerEvents="none">
