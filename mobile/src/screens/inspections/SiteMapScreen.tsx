@@ -410,7 +410,20 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         <Card style={styles.checklistBannerCard}>
           <Text style={styles.checklistBannerLabel}>📋 Placing marker for checklist item:</Text>
           <Text style={styles.checklistBannerPrompt}>{checklistSummary.prompt}</Text>
-          <Text style={styles.hint}>Draw an arrow on the map below to mark where this is.</Text>
+          <Text style={styles.hint}>
+            {mode === "arrow"
+              ? "Draw an arrow on the map below to mark where this is."
+              : "Add or edit walls, labels and shapes below - tap Place marker when you're ready to mark this item."}
+          </Text>
+          {mode === "arrow" ? (
+            <Text style={styles.dismissLink} onPress={() => toggleMode("arrow")}>
+              Add or edit shapes first
+            </Text>
+          ) : (
+            <Text style={styles.dismissLink} onPress={() => { setMode("arrow"); setSelectedWallId(null); setSelectedAnnotationId(null); }}>
+              Place marker
+            </Text>
+          )}
           <Text style={styles.dismissLink} onPress={() => navigation.goBack()}>
             Cancel
           </Text>
