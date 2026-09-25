@@ -503,32 +503,6 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         }}
       />
 
-      {/* Embedded here rather than behind a separate "Checklist" screen -
-          Tate's eventual ask was "Site Map + Checklist + Finding Editor, all
-          visible within the same workspace" so a technician can check what a
-          checklist item says (or add a marker for it) without losing the
-          map. Stays visible while the finding editor is open below, since
-          seeing the checklist alongside it is the whole point, not just
-          alongside the bare map. */}
-      {detail.inspection.templateId ? (
-        <View style={styles.section}>
-          <Pressable style={styles.checklistHeaderRow} onPress={() => setChecklistExpanded((v) => !v)}>
-            <Text style={styles.checklistHeaderTitle}>{checklistExpanded ? "▾" : "▸"} Checklist</Text>
-            <Badge
-              label={`${checklistAnsweredCount}/${checklistItemCount}`}
-              tone={checklistAnsweredCount >= checklistItemCount && checklistItemCount > 0 ? "success" : "default"}
-            />
-          </Pressable>
-          {checklistExpanded ? (
-            <ChecklistPanel
-              inspectionId={inspectionId}
-              allowedCategories={unlockedCategories}
-              onAddToSiteMap={(responseId) => navigation.setParams({ fromChecklistResponseId: responseId })}
-            />
-          ) : null}
-        </View>
-      ) : null}
-
       {/* Drawing a marker or tapping an existing one opens this editor right
           here, below the still-visible map, instead of navigating to a
           separate screen - Tate's "keep the map visible" feedback. */}
@@ -759,6 +733,31 @@ export default function SiteMapScreen({ route, navigation }: Props) {
             </Pressable>
           ))}
         </Card>
+      ) : null}
+
+      {/* Embedded here rather than behind a separate "Checklist" screen -
+          Tate's eventual ask was "Site Map + Checklist + Finding Editor, all
+          visible within the same workspace" so a technician can check what a
+          checklist item says (or add a marker for it) without losing the
+          map. Sits below the map, the editor cards and the drawing tools so
+          whatever is being worked on stays right under the map. */}
+      {detail.inspection.templateId ? (
+        <View style={styles.section}>
+          <Pressable style={styles.checklistHeaderRow} onPress={() => setChecklistExpanded((v) => !v)}>
+            <Text style={styles.checklistHeaderTitle}>{checklistExpanded ? "▾" : "▸"} Checklist</Text>
+            <Badge
+              label={`${checklistAnsweredCount}/${checklistItemCount}`}
+              tone={checklistAnsweredCount >= checklistItemCount && checklistItemCount > 0 ? "success" : "default"}
+            />
+          </Pressable>
+          {checklistExpanded ? (
+            <ChecklistPanel
+              inspectionId={inspectionId}
+              allowedCategories={unlockedCategories}
+              onAddToSiteMap={(responseId) => navigation.setParams({ fromChecklistResponseId: responseId })}
+            />
+          ) : null}
+        </View>
       ) : null}
     </ScrollView>
   );
