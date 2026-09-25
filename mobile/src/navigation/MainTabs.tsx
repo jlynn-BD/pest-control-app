@@ -1,6 +1,6 @@
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import React from "react";
-import { Text } from "react-native";
+import { Platform, Text } from "react-native";
 import CustomersNavigator from "./CustomersNavigator";
 import InspectionsNavigator from "./InspectionsNavigator";
 import ScheduleScreen from "../screens/schedule/ScheduleScreen";
@@ -22,6 +22,10 @@ export default function MainTabs() {
       screenOptions={({ route }) => ({
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
+        tabBarLabelStyle: { fontSize: 11, paddingBottom: 2 },
+        ...(Platform.OS === "web"
+          ? { tabBarStyle: { minHeight: 62, paddingTop: 4, paddingBottom: "calc(env(safe-area-inset-bottom) + 6px)" as unknown as number } }
+          : {}),
         headerStyle: { backgroundColor: colors.card },
         headerTintColor: colors.text,
         tabBarIcon: () => <Text style={{ fontSize: 20 }}>{ICONS[route.name]}</Text>,

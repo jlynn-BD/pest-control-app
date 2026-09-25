@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
   naConfirmCard: { marginTop: 12, gap: 8 },
   naTriggerCard: { marginTop: 12 },
   naConfirmText: { fontSize: 13, color: colors.text },
-  secondaryLink: { color: colors.textMuted, fontWeight: "500", fontSize: 12, marginTop: 12, textAlign: "center" },
+  secondaryLink: { color: colors.textMuted, fontWeight: "500", fontSize: 12, marginTop: 12, textAlign: "center", paddingVertical: 12 },
   blockedHint: { color: colors.textMuted, fontSize: 12, textAlign: "center", marginTop: 16 },
   buttonRow: { flexDirection: "row", gap: 10 },
   buttonHalf: { flex: 1 },

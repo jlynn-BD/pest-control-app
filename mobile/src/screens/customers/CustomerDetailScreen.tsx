@@ -74,7 +74,7 @@ const styles = StyleSheet.create({
   meta: { fontSize: 14, color: colors.textMuted, marginTop: 2 },
   sectionTitle: { fontSize: 15, fontWeight: "700", color: colors.text, marginTop: 18, marginBottom: 8 },
   sectionHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 18 },
-  addLink: { color: colors.primary, fontWeight: "600" },
+  addLink: { color: colors.primary, fontWeight: "600", paddingVertical: 12 },
   emptyText: { color: colors.textMuted, fontStyle: "italic" },
   card: { marginBottom: 8 },
   cardTitle: { fontSize: 15, fontWeight: "600", color: colors.text },

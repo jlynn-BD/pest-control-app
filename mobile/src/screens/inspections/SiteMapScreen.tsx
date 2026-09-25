@@ -818,7 +818,7 @@ const styles = StyleSheet.create({
   editorCard: { marginTop: 14, gap: 4, borderColor: colors.primary, borderWidth: 2 },
   editorTitle: { fontSize: 15, fontWeight: "700", color: colors.text, marginBottom: 4 },
   lastActionCard: { marginTop: 12, gap: 4, borderColor: colors.primary, borderWidth: 1 },
-  dismissLink: { color: colors.primary, fontWeight: "600", fontSize: 13, marginTop: 4 },
+  dismissLink: { color: colors.primary, fontWeight: "600", fontSize: 13, marginTop: 4, paddingVertical: 12 },
   error: { color: colors.danger, textAlign: "center", marginTop: 10 },
   findingsListCard: { marginTop: 16, gap: 4 },
   findingsListRow: {

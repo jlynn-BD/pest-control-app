@@ -61,7 +61,7 @@ export default function CustomerListScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 16, paddingTop: 12 },
   searchRow: { marginBottom: 4 },
-  addButton: { alignSelf: "flex-start", marginBottom: 12 },
+  addButton: { alignSelf: "flex-start", paddingVertical: 12, marginBottom: 4 },
   addButtonText: { color: colors.primary, fontWeight: "600", fontSize: 15 },
   list: { paddingBottom: 24, gap: 10 },
   row: {

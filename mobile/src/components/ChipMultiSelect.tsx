@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
   label: { fontSize: 13, color: colors.textMuted, marginBottom: 8, fontWeight: "500" },
   row: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {
-    paddingVertical: 7,
+    paddingVertical: 11,
     paddingHorizontal: 12,
     borderRadius: 16,
     borderWidth: 1,

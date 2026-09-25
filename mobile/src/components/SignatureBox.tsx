@@ -45,5 +45,5 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   hint: { color: colors.textMuted, fontSize: 14 },
-  clearLink: { color: colors.primary, fontWeight: "600", marginTop: 8, textAlign: "right" },
+  clearLink: { color: colors.primary, fontWeight: "600", marginTop: 8, textAlign: "right", paddingVertical: 12 },
 });

@@ -81,7 +81,7 @@ export default function EstimateListScreen({ route, navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 16, paddingTop: 12 },
-  addLink: { color: colors.primary, fontWeight: "600", fontSize: 14, marginBottom: 12 },
+  addLink: { color: colors.primary, fontWeight: "600", fontSize: 14, marginBottom: 12, paddingVertical: 12 },
   errorText: { color: colors.danger, marginBottom: 12 },
   list: { gap: 10, paddingBottom: 24 },
   card: { gap: 4 },

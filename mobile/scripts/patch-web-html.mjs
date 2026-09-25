@@ -24,6 +24,7 @@ const head = `
       html, body { height: 100%; height: 100dvh; }
       #root { height: 100%; height: 100dvh; }
       body { overscroll-behavior: none; -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+      [role="button"], [role="link"], [role="tab"] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
     </style>
     <script>
       if ("serviceWorker" in navigator) {

@@ -128,7 +128,7 @@ const styles = StyleSheet.create({
   label: { fontSize: 13, color: colors.textMuted, marginBottom: 6, fontWeight: "500" },
   typeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 18 },
   typeChip: {
-    paddingVertical: 8,
+    paddingVertical: 12,
     paddingHorizontal: 12,
     borderRadius: 18,
     borderWidth: 1,
@@ -139,6 +139,6 @@ const styles = StyleSheet.create({
   typeChipText: { color: colors.text, fontSize: 12, fontWeight: "500" },
   typeChipTextActive: { color: "#fff" },
   hint: { fontSize: 12, color: colors.textMuted, marginTop: -8, marginBottom: 16 },
-  useLink: { fontSize: 13, color: colors.primary, fontWeight: "600", marginTop: -8, marginBottom: 16 },
+  useLink: { fontSize: 13, color: colors.primary, fontWeight: "600", marginTop: -8, marginBottom: 4, paddingVertical: 12 },
   error: { color: colors.danger, marginBottom: 12, textAlign: "center" },
 });
