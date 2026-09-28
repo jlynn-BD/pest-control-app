@@ -156,10 +156,34 @@ export interface SyncResult {
 // findingId). The backend applies a batch sequentially for the same
 // reason. Media (photos/signatures) uploads only after their parent row is
 // confirmed synced, since those endpoints are nested under it.
-export async function runSync(): Promise<SyncResult> {
+//
+// Only one sync runs at a time: the reconnect/foreground/login triggers and
+// the "Sync now" button can all fire together, and two overlapping runs each
+// saw the same not-yet-uploaded photo and uploaded it, duplicating it on
+// the server. A call made while one is running just waits for that run.
+let inFlight: Promise<SyncResult> | null = null;
+
+export function runSync(): Promise<SyncResult> {
+  if (!inFlight) {
+    inFlight = runSyncOnce().finally(() => {
+      inFlight = null;
+    });
+  }
+  return inFlight;
+}
+
+async function runSyncOnce(): Promise<SyncResult> {
   let pushed = 0;
   let uploaded = 0;
   let conflicts = 0;
+  // One bad photo/signature (too big, corrupt, a server hiccup) must not
+  // stop everything queued behind it from syncing - remember the first
+  // failure, keep going, and report it at the end. The failed item stays
+  // pending and is retried on the next sync.
+  let firstMediaError: string | null = null;
+  const noteMediaError = (err: unknown) => {
+    if (!firstMediaError) firstMediaError = err instanceof Error ? err.message : String(err);
+  };
 
   try {
     const changes: SyncChangePayload[] = [
@@ -187,47 +211,59 @@ export async function runSync(): Promise<SyncResult> {
     }
 
     for (const photo of getUploadableFindingPhotos()) {
-      const form = new FormData();
-      await appendPhotoFile(form, photo.localUri, `photo-${photo.id}.jpg`);
-      if (photo.caption) form.append("caption", photo.caption);
-      if (photo.lat != null) form.append("lat", String(photo.lat));
-      if (photo.lng != null) form.append("lng", String(photo.lng));
-      const created = await apiRequest<{ fileUrl: string }>(`/api/findings/${photo.findingId}/photos`, {
-        method: "POST",
-        body: form,
-        isFormData: true,
-      });
-      markFindingPhotoSynced(photo.id, created.fileUrl);
-      uploaded += 1;
+      try {
+        const form = new FormData();
+        await appendPhotoFile(form, photo.localUri, `photo-${photo.id}.jpg`);
+        if (photo.caption) form.append("caption", photo.caption);
+        if (photo.lat != null) form.append("lat", String(photo.lat));
+        if (photo.lng != null) form.append("lng", String(photo.lng));
+        const created = await apiRequest<{ fileUrl: string }>(`/api/findings/${photo.findingId}/photos`, {
+          method: "POST",
+          body: form,
+          isFormData: true,
+        });
+        markFindingPhotoSynced(photo.id, created.fileUrl);
+        uploaded += 1;
+      } catch (err) {
+        noteMediaError(err);
+      }
     }
 
     for (const photo of getUploadableChecklistResponsePhotos()) {
-      const form = new FormData();
-      await appendPhotoFile(form, photo.localUri, `photo-${photo.id}.jpg`);
-      if (photo.caption) form.append("caption", photo.caption);
-      const created = await apiRequest<{ fileUrl: string }>(`/api/checklist-responses/${photo.checklistResponseId}/photos`, {
-        method: "POST",
-        body: form,
-        isFormData: true,
-      });
-      markChecklistResponsePhotoSynced(photo.id, created.fileUrl);
-      uploaded += 1;
+      try {
+        const form = new FormData();
+        await appendPhotoFile(form, photo.localUri, `photo-${photo.id}.jpg`);
+        if (photo.caption) form.append("caption", photo.caption);
+        const created = await apiRequest<{ fileUrl: string }>(`/api/checklist-responses/${photo.checklistResponseId}/photos`, {
+          method: "POST",
+          body: form,
+          isFormData: true,
+        });
+        markChecklistResponsePhotoSynced(photo.id, created.fileUrl);
+        uploaded += 1;
+      } catch (err) {
+        noteMediaError(err);
+      }
     }
 
     for (const signature of getUploadableSignatures()) {
-      const created = await apiRequest<{ imageUrl: string }>(`/api/inspections/${signature.inspectionId}/signatures`, {
-        method: "POST",
-        body: { signerType: signature.signerType, signerName: signature.signerName, imageBase64: signature.imageBase64 },
-      });
-      markSignatureSynced(signature.id, created.imageUrl);
-      uploaded += 1;
+      try {
+        const created = await apiRequest<{ imageUrl: string }>(`/api/inspections/${signature.inspectionId}/signatures`, {
+          method: "POST",
+          body: { signerType: signature.signerType, signerName: signature.signerName, imageBase64: signature.imageBase64 },
+        });
+        markSignatureSynced(signature.id, created.imageUrl);
+        uploaded += 1;
+      } catch (err) {
+        noteMediaError(err);
+      }
     }
 
     // Also refreshes reference data, picking up server-side edits made to
     // customers/properties/templates while this device was offline.
     await primeCache();
 
-    return { pushed, uploaded, conflicts, error: null };
+    return { pushed, uploaded, conflicts, error: firstMediaError };
   } catch (err) {
     return { pushed, uploaded, conflicts, error: err instanceof Error ? err.message : String(err) };
   }

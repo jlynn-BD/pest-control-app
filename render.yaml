@@ -11,10 +11,10 @@
 #     and suspends the database, which took the whole API down once.
 #   - pestapp-backend is on the paid Starter plan, so it no longer spins down
 #     after 15 minutes idle.
-#   - Uploaded photos/site-map images/PDF reports are still written to the
-#     service's local disk, which is wiped on every restart or redeploy. The
-#     paid plan now allows attaching a Render Disk for real persistence - not
-#     wired in yet.
+#   - Uploaded photos, signatures, site-map images and generated PDFs are
+#     stored in Postgres (the StoredFile table), not on the API server's
+#     disk - that disk is wiped on every restart/redeploy. STORAGE_DIR below
+#     is only read as a fallback for any leftover files from before that.
 #   - pestapp-web (static site) is free on Render regardless of plan.
 
 databases:

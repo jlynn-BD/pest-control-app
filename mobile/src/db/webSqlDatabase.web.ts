@@ -25,39 +25,41 @@ function openSnapshotStore(): Promise<IDBDatabase> {
   });
 }
 
+// A read error is thrown (not turned into "no data") so the caller can tell
+// "nothing saved yet" apart from "couldn't read what's saved".
 async function loadSnapshotUnbounded(): Promise<Uint8Array | null> {
-  try {
-    const idb = await openSnapshotStore();
-    return await new Promise((resolve, reject) => {
-      const req = idb.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).get(IDB_KEY);
-      req.onsuccess = () => resolve(req.result ?? null);
-      req.onerror = () => reject(req.error);
-    });
-  } catch {
-    // No IndexedDB (rare private-browsing edge cases) or first run ever -
-    // fall back to starting fresh rather than blocking the app.
-    return null;
-  }
+  const idb = await openSnapshotStore();
+  return new Promise((resolve, reject) => {
+    const req = idb.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).get(IDB_KEY);
+    req.onsuccess = () => resolve(req.result ?? null);
+    req.onerror = () => reject(req.error);
+  });
 }
 
-// IndexedDB has observably taken several seconds to respond in some
-// environments (slow first-open, disk contention, etc.) with no error - just
-// silence. Since this gates the whole app's startup screen (see App.tsx),
-// a slow/stuck IndexedDB must never turn into a slow/stuck app: give it a
-// budget, and start fresh (same as no persistence at all) if it blows past
-// that rather than leaving the technician staring at a spinner.
+// IndexedDB can be slow to answer (slow first-open, disk contention, ...)
+// with no error - just silence. Since this gates the whole app's startup
+// screen (see App.tsx), a stuck IndexedDB must not mean a stuck app, so the
+// wait has a budget. But NEVER treat "didn't answer in time" as "there is no
+// saved data": starting blank and then saving would overwrite the technician's
+// stored, possibly not-yet-synced inspections with an empty database. If the
+// load fails or times out, the app runs for this session without saving
+// (persistenceDisabled) and the stored snapshot is left untouched.
+const LOAD_BUDGET_MS = 10000;
+let persistenceDisabled = false;
+
 function loadSnapshot(): Promise<Uint8Array | null> {
   return new Promise((resolve) => {
     let settled = false;
-    const finish = (value: Uint8Array | null) => {
+    const finish = (value: Uint8Array | null, ok: boolean) => {
       if (settled) return;
       settled = true;
+      if (!ok) persistenceDisabled = true;
       resolve(value);
     };
-    setTimeout(() => finish(null), 2000);
+    setTimeout(() => finish(null, false), LOAD_BUDGET_MS);
     loadSnapshotUnbounded()
-      .then(finish)
-      .catch(() => finish(null));
+      .then((data) => finish(data, true))
+      .catch(() => finish(null, false));
   });
 }
 
@@ -69,7 +71,7 @@ function saveSnapshotNow(): void {
     clearTimeout(saveTimer);
     saveTimer = null;
   }
-  if (!sqlJsDb) return;
+  if (!sqlJsDb || persistenceDisabled) return;
   const data = sqlJsDb.export();
   openSnapshotStore()
     .then(
@@ -114,6 +116,14 @@ export function initWebSqlDatabase(): Promise<void> {
     initPromise = Promise.all([initSqlJs({ locateFile: (file: string) => `/${file}` }), loadSnapshot()]).then(
       ([SQL, snapshot]) => {
         sqlJsDb = snapshot ? new SQL.Database(snapshot) : new SQL.Database();
+        // Ask the browser not to evict this database when storage is tight
+        // (Safari in particular clears site data it considers idle) - it
+        // holds inspections that may not have synced yet.
+        try {
+          navigator.storage?.persist?.().catch(() => undefined);
+        } catch {
+          // not supported - nothing to do
+        }
       }
     );
   }

@@ -29,8 +29,10 @@ mediaRouter.get(
   asyncHandler(async (req, res) => {
     const key = (req.params as unknown as { 0: string })[0];
     if (!key || key.includes("..")) throw new HttpError(400, "Invalid file key");
-    const exists = await storage.exists(key);
-    if (!exists) throw new HttpError(404, "File not found");
-    res.sendFile(storage.getAbsolutePath(key));
+    const file = await storage.read(key);
+    if (!file) throw new HttpError(404, "File not found");
+    res.setHeader("Content-Type", file.contentType);
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.send(file.data);
   })
 );

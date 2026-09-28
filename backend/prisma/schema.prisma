@@ -497,3 +497,15 @@ model EstimateLineItem {
 
   @@index([estimateId])
 }
+
+// Uploaded photos, signature images, site-map images and generated PDFs.
+// Kept in Postgres rather than on the API server's disk: the host's disk is
+// wiped on every redeploy/restart, which silently lost customer photos and
+// signatures. Keyed by the same "uploads/..", "reports/.." path the URLs use.
+model StoredFile {
+  key         String   @id
+  contentType String?
+  data        Bytes
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

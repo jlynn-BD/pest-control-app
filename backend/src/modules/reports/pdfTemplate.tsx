@@ -175,9 +175,16 @@ export interface ReportSiteMapAnnotation {
 
 // One per level in sketch mode ("Site Map — Exterior", "Site Map — 1st
 // Floor", ...), or a single panel titled "Site Map" in photo mode.
+// Image bytes handed straight to react-pdf (files live in the database, not
+// on disk, so there's no path to point at).
+export interface ReportImage {
+  data: Buffer;
+  format: "png" | "jpg";
+}
+
 export interface ReportSiteMapPanel {
   title: string;
-  imagePath: string | null;
+  imagePath: ReportImage | null;
   lines: ReportSiteMapLine[];
   labels: ReportSiteMapLabel[];
   annotations: ReportSiteMapAnnotation[];
@@ -189,7 +196,7 @@ export interface ReportFinding {
   locationDetail: string | null;
   severity: string;
   description: string | null;
-  photoPaths: string[];
+  photoPaths: ReportImage[];
   // The recommendation generated from this finding (Matt's "no second
   // entry" ask), shown on the finding's own card rather than in a
   // separate section that repeated it.
@@ -219,7 +226,7 @@ export interface ReportSignature {
   signerType: string;
   signerName: string;
   signedAt: string;
-  imagePath: string;
+  imagePath: ReportImage | null;
 }
 
 export interface ReportData {
@@ -289,7 +296,7 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
             <View style={styles.section} key={`site-map-${pi}`} wrap={false}>
               <Text style={styles.sectionTitle}>{panel.title}</Text>
               <View style={styles.siteMapBox}>
-                {panel.imagePath ? <Image src={panel.imagePath} style={styles.siteMapImage} /> : null}
+                {panel.imagePath ? <Image src={{ data: panel.imagePath.data, format: panel.imagePath.format }} style={styles.siteMapImage} /> : null}
                 <Svg width="100%" height="100%" viewBox="0 0 1 1" preserveAspectRatio="none" style={{ position: "absolute", top: 0, left: 0 }}>
                   {!panel.imagePath ? (
                     <>
@@ -440,7 +447,7 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
               {f.photoPaths.length > 0 ? (
                 <View style={styles.photoRow}>
                   {f.photoPaths.map((p, pi) => (
-                    <Image key={pi} src={p} style={styles.photo} />
+                    <Image key={pi} src={{ data: p.data, format: p.format }} style={styles.photo} />
                   ))}
                 </View>
               ) : null}
@@ -472,7 +479,7 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
           <View style={styles.signatureRow}>
             {data.signatures.map((s, i) => (
               <View key={i} style={styles.signatureBlock}>
-                <Image src={s.imagePath} style={styles.signatureImage} />
+                {s.imagePath ? <Image src={{ data: s.imagePath.data, format: s.imagePath.format }} style={styles.signatureImage} /> : <Text style={styles.signatureLabel}>(signature image unavailable)</Text>}
                 <Text style={styles.signatureLabel}>
                   {s.signerName} ({s.signerType})
                 </Text>

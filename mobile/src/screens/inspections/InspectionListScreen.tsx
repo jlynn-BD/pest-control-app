@@ -65,6 +65,10 @@ export default function InspectionListScreen({ navigation }: Props) {
     if (!user || !data) return;
     const remoteIds = new Set(data.map((r) => r.id));
     const current = listLocalInspections(user.id);
+    // An empty server list while this device holds synced inspections looks
+    // like an outage or a reset, not "every one was deleted elsewhere" -
+    // never wipe the device's copies on that evidence.
+    if (data.length === 0 && current.some((r) => r.syncStatus === "synced")) return;
     const staleIds = current.filter((r) => r.syncStatus === "synced" && !remoteIds.has(r.id)).map((r) => r.id);
     if (staleIds.length === 0) return;
     for (const id of staleIds) deleteLocalInspection(id);

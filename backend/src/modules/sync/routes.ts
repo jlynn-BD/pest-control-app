@@ -162,6 +162,13 @@ async function applyChange(change: Change): Promise<PushResult> {
   // hard-deleted locally) - always resurrect it rather than running it
   // through last-write-wins, which would compare against a stale
   // updatedAt and could wrongly report a conflict.
+  // Same timestamp = this exact change already reached the server (the
+  // response to an earlier push was lost, so the device is retrying it).
+  // Reporting that as a conflict left the row "pending" on the device
+  // forever - confirm it instead.
+  if (incomingUpdatedAt.getTime() === existingUpdatedAt.getTime() && existing.id === change.id) {
+    return { entity: change.entity, id: change.id, result: "applied" };
+  }
   if (incomingUpdatedAt > existingUpdatedAt || (naturalKeyFields && existing.id !== change.id)) {
     await model.update({
       where: { id: existing.id },

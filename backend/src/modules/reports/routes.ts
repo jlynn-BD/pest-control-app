@@ -7,16 +7,23 @@ import { prisma } from "../../lib/prisma";
 import { storage } from "../../lib/storage";
 import { asyncHandler, HttpError } from "../../middleware/error-handler";
 import { requireAuth } from "../../middleware/auth";
-import { InspectionReportDocument, ReportData, ReportSiteMapAnnotation, ReportSiteMapLabel, ReportSiteMapLine } from "./pdfTemplate";
+import { InspectionReportDocument, ReportData, ReportImage, ReportSiteMapAnnotation, ReportSiteMapLabel, ReportSiteMapLine } from "./pdfTemplate";
 
 export const reportsRouter = Router();
 reportsRouter.use(requireAuth);
 
 const MEDIA_PREFIX = "/api/media/file/";
 
-function mediaUrlToAbsolutePath(fileUrl: string): string {
+// Loads a stored image for the PDF. A file that's gone (or can't be read as
+// PNG/JPEG) is skipped instead of failing the whole report.
+async function loadReportImage(fileUrl: string): Promise<ReportImage | null> {
   const key = fileUrl.startsWith(MEDIA_PREFIX) ? fileUrl.slice(MEDIA_PREFIX.length) : fileUrl;
-  return storage.getAbsolutePath(key);
+  const file = await storage.read(key);
+  if (!file) return null;
+  const isPng = file.data.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  const isJpg = file.data.subarray(0, 2).equals(Buffer.from([0xff, 0xd8]));
+  if (!isPng && !isJpg) return null;
+  return { data: file.data, format: isPng ? "png" : "jpg" };
 }
 
 function toReportRecommendation(r: { title: string; description: string | null; priority: string; status: string; deadline: Date | null }) {
@@ -81,7 +88,7 @@ async function buildReportData(inspectionId: string): Promise<ReportData> {
     siteMapPanels = [
       {
         title: "Site Map",
-        imagePath: mediaUrlToAbsolutePath(inspection.property.siteMapImageUrl),
+        imagePath: await loadReportImage(inspection.property.siteMapImageUrl),
         lines: [],
         labels: [],
         annotations: [],
@@ -137,26 +144,26 @@ async function buildReportData(inspectionId: string): Promise<ReportData> {
       initials: s.initials,
       confirmedAt: s.confirmedAt.toISOString(),
     })),
-    findings: inspection.findings.map((f) => {
+    findings: await Promise.all(inspection.findings.map(async (f) => {
       const rec = inspection.recommendations.find((r) => r.findingId === f.id);
       return {
         areaLocation: f.areaLocation,
         locationDetail: f.locationDetail,
         severity: f.severity,
         description: f.description,
-        photoPaths: f.photos.map((p) => mediaUrlToAbsolutePath(p.fileUrl)),
+        photoPaths: (await Promise.all(f.photos.map((p) => loadReportImage(p.fileUrl)))).filter((img): img is ReportImage => img !== null),
         recommendation: rec ? toReportRecommendation(rec) : null,
       };
-    }),
+    })),
     standaloneRecommendations: inspection.recommendations
       .filter((r) => !r.findingId || !inspection.findings.some((f) => f.id === r.findingId))
       .map(toReportRecommendation),
-    signatures: inspection.signatures.map((s) => ({
+    signatures: await Promise.all(inspection.signatures.map(async (s) => ({
       signerType: s.signerType,
       signerName: s.signerName,
       signedAt: s.signedAt.toISOString(),
-      imagePath: mediaUrlToAbsolutePath(s.imageUrl),
-    })),
+      imagePath: await loadReportImage(s.imageUrl),
+    }))),
   };
 }
 
@@ -222,10 +229,10 @@ reportsRouter.get(
     const report = await prisma.report.findUnique({ where: { id: req.params.id } });
     if (!report) throw new HttpError(404, "Report not found");
     const key = `reports/${report.inspectionId}/report-v${report.version}.pdf`;
-    const exists = await storage.exists(key);
-    if (!exists) throw new HttpError(404, "Report file not found in storage");
+    const file = await storage.read(key);
+    if (!file) throw new HttpError(404, "Report file not found - regenerate the report");
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `inline; filename="inspection-report-${report.inspectionId}.pdf"`);
-    res.sendFile(storage.getAbsolutePath(key));
+    res.send(file.data);
   })
 );
