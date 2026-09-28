@@ -29,6 +29,7 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
   const { inspectionId } = route.params;
   const { user } = useAuth();
   const [property, setProperty] = useState<LocalProperty | null>(null);
+  const [propertyId, setPropertyId] = useState<string | null>(null);
   const [status, setStatus] = useState<WizardStatus | null>(null);
   const [sectionSkips, setSectionSkips] = useState<LocalInspectionSectionSkip[]>([]);
   const [stepIndex, setStepIndex] = useState(0);
@@ -41,6 +42,7 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
     if (!detail?.inspection.templateId) return;
     const p = getCachedProperty(detail.inspection.propertyId);
     setProperty(p);
+    setPropertyId(detail.inspection.propertyId);
     setSectionSkips(detail.sectionSkips);
     const sections = getCachedTemplateSections(detail.inspection.templateId);
     const next = getWizardStepStatus(sections, detail.checklistResponses, p ?? undefined, detail.sectionSkips);
@@ -60,7 +62,15 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
     }, [refresh])
   );
 
-  if (!status || !property) return null;
+  // Nothing to walk through yet - say so instead of leaving a blank screen
+  // (the local copy of the template/inspection hasn't loaded).
+  if (!status) {
+    return (
+      <View style={styles.content}>
+        <Text style={styles.naText}>The checklist isn't available on this device yet. Go back and open the inspection again while online.</Text>
+      </View>
+    );
+  }
 
   const step = status.steps[stepIndex];
   const stepDef = WIZARD_STEPS[stepIndex];
@@ -91,10 +101,10 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
   }
 
   async function handleConfirmNotApplicable() {
-    if (!stepDef.applicabilityField || !user || !initials.trim()) return;
+    if (!stepDef.applicabilityField || !user || !initials.trim() || !propertyId) return;
     setSavingApplicability(true);
-    updateLocalPropertyApplicability(property!.id, { [stepDef.applicabilityField]: 0 });
-    patchPropertyApplicability(property!.id, { [stepDef.applicabilityField]: false }).catch(() => {});
+    updateLocalPropertyApplicability(propertyId!, { [stepDef.applicabilityField]: 0 });
+    patchPropertyApplicability(propertyId!, { [stepDef.applicabilityField]: false }).catch(() => {});
     createLocalInspectionSectionSkip(inspectionId, step.category, user.id, initials.trim());
     refresh();
     setConfirmingNotApplicable(false);
@@ -108,9 +118,9 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
   // answering the step's items is itself what marks it applicable), and
   // removes this inspection's sign-off since it's no longer accurate.
   function handleUndoNotApplicable() {
-    if (!stepDef.applicabilityField) return;
-    updateLocalPropertyApplicability(property!.id, { [stepDef.applicabilityField]: null });
-    patchPropertyApplicability(property!.id, { [stepDef.applicabilityField]: null }).catch(() => {});
+    if (!stepDef.applicabilityField || !propertyId) return;
+    updateLocalPropertyApplicability(propertyId!, { [stepDef.applicabilityField]: null });
+    patchPropertyApplicability(propertyId!, { [stepDef.applicabilityField]: null }).catch(() => {});
     deleteLocalInspectionSectionSkip(inspectionId, step.category);
     refresh();
   }
@@ -144,7 +154,7 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
       {!step.required ? (
         <Text style={styles.stepHint}>
           {mySkip
-            ? `Marked as not applicable to ${property.addressLine1}.`
+            ? `Marked as not applicable to ${property?.addressLine1 ?? "this property"}.`
             : previouslyMarkedElsewhere
               ? "This property was previously marked as not having this area - please confirm that's still accurate for this inspection."
               : "If this property doesn't have this area, you can mark it not applicable instead of answering it."}

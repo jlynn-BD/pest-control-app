@@ -162,7 +162,7 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
         addLabel="+ Add finding"
       >
         {detail.findings.length === 0 && detail.recommendations.length === 0 ? (
-          <Text style={styles.itemMeta}>Add a finding - its recommendation is created automatically, nothing to enter twice.</Text>
+          <Text style={[styles.itemMeta, { marginBottom: 12 }]}>Add a finding - its recommendation is created automatically, nothing to enter twice.</Text>
         ) : null}
         {detail.findings.map((f) => {
           const rec = detail.recommendations.find((r) => r.findingId === f.id);
