@@ -8,6 +8,7 @@ import { buildSiteMapPanels, parseSiteMapSketch } from "../../lib/siteMapSketch"
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { SiteMapCanvas } from "../../components/ArrowCanvas";
 import { AuthImage } from "../../components/AuthImage";
+import { ReportCard } from "../../components/ReportCard";
 import { FindingsAndRecommendations } from "../../components/FindingsAndRecommendations";
 import { Badge, Card, colors } from "../../components/ui";
 
@@ -39,6 +40,14 @@ export default function LocalInspectionDetailScreen({ route }: Props) {
       ) : (
         <Badge label="Stored on this device — not yet synced" tone="warning" />
       )}
+      {detail.inspection.status === "COMPLETED" ? (
+        detail.inspection.syncStatus === "synced" ? (
+          <ReportCard inspectionId={inspectionId} />
+        ) : (
+          <Text style={styles.body}>The report can be generated once this inspection has synced - connect to the internet and check back.</Text>
+        )
+      ) : null}
+
 
       {siteMapPanels.map((panel, i) => (
         <View key={i}>

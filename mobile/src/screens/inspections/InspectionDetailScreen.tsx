@@ -1,17 +1,15 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import React, { useState } from "react";
+import React from "react";
 import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getInspection } from "../../api/inspections";
 import { API_BASE_URL } from "../../api/config";
-import { generateReport, getReport } from "../../api/reports";
-import { ApiError } from "../../api/client";
-import { downloadAndShareReport } from "../../lib/report";
 import { CHECKLIST_CATEGORY_LABEL, CHECKLIST_STATUS_LABEL, groupChecklistForDisplay } from "../../lib/checklist";
 import { buildSiteMapPanels, parseSiteMapSketch } from "../../lib/siteMapSketch";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { SiteMapCanvas } from "../../components/ArrowCanvas";
 import { AuthImage } from "../../components/AuthImage";
+import { ReportCard } from "../../components/ReportCard";
 import { FindingsAndRecommendations } from "../../components/FindingsAndRecommendations";
 import { Badge, Card, ErrorView, LoadingView, PrimaryButton, colors } from "../../components/ui";
 
@@ -19,41 +17,11 @@ type Props = NativeStackScreenProps<InspectionsStackParamList, "InspectionDetail
 
 export default function InspectionDetailScreen({ route }: Props) {
   const { inspectionId } = route.params;
-  const queryClient = useQueryClient();
-  const [reportError, setReportError] = useState<string | null>(null);
-  const [sharing, setSharing] = useState(false);
 
   const { data: inspection, isLoading, isError } = useQuery({
     queryKey: ["inspections", inspectionId],
     queryFn: () => getInspection(inspectionId),
   });
-
-  const { data: report } = useQuery({
-    queryKey: ["reports", inspectionId],
-    queryFn: () => getReport(inspectionId),
-    enabled: inspection?.status === "COMPLETED",
-    retry: false,
-  });
-
-  const generateMutation = useMutation({
-    mutationFn: () => generateReport(inspectionId),
-    onSuccess: () => {
-      setReportError(null);
-      queryClient.invalidateQueries({ queryKey: ["reports", inspectionId] });
-    },
-    onError: (err) => setReportError(err instanceof ApiError ? err.message : "Failed to generate report"),
-  });
-
-  async function handleShare(reportId: string) {
-    setSharing(true);
-    try {
-      await downloadAndShareReport(reportId, inspectionId);
-    } catch (err) {
-      setReportError(err instanceof Error ? err.message : "Failed to share report");
-    } finally {
-      setSharing(false);
-    }
-  }
 
   if (isLoading) return <LoadingView />;
   if (isError || !inspection) return <ErrorView message="Failed to load inspection" />;
@@ -70,29 +38,7 @@ export default function InspectionDetailScreen({ route }: Props) {
       </View>
       <Text style={styles.meta}>{inspection.property.addressLine1}</Text>
 
-      {inspection.status === "COMPLETED" ? (
-        <Card style={styles.reportCard}>
-          <Text style={styles.cardTitle}>Report</Text>
-          {report ? (
-            <>
-              <Text style={styles.meta}>
-                Version {report.version} · generated {new Date(report.generatedAt).toLocaleString()}
-              </Text>
-              <View style={styles.buttonRow}>
-                <View style={styles.buttonHalf}>
-                  <PrimaryButton title="Regenerate" onPress={() => generateMutation.mutate()} loading={generateMutation.isPending} />
-                </View>
-                <View style={styles.buttonHalf}>
-                  <PrimaryButton title="Share PDF" onPress={() => handleShare(report.id)} loading={sharing} />
-                </View>
-              </View>
-            </>
-          ) : (
-            <PrimaryButton title="Generate report" onPress={() => generateMutation.mutate()} loading={generateMutation.isPending} />
-          )}
-          {reportError ? <Text style={styles.errorText}>{reportError}</Text> : null}
-        </Card>
-      ) : null}
+      {inspection.status === "COMPLETED" ? <ReportCard inspectionId={inspectionId} /> : null}
 
       {siteMapPanels.map((panel, i) => (
         <View key={i}>
