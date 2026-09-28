@@ -98,6 +98,13 @@ CREATE TABLE IF NOT EXISTS inspection_section_skips (
 CREATE TABLE IF NOT EXISTS sync_meta (
   key TEXT PRIMARY KEY, value TEXT
 );
+-- Rows the server rejected as a last-write-lost conflict (another device's
+-- newer edit already won) - kept visible instead of silently retried
+-- forever, see resolveSyncConflictKeepLocal/UseServer in inspectionStore.ts.
+CREATE TABLE IF NOT EXISTS sync_conflicts (
+  entity TEXT, localId TEXT, label TEXT, serverJson TEXT, detectedAt TEXT,
+  PRIMARY KEY (entity, localId)
+);
 `;
 
 export function getDb(): LocalDb {

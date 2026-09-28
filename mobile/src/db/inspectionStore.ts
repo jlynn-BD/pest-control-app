@@ -709,6 +709,115 @@ export function markSynced(
   getDb().runSync(`UPDATE ${table} SET syncStatus = 'synced' WHERE id = ?`, [id]);
 }
 
+// Same five entities the sync engine pushes - kept here (not in
+// syncEngine.ts) so the conflict-resolution functions below can use it
+// too without a circular import between the two files.
+export const ENTITY_TABLE: Record<
+  string,
+  "inspections" | "findings" | "recommendations" | "checklist_responses" | "inspection_section_skips"
+> = {
+  Inspection: "inspections",
+  Finding: "findings",
+  Recommendation: "recommendations",
+  ChecklistResponse: "checklist_responses",
+  InspectionSectionSkip: "inspection_section_skips",
+};
+
+// The local columns a conflict resolution is allowed to overwrite from the
+// server's copy of the row - mirrors the backend's own ALLOWED_FIELDS
+// allowlist (backend/src/modules/sync/routes.ts) rather than trusting the
+// server JSON's shape wholesale.
+const CONFLICT_LOCAL_COLUMNS: Record<string, string[]> = {
+  Inspection: [
+    "propertyId", "customerId", "templateId", "technicianId",
+    "status", "scheduledAt", "startedAt", "completedAt", "generalNotes", "weatherConditions", "checklistCategories",
+  ],
+  Finding: [
+    "inspectionId", "areaLocation", "locationDetail", "severity", "description", "lat", "lng",
+    "floorPlanX", "floorPlanY", "siteMapArrowStartX", "siteMapArrowStartY", "siteMapLevel",
+  ],
+  Recommendation: ["inspectionId", "findingId", "title", "description", "priority", "ownerType", "deadline", "status"],
+  ChecklistResponse: ["inspectionId", "templateItemId", "status", "notes"],
+};
+
+export interface LocalSyncConflict {
+  entity: string;
+  localId: string;
+  label: string;
+  serverJson: string;
+  detectedAt: string;
+}
+
+// A conflict is one specific row this device tried to push whose server
+// copy is newer (see the sync push route's last-write-wins check) - two
+// technicians' devices touched the same record. Recorded instead of
+// silently re-reported as a generic "conflict" count on every sync, so it
+// can actually be looked at and resolved (see the two resolve* functions
+// below) rather than retried forever with the same result.
+export function recordSyncConflict(entity: string, localId: string, label: string, serverRow: unknown): void {
+  if (!isLocalDbAvailable()) return;
+  getDb().runSync(
+    `INSERT OR REPLACE INTO sync_conflicts (entity, localId, label, serverJson, detectedAt) VALUES (?, ?, ?, ?, ?)`,
+    [entity, localId, label, JSON.stringify(serverRow ?? {}), new Date().toISOString()]
+  );
+}
+
+export function clearSyncConflict(entity: string, localId: string): void {
+  if (!isLocalDbAvailable()) return;
+  getDb().runSync(`DELETE FROM sync_conflicts WHERE entity = ? AND localId = ?`, [entity, localId]);
+}
+
+export function listSyncConflicts(): LocalSyncConflict[] {
+  if (!isLocalDbAvailable()) return [];
+  return getDb().getAllSync<LocalSyncConflict>(`SELECT * FROM sync_conflicts ORDER BY detectedAt DESC`);
+}
+
+// "Keep my version": re-stamps this device's edit as the newest, so the
+// next sync push wins the last-write-wins comparison on the server instead
+// of conflicting again. The row goes back to 'pending' so it's retried.
+export function resolveSyncConflictKeepLocal(entity: string, localId: string): void {
+  const table = ENTITY_TABLE[entity];
+  if (table) {
+    getDb().runSync(`UPDATE ${table} SET updatedAt = ?, syncStatus = 'pending' WHERE id = ?`, [new Date().toISOString(), localId]);
+  }
+  clearSyncConflict(entity, localId);
+}
+
+// "Use the server's version": overwrites this device's local copy with the
+// row the server already has (the other device's edit), then marks it
+// synced - there is nothing left for this device to push for that row.
+export function resolveSyncConflictUseServer(entity: string, localId: string): void {
+  const table = ENTITY_TABLE[entity];
+  const columns = CONFLICT_LOCAL_COLUMNS[entity];
+  const conflict = isLocalDbAvailable()
+    ? getDb().getFirstSync<{ serverJson: string }>(`SELECT serverJson FROM sync_conflicts WHERE entity = ? AND localId = ?`, [entity, localId])
+    : null;
+  if (table && columns && conflict) {
+    let serverRow: Record<string, unknown> = {};
+    try {
+      serverRow = JSON.parse(conflict.serverJson);
+    } catch {
+      serverRow = {};
+    }
+    const setCols = columns.filter((c) => c in serverRow);
+    if (setCols.length > 0) {
+      const assignments = [...setCols.map((c) => `${c} = ?`), "syncStatus = 'synced'"];
+      const values = setCols.map((c) => {
+        const v = serverRow[c];
+        return v === null || v === undefined ? null : (v as string | number);
+      });
+      if ("updatedAt" in serverRow) {
+        assignments.splice(-1, 0, "updatedAt = ?");
+        values.push((serverRow.updatedAt as string) ?? new Date().toISOString());
+      }
+      getDb().runSync(`UPDATE ${table} SET ${assignments.join(", ")} WHERE id = ?`, [...values, localId]);
+    } else {
+      getDb().runSync(`UPDATE ${table} SET syncStatus = 'synced' WHERE id = ?`, [localId]);
+    }
+  }
+  clearSyncConflict(entity, localId);
+}
+
 // Findings must exist server-side (synced) before their photos can be
 // uploaded, since the upload endpoint is nested under /findings/:id/photos.
 export function getUploadableFindingPhotos(): (LocalFindingPhoto & { findingSyncStatus: string })[] {

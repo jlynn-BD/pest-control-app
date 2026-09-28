@@ -1,8 +1,10 @@
 import { appendPhotoFile } from "../lib/photoUpload";
 import { apiRequest } from "../api/client";
-import { primeCache } from "../db/cache";
+import { getCachedCustomer, getCachedProperty, primeCache } from "../db/cache";
 import {
+  clearSyncConflict,
   countPendingSyncRows,
+  ENTITY_TABLE,
   getPendingChecklistResponses,
   getPendingFindings,
   getPendingInspections,
@@ -15,6 +17,7 @@ import {
   markFindingPhotoSynced,
   markSignatureSynced,
   markSynced,
+  recordSyncConflict,
 } from "../db/inspectionStore";
 import type {
   LocalChecklistResponse,
@@ -36,6 +39,7 @@ interface PushResultItem {
   entity: string;
   id: string;
   result: "applied" | "conflict";
+  serverRow?: unknown;
 }
 
 function inspectionToChange(i: LocalInspection): SyncChangePayload {
@@ -133,22 +137,34 @@ function sectionSkipToChange(s: LocalInspectionSectionSkip): SyncChangePayload {
   };
 }
 
-const TABLE_BY_ENTITY: Record<
-  string,
-  "inspections" | "findings" | "recommendations" | "checklist_responses" | "inspection_section_skips"
-> = {
-  Inspection: "inspections",
-  Finding: "findings",
-  Recommendation: "recommendations",
-  ChecklistResponse: "checklist_responses",
-  InspectionSectionSkip: "inspection_section_skips",
-};
-
 export interface SyncResult {
   pushed: number;
   uploaded: number;
   conflicts: number;
   error: string | null;
+}
+
+// A short, human description of the row a push change came from - shown on
+// the conflict this device's edit lost, in Settings, instead of a bare
+// entity name and id. Best-effort: cache lookups can come back empty (e.g.
+// the customer/property hasn't been primed on this device), in which case
+// this just falls back to the entity name.
+function describeChange(change: SyncChangePayload): string {
+  switch (change.entity) {
+    case "Inspection": {
+      const customer = change.data.customerId ? getCachedCustomer(change.data.customerId as string)?.name : null;
+      const address = change.data.propertyId ? getCachedProperty(change.data.propertyId as string)?.addressLine1 : null;
+      return [customer, address].filter(Boolean).join(" — ") || "Inspection";
+    }
+    case "Finding":
+      return change.data.areaLocation ? `Finding: ${change.data.areaLocation}` : "Finding";
+    case "Recommendation":
+      return change.data.title ? `Recommendation: ${change.data.title}` : "Recommendation";
+    case "ChecklistResponse":
+      return "Checklist answer";
+    default:
+      return change.entity;
+  }
 }
 
 // Push order matters: Inspections first (Findings/Recommendations
@@ -199,13 +215,20 @@ async function runSyncOnce(): Promise<SyncResult> {
         method: "POST",
         body: { changes },
       });
+      const changeById = new Map(changes.map((c) => [`${c.entity}:${c.id}`, c]));
       for (const result of res.results) {
+        const key = `${result.entity}:${result.id}`;
         if (result.result === "applied") {
           pushed += 1;
-          const table = TABLE_BY_ENTITY[result.entity];
+          const table = ENTITY_TABLE[result.entity];
           if (table) markSynced(table, result.id);
+          // Applied successfully this time - drop any earlier conflict
+          // recorded for this same row (e.g. after "Keep my version").
+          clearSyncConflict(result.entity, result.id);
         } else {
           conflicts += 1;
+          const change = changeById.get(key);
+          recordSyncConflict(result.entity, result.id, change ? describeChange(change) : result.entity, result.serverRow);
         }
       }
     }
