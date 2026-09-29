@@ -289,6 +289,19 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     if (ok) setLastAction({ kind: "wall", id });
   }
 
+  // A technician stays in "+Wall" mode after drawing one segment, ready to
+  // draw the next - which meant the just-drawn wall wasn't tappable yet (its
+  // hit-area only appears in view mode) and the "✓ Wall saved / Undo" card
+  // only ever remembers the single most recent action, so it stops covering
+  // an earlier segment the moment a second one is drawn. This link stays
+  // available the whole time wall mode is active, always targeting whichever
+  // segment on this level was drawn last, regardless of what else happened
+  // since - the reliable "get rid of the last one" a technician asked for.
+  function handleDeleteLastWall() {
+    persistSelectedLevel((l) => ({ ...l, lines: l.lines.slice(0, -1) }));
+    setLastAction((current) => (current?.kind === "wall" ? null : current));
+  }
+
   async function handleAnnotationDrawn(type: SiteMapAnnotationType, color: string, start: Point, end: Point) {
     const id = generateId();
     const annotation = type === "x" ? { id, type, color, x1: start.x, y1: start.y } : { id, type, color, x1: start.x, y1: start.y, x2: end.x, y2: end.y };
@@ -514,6 +527,11 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       {canDraw && !editorOpen ? (
         <Text style={[styles.drawHint, !siteMapHintText(mode, annotationType) && styles.drawHintIdle]}>
           {siteMapHintText(mode, annotationType) ?? "Tap a shape or wall to move, resize or recolor it"}
+        </Text>
+      ) : null}
+      {mode === "wall" && !editorOpen && wallCount > 0 ? (
+        <Text style={styles.dismissLink} onPress={handleDeleteLastWall}>
+          Delete the last wall segment
         </Text>
       ) : null}
 
