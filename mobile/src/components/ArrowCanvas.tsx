@@ -213,11 +213,22 @@ function applyDrag(base: Geometry, kind: HandleKind, dxn: number, dyn: number): 
   }
   if (kind === "p1") return { ...base, x1: clamp01(base.x1 + dxn), y1: clamp01(base.y1 + dyn) };
   if (kind === "p2") return { ...base, x2: clamp01(bx2 + dxn), y2: clamp01(by2 + dyn) };
+  // A corner had no lower bound on the resulting size - dragging it past the
+  // opposite corner collapsed the box to a sliver (or flipped it inside out),
+  // and a small shape's corners sit close enough together that this was easy
+  // to trigger by accident while trying to resize one (seen on a
+  // technician's iPad: a shape shrank to nothing while being resized).
+  // MIN_SIZE keeps a resized rect at least this big (normalized 0-1, so 3%
+  // of the map's width/height - small enough to still shrink a shape
+  // substantially, big enough to stay visible and grabbable).
+  const MIN_SIZE = 0.03;
   const left = kind === "tl" || kind === "bl";
   const top = kind === "tl" || kind === "tr";
+  const rawX = (left ? minX : maxX) + dxn;
+  const rawY = (top ? minY : maxY) + dyn;
   return {
-    x1: clamp01((left ? minX : maxX) + dxn),
-    y1: clamp01((top ? minY : maxY) + dyn),
+    x1: clamp01(left ? Math.min(rawX, maxX - MIN_SIZE) : Math.max(rawX, minX + MIN_SIZE)),
+    y1: clamp01(top ? Math.min(rawY, maxY - MIN_SIZE) : Math.max(rawY, minY + MIN_SIZE)),
     x2: left ? maxX : minX,
     y2: top ? maxY : minY,
   };
