@@ -642,25 +642,48 @@ export function SiteMapCanvas({
           (a wall, a shape, a label) claims the touch when they overlap; the
           finding bubble still catches everything that isn't. */}
       {size.width > 0
-        ? arrows.map((a) => (
-            <Pressable
-              key={a.id}
-              onPress={() => onArrowPress?.(a.id)}
-              pointerEvents={mode === "view" ? "auto" : "none"}
-              style={[
-                styles.labelBubble,
-                {
-                  left: Math.min(Math.max(a.startX * size.width - 60, 4), size.width - 124),
-                  top: Math.min(Math.max(a.startY * size.height - 14, 4), size.height - 28),
-                  borderColor: SEVERITY_COLOR[a.severity] ?? colors.text,
-                },
-              ]}
-            >
-              <Text style={styles.labelText} numberOfLines={1}>
-                {a.label}
-              </Text>
-            </Pressable>
-          ))
+        ? arrows.map((a) => {
+            const left = Math.min(Math.max(a.startX * size.width - 60, 4), size.width - 124);
+            const top = Math.min(Math.max(a.startY * size.height - 14, 4), size.height - 28);
+            return (
+              <Pressable
+                key={a.id}
+                // Two findings marked close together have overlapping 120px-
+                // wide bubbles, and whichever one happens to be on top (the
+                // most recently created, in DOM order) caught every tap in
+                // the overlap - a technician hit exactly this with two
+                // findings on the same wall, one becoming untappable behind
+                // the other. Reconstructing the actual tap point (this
+                // Pressable's own left/top, which are canvas-relative,
+                // plus the native event's location within it) and picking
+                // whichever finding's arrow start is genuinely nearest to
+                // it fixes this regardless of which Pressable's DOM node
+                // physically received the touch.
+                onPress={(e) => {
+                  const tapX = left + e.nativeEvent.locationX;
+                  const tapY = top + e.nativeEvent.locationY;
+                  let best = a;
+                  let bestDist = Infinity;
+                  for (const candidate of arrows) {
+                    const dx = candidate.startX * size.width - tapX;
+                    const dy = candidate.startY * size.height - tapY;
+                    const dist = dx * dx + dy * dy;
+                    if (dist < bestDist) {
+                      bestDist = dist;
+                      best = candidate;
+                    }
+                  }
+                  onArrowPress?.(best.id);
+                }}
+                pointerEvents={mode === "view" ? "auto" : "none"}
+                style={[styles.labelBubble, { left, top, borderColor: SEVERITY_COLOR[a.severity] ?? colors.text }]}
+              >
+                <Text style={styles.labelText} numberOfLines={1}>
+                  {a.label}
+                </Text>
+              </Pressable>
+            );
+          })
         : null}
       {size.width > 0 && mode === "view"
         ? [...shownWalls, ...pendingLines].filter((l) => l.id !== selectedWallId).map((l) => (
