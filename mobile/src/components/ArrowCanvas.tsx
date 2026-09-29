@@ -631,6 +631,37 @@ export function SiteMapCanvas({
           ) : null}
         </Svg>
       ) : null}
+      {/* Rendered before (so it loses ties to) every other tappable thing
+          below - a Finding's touch target is a fixed 120px-wide box
+          centered on its arrow's start point, well past what the small
+          colored bubble visually shows, so it can fully cover a wall/
+          annotation/label placed nearby. A technician hit exactly this:
+          an X mark dropped right next to a finding kept opening the
+          finding's edit form instead of the X's own "Shape" panel. Placing
+          this block first means anything more precisely-targeted underneath
+          (a wall, a shape, a label) claims the touch when they overlap; the
+          finding bubble still catches everything that isn't. */}
+      {size.width > 0
+        ? arrows.map((a) => (
+            <Pressable
+              key={a.id}
+              onPress={() => onArrowPress?.(a.id)}
+              pointerEvents={mode === "view" ? "auto" : "none"}
+              style={[
+                styles.labelBubble,
+                {
+                  left: Math.min(Math.max(a.startX * size.width - 60, 4), size.width - 124),
+                  top: Math.min(Math.max(a.startY * size.height - 14, 4), size.height - 28),
+                  borderColor: SEVERITY_COLOR[a.severity] ?? colors.text,
+                },
+              ]}
+            >
+              <Text style={styles.labelText} numberOfLines={1}>
+                {a.label}
+              </Text>
+            </Pressable>
+          ))
+        : null}
       {size.width > 0 && mode === "view"
         ? [...shownWalls, ...pendingLines].filter((l) => l.id !== selectedWallId).map((l) => (
             <Pressable
@@ -706,27 +737,6 @@ export function SiteMapCanvas({
             >
               <Text style={styles.structureLabelText} numberOfLines={1}>
                 {l.text}
-              </Text>
-            </Pressable>
-          ))
-        : null}
-      {size.width > 0
-        ? arrows.map((a) => (
-            <Pressable
-              key={a.id}
-              onPress={() => onArrowPress?.(a.id)}
-              pointerEvents={mode === "view" ? "auto" : "none"}
-              style={[
-                styles.labelBubble,
-                {
-                  left: Math.min(Math.max(a.startX * size.width - 60, 4), size.width - 124),
-                  top: Math.min(Math.max(a.startY * size.height - 14, 4), size.height - 28),
-                  borderColor: SEVERITY_COLOR[a.severity] ?? colors.text,
-                },
-              ]}
-            >
-              <Text style={styles.labelText} numberOfLines={1}>
-                {a.label}
               </Text>
             </Pressable>
           ))
