@@ -147,6 +147,11 @@ const siteMapSketchSchema = z.object({
             y1: z.number(),
             x2: z.number().optional(),
             y2: z.number().optional(),
+            // A shape's own name, shown directly on it (rect only in
+            // practice) - optional so annotations from before this existed
+            // still validate. z.parse() drops unlisted fields, which
+            // silently ate every saved shape name until this was added.
+            label: z.string().optional(),
           })
         )
         .optional()

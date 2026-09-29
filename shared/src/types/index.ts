@@ -118,6 +118,11 @@ export interface SiteMapAnnotation {
   y1: number;
   x2?: number;
   y2?: number;
+  // A short name shown on the shape itself (e.g. "Garage") - only
+  // meaningful for "rect", and optional so older saved sketches without it
+  // still parse fine. Lets a technician name a shape directly instead of
+  // placing a separate floating SiteMapSketchLabel on top of it.
+  label?: string;
 }
 
 // A sketch is split into technician-defined levels (e.g. "Exterior", "1st

@@ -68,6 +68,10 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   const [annotationType, setAnnotationType] = useState<SiteMapAnnotationType>("x");
   const [annotationColor, setAnnotationColor] = useState(ANNOTATION_COLORS[0].value);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
+  // The "Label" field text shown in the Shape panel while a rect shape is
+  // selected - seeded from the shape's current label on selection, saved
+  // explicitly (not on every keystroke) via handleSaveShapeLabel.
+  const [shapeLabelText, setShapeLabelText] = useState("");
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [addingLevelSaving, setAddingLevelSaving] = useState(false);
@@ -107,6 +111,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       setEditingLabel(null);
       setSelectedWallId(null);
       setSelectedAnnotationId(null);
+      setShapeLabelText("");
       setDraftArrow(null);
       setEditingFindingId(null);
       setLastAction(null);
@@ -180,6 +185,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     setEditingLabel(null);
     setSelectedWallId(null);
     setSelectedAnnotationId(null);
+    setShapeLabelText("");
   }
 
   // Each annotation type gets its own one-tap button (mirroring +Marker/
@@ -194,6 +200,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     setEditingLabel(null);
     setSelectedWallId(null);
     setSelectedAnnotationId(null);
+    setShapeLabelText("");
   }
 
   async function handleUpload() {
@@ -300,12 +307,38 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   function handleAnnotationPress(id: string) {
     if (editorOpen) return;
     setSelectedAnnotationId(id);
+    setShapeLabelText(selectedLevel?.annotations.find((a) => a.id === id)?.label ?? "");
   }
 
   function handleDeleteSelectedAnnotation() {
     if (!selectedAnnotationId) return;
     handleDeleteSavedAnnotation(selectedAnnotationId);
     setSelectedAnnotationId(null);
+    setShapeLabelText("");
+  }
+
+  // Saves the shape's own name directly on it - lets a technician label a
+  // shape ("Garage", "Porch") without placing a separate floating Label on
+  // top of it, which was hard to reposition (see the Shape panel below).
+  function handleSaveShapeLabel() {
+    const id = selectedAnnotationId;
+    if (!id) return;
+    const text = shapeLabelText.trim();
+    persistSelectedLevel((l) => ({
+      ...l,
+      annotations: l.annotations.map((a) => (a.id === id ? { ...a, label: text || undefined } : a)),
+    }));
+  }
+
+  // Moving the selected label to a new spot on the map - the fix for a
+  // label that could be renamed but never repositioned, which made
+  // technicians delete-and-recreate one just to move it (see ArrowCanvas's
+  // renderLabelDragHandle).
+  function handleUpdateLabelPosition(id: string, point: Point) {
+    return persistSelectedLevel((l) => ({
+      ...l,
+      labels: l.labels.map((label) => (label.id === id ? { ...label, x: point.x, y: point.y } : label)),
+    }));
   }
 
   // Moving or resizing a selected shape: called once when the finger lifts,
@@ -399,6 +432,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     setEditingLabel(null);
     setSelectedWallId(null);
     setSelectedAnnotationId(null);
+    setShapeLabelText("");
     // A stale Undo would otherwise target the level it was drawn on, not
     // whichever level is selected when the tap actually happens.
     setLastAction(null);
@@ -501,6 +535,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         onAnnotationPress={handleAnnotationPress}
         onAnnotationChange={handleUpdateAnnotation}
         onWallChange={handleUpdateWall}
+        onLabelChange={handleUpdateLabelPosition}
         selectedLabelId={editingLabel?.id ?? null}
         selectedWallId={selectedWallId}
         selectedAnnotationId={selectedAnnotationId}
@@ -582,6 +617,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
 
       {editingLabel ? (
         <Card style={styles.labelPromptCard}>
+          <Text style={styles.editHint}>Drag the label on the map to move it, or edit its text below.</Text>
           <Field
             label="Label text"
             value={editingLabel.text}
@@ -625,6 +661,16 @@ export default function SiteMapScreen({ route, navigation }: Props) {
               ? "Drag the mark to move it."
               : "Drag the shape to move it, or drag a dot to resize it."}
           </Text>
+          {selectedLevel?.annotations.find((a) => a.id === selectedAnnotationId)?.type === "rect" ? (
+            <View style={styles.shapeLabelRow}>
+              <View style={styles.shapeLabelField}>
+                <Field label="Name (shown on the shape)" value={shapeLabelText} onChangeText={setShapeLabelText} placeholder="e.g. Garage, Porch" />
+              </View>
+              <Text style={styles.dismissLink} onPress={handleSaveShapeLabel}>
+                Save
+              </Text>
+            </View>
+          ) : null}
           <View style={styles.colorRow}>
             {ANNOTATION_COLORS.map((c) => (
               <Pressable
@@ -644,7 +690,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
               <PrimaryButton title="Delete" onPress={handleDeleteSelectedAnnotation} loading={saving} />
             </View>
             <View style={styles.buttonHalf}>
-              <PrimaryButton title="Done" onPress={() => setSelectedAnnotationId(null)} />
+              <PrimaryButton title="Done" onPress={() => { setSelectedAnnotationId(null); setShapeLabelText(""); }} />
             </View>
           </View>
         </Card>
@@ -806,6 +852,8 @@ const styles = StyleSheet.create({
   },
   checklistHeaderTitle: { fontSize: 15, fontWeight: "700", color: colors.text },
   toggleRow: { flexDirection: "row", gap: 10, marginTop: 14 },
+  shapeLabelRow: { flexDirection: "row", alignItems: "flex-end", gap: 10 },
+  shapeLabelField: { flex: 1 },
   colorRow: { flexDirection: "row", gap: 10, marginTop: 12, justifyContent: "center" },
   colorSwatch: { width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: "transparent" },
   colorSwatchSelected: { borderColor: colors.text },

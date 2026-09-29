@@ -156,6 +156,21 @@ function annotationHitRect(a: SiteMapAnnotation, width: number, height: number, 
   };
 }
 
+// A label is just a point + text, not a box - this gives it a generously
+// sized, fixed-size drag target around wherever its chip renders (see the
+// labels overlay below), clamped to stay on-screen the same way the chip
+// itself is.
+function labelHitRect(l: { x: number; y: number }, width: number, height: number) {
+  const w = 110;
+  const h = 40;
+  return {
+    left: Math.min(Math.max(l.x * width - 20, 0), Math.max(width - w, 0)),
+    top: Math.min(Math.max(l.y * height - 24, 0), Math.max(height - h, 0)),
+    width: w,
+    height: h,
+  };
+}
+
 const SEVERITY_COLOR: Record<string, string> = {
   LOW: colors.primary,
   MEDIUM: colors.warning,
@@ -278,6 +293,7 @@ export function SiteMapCanvas({
   onAnnotationPress,
   onAnnotationChange,
   onWallChange,
+  onLabelChange,
   selectedLabelId = null,
   selectedWallId = null,
   selectedAnnotationId = null,
@@ -304,6 +320,9 @@ export function SiteMapCanvas({
   // shape; resolves once the change is saved.
   onAnnotationChange?: (annotationId: string, geometry: Geometry) => Promise<unknown> | void;
   onWallChange?: (wallId: string, geometry: Required<Geometry>) => Promise<unknown> | void;
+  // Called once, when a finger lifts after dragging the selected label to a
+  // new spot - same "commit on drop" shape as onAnnotationChange/onWallChange.
+  onLabelChange?: (labelId: string, point: Point) => Promise<unknown> | void;
   selectedLabelId?: string | null;
   selectedWallId?: string | null;
   selectedAnnotationId?: string | null;
@@ -313,10 +332,17 @@ export function SiteMapCanvas({
   // Shape being dragged right now: shown at its in-progress position, and
   // only saved when the finger lifts.
   const [draft, setDraft] = useState<{ kind: "annotation" | "wall"; id: string; g: Geometry } | null>(null);
+  // Kept separate from `draft` above - a label's geometry is a bare point
+  // (SiteMapLabel has x/y, not the x1/y1/x2/y2 shape walls/annotations use),
+  // and dragging one is never happening at the same time as dragging a
+  // wall/shape (only one thing is ever selected at once), so there is no
+  // need to unify them into one state slot.
+  const [draftLabel, setDraftLabel] = useState<{ id: string; x: number; y: number } | null>(null);
   const shownAnnotations = annotations.map((a) => (draft?.kind === "annotation" && draft.id === a.id ? { ...a, ...draft.g } : a));
   const shownWalls = savedLines.map((l) =>
     draft?.kind === "wall" && draft.id === l.id ? { ...l, ...(draft.g as Required<Geometry>) } : l
   );
+  const shownLabels = labels.map((l) => (draftLabel && draftLabel.id === l.id ? { ...l, x: draftLabel.x, y: draftLabel.y } : l));
 
   function handleLayout(e: LayoutChangeEvent) {
     const { width, height: h } = e.nativeEvent.layout;
@@ -417,6 +443,49 @@ export function SiteMapCanvas({
           </DragSurface>
         ))}
       </>
+    );
+  }
+
+  // A single drag handle over the selected label, so it can be slid to a
+  // new spot instead of the old delete-and-recreate-it-elsewhere workaround.
+  // Never rendered at the same time as renderShapeEditor's handles - a wall
+  // or shape selection always takes priority (matches SiteMapScreen, which
+  // only ever keeps one of the three selection ids set at a time).
+  function renderLabelDragHandle() {
+    if (selectedAnnotationId || selectedWallId || !selectedLabelId) return null;
+    const target = labels.find((l) => l.id === selectedLabelId);
+    if (!target) return null;
+    const shown = draftLabel && draftLabel.id === target.id ? draftLabel : target;
+
+    const drag = (dx: number, dy: number) => {
+      const g = applyDrag({ x1: target.x, y1: target.y }, "move", dx / size.width, dy / size.height);
+      setDraftLabel({ id: target.id, x: g.x1, y: g.y1 });
+    };
+    const drop = async (dx: number, dy: number) => {
+      if (Math.abs(dx) < 3 && Math.abs(dy) < 3) {
+        setDraftLabel(null); // a tap, not a drag
+        return;
+      }
+      const g = applyDrag({ x1: target.x, y1: target.y }, "move", dx / size.width, dy / size.height);
+      setDraftLabel({ id: target.id, x: g.x1, y: g.y1 });
+      try {
+        await onLabelChange?.(target.id, { x: g.x1, y: g.y1 });
+      } finally {
+        setDraftLabel(null);
+      }
+    };
+    const cancel = () => setDraftLabel(null);
+
+    // Renders the chip itself (not just an invisible hit-area) so the
+    // selected label doesn't disappear now that its own plain Pressable is
+    // filtered out of the list below to avoid the two fighting over the
+    // touch - same z-order fix as the wall/annotation hit-areas above.
+    return (
+      <DragSurface style={[styles.structureLabel, styles.structureLabelSelected, labelHitRect(shown, size.width, size.height)]} onDrag={drag} onDrop={drop} onCancel={cancel}>
+        <Text style={styles.structureLabelText} numberOfLines={1}>
+          {target.text}
+        </Text>
+      </DragSurface>
     );
   }
 
@@ -579,6 +648,27 @@ export function SiteMapCanvas({
           ))
         : null}
       {size.width > 0 && mode === "view" ? renderShapeEditor() : null}
+      {size.width > 0 && mode === "view" ? renderLabelDragHandle() : null}
+      {/* A shape's own name, if it has one - rendered inside its box so a
+          technician doesn't need a separate floating label just to name it
+          (see the "Shape" selection panel in SiteMapScreen for editing it).
+          Non-interactive: the shape's own hit-area/drag-surface underneath
+          already handles taps and drags. */}
+      {size.width > 0
+        ? shownAnnotations
+            .filter((a) => a.type === "rect" && a.label)
+            .map((a) => {
+              const left = Math.min(a.x1, a.x2 ?? a.x1) * size.width + 6;
+              const top = Math.min(a.y1, a.y2 ?? a.y1) * size.height + 4;
+              return (
+                <View key={`ann-caption-${a.id}`} pointerEvents="none" style={[styles.shapeCaption, { left, top }]}>
+                  <Text style={styles.shapeCaptionText} numberOfLines={1}>
+                    {a.label}
+                  </Text>
+                </View>
+              );
+            })
+        : null}
       {/* pointerEvents is forced to "none" while actively drawing (any mode
           but "view") - otherwise an existing label or marker sitting under
           where a technician is trying to draw a new wall/arrow/label
@@ -587,8 +677,12 @@ export function SiteMapCanvas({
           negotiation by default. A technician hit exactly this: dragging
           through a label near the middle of the map did nothing, and
           placing a new marker in that same spot was just as stuck. */}
+      {/* The selected label's own Pressable is skipped here - its
+          DragSurface (renderLabelDragHandle, above) sits in the exact same
+          spot and needs to win the touch, the same reasoning as the wall/
+          annotation hit-areas above excluding their own selected item. */}
       {size.width > 0
-        ? labels.map((l) => (
+        ? shownLabels.filter((l) => l.id !== selectedLabelId).map((l) => (
             <Pressable
               key={`label-${l.id}`}
               onPress={() => onLabelPress?.(l.id)}
@@ -660,6 +754,15 @@ const styles = StyleSheet.create({
   },
   structureLabelText: { fontSize: 11, fontWeight: "700", color: colors.primary },
   structureLabelSelected: { borderWidth: 2, borderColor: colors.danger },
+  shapeCaption: {
+    position: "absolute",
+    maxWidth: 140,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    backgroundColor: "rgba(255,255,255,0.85)",
+    borderRadius: 3,
+  },
+  shapeCaptionText: { fontSize: 11, fontWeight: "700", color: colors.text },
   wallHitArea: { position: "absolute" },
   handleTouch: { position: "absolute", width: 40, height: 40, alignItems: "center", justifyContent: "center" },
   handleDot: { width: 18, height: 18, borderRadius: 9, backgroundColor: "#fff", borderWidth: 3, borderColor: colors.primary },
