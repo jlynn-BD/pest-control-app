@@ -22,7 +22,7 @@ let db: LocalDb | null = null;
 // columns existed has a local_properties table without them. Each ADD
 // COLUMN is wrapped since "already exists" is the expected outcome on
 // every subsequent boot, not an error.
-const LOCAL_PROPERTIES_MIGRATION_COLUMNS = ["hasSecondFloor", "hasThirdFloor", "hasBasement", "hasCrawlspace"];
+const LOCAL_PROPERTIES_MIGRATION_COLUMNS = ["hasSecondFloor", "hasThirdFloor", "hasBasement", "hasCrawlspace", "hasAttic"];
 function migrateLocalProperties(adapter: LocalDb): void {
   for (const column of LOCAL_PROPERTIES_MIGRATION_COLUMNS) {
     try {
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS local_properties (
   id TEXT PRIMARY KEY, customerId TEXT, label TEXT, addressLine1 TEXT, city TEXT, state TEXT,
   postalCode TEXT, propertyType TEXT, accessNotes TEXT,
   siteMapImageUrl TEXT, siteMapLocalUri TEXT, siteMapSketchJson TEXT, siteMapUpdatedAt TEXT,
-  hasSecondFloor INTEGER, hasThirdFloor INTEGER, hasBasement INTEGER, hasCrawlspace INTEGER
+  hasSecondFloor INTEGER, hasThirdFloor INTEGER, hasBasement INTEGER, hasCrawlspace INTEGER, hasAttic INTEGER
 );
 CREATE TABLE IF NOT EXISTS local_templates (
   id TEXT PRIMARY KEY, name TEXT, description TEXT

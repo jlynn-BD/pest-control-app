@@ -85,6 +85,7 @@ export interface Property extends BaseEntity {
   hasThirdFloor?: boolean | null;
   hasBasement?: boolean | null;
   hasCrawlspace?: boolean | null;
+  hasAttic?: boolean | null;
 }
 
 export interface SiteMapSketchLine {

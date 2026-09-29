@@ -33,6 +33,7 @@ interface RemoteProperty {
   hasThirdFloor: boolean | null;
   hasBasement: boolean | null;
   hasCrawlspace: boolean | null;
+  hasAttic: boolean | null;
 }
 interface RemoteTemplate {
   id: string;
@@ -114,7 +115,7 @@ export async function primeCache(): Promise<void> {
       );
       for (const p of c.properties) {
         db.runSync(
-          `INSERT OR REPLACE INTO local_properties (id, customerId, label, addressLine1, city, state, postalCode, propertyType, accessNotes, siteMapImageUrl, siteMapLocalUri, siteMapSketchJson, siteMapUpdatedAt, hasSecondFloor, hasThirdFloor, hasBasement, hasCrawlspace) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT OR REPLACE INTO local_properties (id, customerId, label, addressLine1, city, state, postalCode, propertyType, accessNotes, siteMapImageUrl, siteMapLocalUri, siteMapSketchJson, siteMapUpdatedAt, hasSecondFloor, hasThirdFloor, hasBasement, hasCrawlspace, hasAttic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             p.id,
             p.customerId,
@@ -133,6 +134,7 @@ export async function primeCache(): Promise<void> {
             p.hasThirdFloor == null ? null : p.hasThirdFloor ? 1 : 0,
             p.hasBasement == null ? null : p.hasBasement ? 1 : 0,
             p.hasCrawlspace == null ? null : p.hasCrawlspace ? 1 : 0,
+            p.hasAttic == null ? null : p.hasAttic ? 1 : 0,
           ]
         );
       }
@@ -181,7 +183,7 @@ export function updateLocalPropertySiteMapSketch(propertyId: string, sketchJson:
 // PATCH (see api/properties.ts's patchPropertyApplicability) landing first.
 export function updateLocalPropertyApplicability(
   propertyId: string,
-  patch: Partial<Pick<LocalProperty, "hasSecondFloor" | "hasThirdFloor" | "hasBasement" | "hasCrawlspace">>
+  patch: Partial<Pick<LocalProperty, "hasSecondFloor" | "hasThirdFloor" | "hasBasement" | "hasCrawlspace" | "hasAttic">>
 ): void {
   if (!isLocalDbAvailable()) return;
   const columns = Object.keys(patch);

@@ -28,6 +28,7 @@ export interface LocalProperty {
   hasThirdFloor: number | null;
   hasBasement: number | null;
   hasCrawlspace: number | null;
+  hasAttic: number | null;
 }
 
 export interface LocalTemplate {

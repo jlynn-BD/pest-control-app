@@ -31,6 +31,7 @@ const propertySchema = z.object({
   hasThirdFloor: z.boolean().optional().nullable(),
   hasBasement: z.boolean().optional().nullable(),
   hasCrawlspace: z.boolean().optional().nullable(),
+  hasAttic: z.boolean().optional().nullable(),
 });
 
 propertiesRouter.get(

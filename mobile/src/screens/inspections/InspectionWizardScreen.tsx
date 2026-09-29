@@ -20,10 +20,11 @@ type Props = NativeStackScreenProps<InspectionsStackParamList, "InspectionWizard
 
 // Matt's ask: every technician walks Exterior -> First Floor -> Second Floor
 // (if applicable) -> Third Floor (if applicable) -> Basement (if applicable)
-// -> Crawl Space (if applicable) -> Attic, in that fixed order, every time -
-// no picking which sections to bother with. A step can only be reached once
-// every step before it is resolved (see getWizardStepStatus); a conditional
-// step resolves either by answering it or by explicitly marking the
+// -> Crawl Space (if applicable) -> Attic (if applicable), in that fixed
+// order, every time - no picking which sections to bother with. A step can
+// only be reached once every step before it is resolved (see
+// getWizardStepStatus); a conditional step resolves either by answering it
+// or by explicitly marking the
 // property as not having that area - never by silently leaving it blank.
 export default function InspectionWizardScreen({ route, navigation }: Props) {
   const { inspectionId } = route.params;

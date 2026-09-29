@@ -49,6 +49,7 @@ export interface PropertyApplicabilityPatch {
   hasThirdFloor?: boolean | null;
   hasBasement?: boolean | null;
   hasCrawlspace?: boolean | null;
+  hasAttic?: boolean | null;
 }
 
 // Best-effort remote write for the checklist wizard's "this property

@@ -3,14 +3,14 @@ import type { TemplateSectionCategory } from "../enums";
 // The mandatory inspection wizard's step order - every technician walks
 // these in this exact sequence, every time (Matt's ask: inspection quality
 // shouldn't depend on which sections an individual technician feels like
-// checking). EXTERIOR/FIRST_FLOOR/ATTIC are required and can never be
-// skipped; the rest are conditional and can only be bypassed by an
+// checking). EXTERIOR/FIRST_FLOOR are required and can never be skipped;
+// the rest, including ATTIC, are conditional and can only be bypassed by an
 // explicit "this property doesn't have this" answer (see
 // `applicabilityField`, which names the Property boolean that answer is
 // stored on - see getWizardStepStatus below for how that combines with
 // per-item responses into a single resolved/unresolved state per step).
 export type WizardStepCategory = Exclude<TemplateSectionCategory, "OTHER">;
-export type PropertyApplicabilityField = "hasSecondFloor" | "hasThirdFloor" | "hasBasement" | "hasCrawlspace";
+export type PropertyApplicabilityField = "hasSecondFloor" | "hasThirdFloor" | "hasBasement" | "hasCrawlspace" | "hasAttic";
 
 export interface WizardStepDefinition {
   category: WizardStepCategory;
@@ -27,7 +27,7 @@ export const WIZARD_STEPS: WizardStepDefinition[] = [
   { category: "THIRD_FLOOR", label: "Third Floor Inspection Checklist", shortLabel: "3rd Floor", required: false, applicabilityField: "hasThirdFloor" },
   { category: "BASEMENT", label: "Basement Inspection Checklist", shortLabel: "Basement", required: false, applicabilityField: "hasBasement" },
   { category: "CRAWLSPACE", label: "Crawl Space Inspection Checklist", shortLabel: "Crawl Space", required: false, applicabilityField: "hasCrawlspace" },
-  { category: "ATTIC", label: "Attic Inspection Checklist", shortLabel: "Attic", required: true },
+  { category: "ATTIC", label: "Attic Inspection Checklist", shortLabel: "Attic", required: false, applicabilityField: "hasAttic" },
 ];
 
 // Single source of truth for category display metadata - previously
@@ -88,6 +88,7 @@ export interface PropertyApplicabilityLike {
   hasThirdFloor?: boolean | number | null;
   hasBasement?: boolean | number | null;
   hasCrawlspace?: boolean | number | null;
+  hasAttic?: boolean | number | null;
 }
 // One per (inspection, category) - the technician's personally-attested
 // sign-off that this specific inspection found the area not present (Matt's
