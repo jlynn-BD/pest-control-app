@@ -83,6 +83,7 @@ function findingToChange(f: LocalFinding): SyncChangePayload {
       siteMapArrowStartX: f.siteMapArrowStartX,
       siteMapArrowStartY: f.siteMapArrowStartY,
       siteMapLevel: f.siteMapLevel,
+      checklistResponseId: f.checklistResponseId,
     },
   };
 }

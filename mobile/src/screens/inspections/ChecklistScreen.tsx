@@ -42,6 +42,7 @@ export default function ChecklistScreen({ route, navigation }: Props) {
         inspectionId={inspectionId}
         allowedCategories={allowedCategories}
         onAddToSiteMap={(responseId) => navigation.navigate("SiteMap", { inspectionId, fromChecklistResponseId: responseId })}
+        onEditFinding={(findingId) => navigation.navigate("FindingForm", { inspectionId, editingFindingId: findingId })}
       />
     </ScrollView>
   );

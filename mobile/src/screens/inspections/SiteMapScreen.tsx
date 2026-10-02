@@ -832,6 +832,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
               inspectionId={inspectionId}
               allowedCategories={unlockedCategories}
               onAddToSiteMap={(responseId) => navigation.setParams({ fromChecklistResponseId: responseId })}
+              onEditFinding={(findingId) => setEditingFindingId(findingId)}
+              refreshSignal={detail.inspection.updatedAt}
             />
           ) : null}
         </View>

@@ -205,6 +205,7 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
             hideCategoryHeader
             onChange={refresh}
             onAddToSiteMap={(responseId) => navigation.navigate("SiteMap", { inspectionId, fromChecklistResponseId: responseId })}
+            onEditFinding={(findingId) => navigation.navigate("FindingForm", { inspectionId, editingFindingId: findingId })}
           />
           {!step.required ? (
             <Card style={styles.naTriggerCard}>

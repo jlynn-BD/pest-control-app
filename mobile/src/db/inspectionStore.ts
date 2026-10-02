@@ -130,12 +130,12 @@ export function hydrateLocalInspectionFromRemote(detail: InspectionDetail): void
     );
     for (const f of detail.findings) {
       db.runSync(
-        `INSERT INTO findings (id, inspectionId, areaLocation, locationDetail, severity, description, lat, lng, floorPlanX, floorPlanY, siteMapArrowStartX, siteMapArrowStartY, siteMapLevel, createdAt, updatedAt, syncStatus)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced')`,
+        `INSERT INTO findings (id, inspectionId, areaLocation, locationDetail, severity, description, lat, lng, floorPlanX, floorPlanY, siteMapArrowStartX, siteMapArrowStartY, siteMapLevel, checklistResponseId, createdAt, updatedAt, syncStatus)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced')`,
         [
           f.id, detail.id, f.areaLocation, f.locationDetail ?? null, f.severity, f.description ?? null, f.lat ?? null, f.lng ?? null,
           f.floorPlanX ?? null, f.floorPlanY ?? null, f.siteMapArrowStartX ?? null, f.siteMapArrowStartY ?? null, f.siteMapLevel ?? null,
-          iso(f.createdAt), iso(f.updatedAt),
+          f.checklistResponseId ?? null, iso(f.createdAt), iso(f.updatedAt),
         ]
       );
       for (const p of f.photos) {
@@ -268,6 +268,7 @@ export interface NewFindingInput {
   siteMapArrowStartX?: number | null;
   siteMapArrowStartY?: number | null;
   siteMapLevel?: string | null;
+  checklistResponseId?: string | null;
 }
 
 export function addLocalFinding(inspectionId: string, input: NewFindingInput): LocalFinding {
@@ -287,13 +288,14 @@ export function addLocalFinding(inspectionId: string, input: NewFindingInput): L
     siteMapArrowStartX: input.siteMapArrowStartX ?? null,
     siteMapArrowStartY: input.siteMapArrowStartY ?? null,
     siteMapLevel: input.siteMapLevel ?? null,
+    checklistResponseId: input.checklistResponseId ?? null,
     createdAt: now,
     updatedAt: now,
     syncStatus: "pending",
   };
   db.runSync(
-    `INSERT INTO findings (id, inspectionId, areaLocation, locationDetail, severity, description, lat, lng, floorPlanX, floorPlanY, siteMapArrowStartX, siteMapArrowStartY, siteMapLevel, createdAt, updatedAt, syncStatus)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO findings (id, inspectionId, areaLocation, locationDetail, severity, description, lat, lng, floorPlanX, floorPlanY, siteMapArrowStartX, siteMapArrowStartY, siteMapLevel, checklistResponseId, createdAt, updatedAt, syncStatus)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       finding.id,
       finding.inspectionId,
@@ -308,6 +310,7 @@ export function addLocalFinding(inspectionId: string, input: NewFindingInput): L
       finding.siteMapArrowStartX,
       finding.siteMapArrowStartY,
       finding.siteMapLevel,
+      finding.checklistResponseId,
       finding.createdAt,
       finding.updatedAt,
       finding.syncStatus,
@@ -374,10 +377,16 @@ export function updateLocalFinding(id: string, input: Partial<NewFindingInput>):
 // either local row here forfeits any further chance to sync it.
 export function deleteLocalFinding(id: string): { recommendationId: string | null } {
   const db = getDb();
+  const finding = db.getFirstSync<LocalFinding>(`SELECT * FROM findings WHERE id = ?`, [id]);
   const linkedRecommendation = db.getFirstSync<LocalRecommendation>(`SELECT * FROM recommendations WHERE findingId = ?`, [id]);
   db.runSync(`DELETE FROM finding_photos WHERE findingId = ?`, [id]);
   db.runSync(`DELETE FROM findings WHERE id = ?`, [id]);
   if (linkedRecommendation) db.runSync(`DELETE FROM recommendations WHERE id = ?`, [linkedRecommendation.id]);
+  // Bumps the inspection's updatedAt like every other finding write - a
+  // deleted issue needs to disappear from ChecklistPanel's issues list
+  // (see SiteMapScreen's refreshSignal) exactly as reliably as a new one
+  // appears there.
+  if (finding) touchInspection(finding.inspectionId);
   return { recommendationId: linkedRecommendation?.id ?? null };
 }
 

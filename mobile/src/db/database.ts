@@ -33,6 +33,17 @@ function migrateLocalProperties(adapter: LocalDb): void {
   }
 }
 
+// Same reasoning as migrateLocalProperties above - a finding created from a
+// checklist item (Matt's "multiple issues per item" ask) needs to record
+// which one, and an already-installed device's findings table predates it.
+function migrateFindings(adapter: LocalDb): void {
+  try {
+    adapter.execSync(`ALTER TABLE findings ADD COLUMN checklistResponseId TEXT`);
+  } catch {
+    // Column already exists - expected on every boot after the first.
+  }
+}
+
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS local_customers (
   id TEXT PRIMARY KEY, name TEXT, type TEXT, phone TEXT, email TEXT, city TEXT, state TEXT
@@ -68,6 +79,7 @@ CREATE TABLE IF NOT EXISTS findings (
   locationDetail TEXT, severity TEXT,
   description TEXT, lat REAL, lng REAL,
   floorPlanX REAL, floorPlanY REAL, siteMapArrowStartX REAL, siteMapArrowStartY REAL, siteMapLevel TEXT,
+  checklistResponseId TEXT,
   createdAt TEXT, updatedAt TEXT, syncStatus TEXT DEFAULT 'pending'
 );
 CREATE TABLE IF NOT EXISTS finding_photos (
@@ -116,6 +128,7 @@ export function getDb(): LocalDb {
       db = webSqlAdapter;
       db.execSync(SCHEMA_SQL);
       migrateLocalProperties(db);
+      migrateFindings(db);
     } else {
       const native = SQLite.openDatabaseSync("pestapp.db");
       // Wrapped rather than assigned directly - expo-sqlite's runSync/
@@ -130,6 +143,7 @@ export function getDb(): LocalDb {
       };
       adapter.execSync(SCHEMA_SQL);
       migrateLocalProperties(adapter);
+      migrateFindings(adapter);
       db = adapter;
     }
   }

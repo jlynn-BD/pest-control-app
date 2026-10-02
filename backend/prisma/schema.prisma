@@ -328,6 +328,14 @@ model Finding {
   siteMapArrowStartX  Float? // site map arrow tail (label anchor), normalized 0-1; null means this finding isn't placed on the site map
   siteMapArrowStartY  Float?
   siteMapLevel        String? // id of the SiteMapSketch level (see Property.siteMapSketch) this arrow was drawn on - only meaningful in grid/sketch mode, not photo mode
+  // The checklist answer this finding was raised from, if any (Matt's ask:
+  // one checklist item can have several distinct issues - "3 separate
+  // cracks in the foundation" - each with its own description, photos and
+  // site-map marker, rather than combining them into one). Plain id
+  // reference, not a Prisma relation, matching siteMapLevel above - a
+  // finding started directly from "+ Add finding" or the site map has no
+  // checklist item to point at, and nothing here needs cascade behavior.
+  checklistResponseId String?
   deviceId       String? // v1.1 door-open
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt

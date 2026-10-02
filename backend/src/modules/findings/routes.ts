@@ -20,6 +20,7 @@ const findingSchema = z.object({
   siteMapArrowStartX: z.number().min(0).max(1).optional().nullable(),
   siteMapArrowStartY: z.number().min(0).max(1).optional().nullable(),
   siteMapLevel: z.string().optional().nullable(),
+  checklistResponseId: z.string().optional().nullable(),
 });
 
 // Mounted at /api/inspections/:inspectionId/findings
@@ -57,6 +58,7 @@ findingsOnInspectionRouter.post(
         siteMapArrowStartX: body.siteMapArrowStartX,
         siteMapArrowStartY: body.siteMapArrowStartY,
         siteMapLevel: body.siteMapLevel,
+        checklistResponseId: body.checklistResponseId,
       },
       include: { photos: true },
     });

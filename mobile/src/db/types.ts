@@ -86,6 +86,7 @@ export interface LocalFinding {
   siteMapArrowStartX: number | null;
   siteMapArrowStartY: number | null;
   siteMapLevel: string | null;
+  checklistResponseId: string | null;
   createdAt: string;
   updatedAt: string;
   syncStatus: "pending" | "synced";

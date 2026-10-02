@@ -228,6 +228,11 @@ export function FindingEditorForm({
         siteMapArrowStartX: hasSiteMapPosition ? arrowStartX! : null,
         siteMapArrowStartY: hasSiteMapPosition ? arrowStartY! : null,
         siteMapLevel: hasSiteMapPosition ? arrowLevel ?? null : null,
+        // Links this finding back to the checklist answer it was raised
+        // from (Matt's "several distinct issues under one item" ask) so the
+        // checklist panel can list every issue an item has, not just show
+        // its own separate notes field - see ChecklistPanel's issue list.
+        checklistResponseId: fromChecklistResponseId ?? null,
       });
       photos.forEach((uri, index) => {
         addLocalFindingPhoto(finding.id, { localUri: uri, caption: null, lat: coords?.lat ?? null, lng: coords?.lng ?? null, sortOrder: index });

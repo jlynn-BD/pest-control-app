@@ -228,6 +228,7 @@ export interface Finding extends BaseEntity {
   siteMapArrowStartX?: number | null;
   siteMapArrowStartY?: number | null;
   siteMapLevel?: string | null;
+  checklistResponseId?: string | null;
 }
 
 export interface FindingPhoto extends BaseEntity {

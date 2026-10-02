@@ -9,13 +9,14 @@ import {
   getLocalInspectionDetail,
   upsertLocalChecklistResponse,
 } from "../db/inspectionStore";
-import type { LocalChecklistResponse, LocalChecklistResponsePhoto, LocalTemplateItem } from "../db/types";
+import type { LocalChecklistResponse, LocalChecklistResponsePhoto, LocalFinding, LocalFindingPhoto, LocalTemplateItem } from "../db/types";
 import { CHECKLIST_CATEGORY_DISPLAY_ORDER, CHECKLIST_CATEGORY_LABEL } from "../lib/checklist";
 import { capturePhoto } from "../lib/photo";
 import { AuthImage } from "./AuthImage";
 import { Badge, Card, Field, colors } from "./ui";
 
 type ResponseWithPhotos = LocalChecklistResponse & { photos: LocalChecklistResponsePhoto[] };
+type FindingWithPhotos = LocalFinding & { photos: LocalFindingPhoto[] };
 type TemplateSection = ReturnType<typeof getCachedTemplateSections>[number];
 
 // The actual checklist UI (search, collapsible categories/sections, items),
@@ -31,13 +32,22 @@ type TemplateSection = ReturnType<typeof getCachedTemplateSections>[number];
 export function ChecklistPanel({
   inspectionId,
   onAddToSiteMap,
+  onEditFinding,
   categoryFilter,
   hideCategoryHeader,
   allowedCategories,
   onChange,
+  refreshSignal,
 }: {
   inspectionId: string;
   onAddToSiteMap: (responseId: string) => void;
+  // Opens an already-created issue (Finding) for editing - one checklist
+  // item can have several (Matt's "3 separate foundation cracks" ask, see
+  // the issues list in ChecklistItemRow below), each still just a normal
+  // Finding, edited the exact same way any other one is: on the site map
+  // (SiteMapScreen already has its own inline editor, reused here) or, for
+  // hosts with no map on screen, the standalone FindingForm route.
+  onEditFinding: (findingId: string) => void;
   // Show only this one category (the wizard, scoped to its current step).
   categoryFilter?: string;
   // Skip the collapsible category header/badge row - pairs with
@@ -54,8 +64,17 @@ export function ChecklistPanel({
   // step-resolved/Next-button gating) stay in sync live instead of only on
   // next focus, since this component owns its response state independently.
   onChange?: () => void;
+  // Bump this (e.g. pass the inspection's own updatedAt) when a finding may
+  // have been added/edited without this panel ever losing focus - only
+  // needed by SiteMapScreen, which embeds this panel alongside its own
+  // inline finding editor rather than navigating to a separate screen, so
+  // useFocusEffect below never re-fires on its own. ChecklistScreen and the
+  // wizard route to a separate SiteMap screen and back, which already
+  // re-triggers useFocusEffect, so they have no need to pass this.
+  refreshSignal?: string;
 }) {
   const [responses, setResponses] = useState<ResponseWithPhotos[]>([]);
+  const [findings, setFindings] = useState<FindingWithPhotos[]>([]);
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
@@ -69,15 +88,37 @@ export function ChecklistPanel({
     useCallback(() => {
       const detail = getLocalInspectionDetail(inspectionId);
       setResponses(detail?.checklistResponses ?? []);
+      setFindings(detail?.findings ?? []);
       setTemplateId(detail?.inspection.templateId ?? null);
     }, [inspectionId])
   );
+
+  useEffect(() => {
+    if (refreshSignal === undefined) return;
+    const detail = getLocalInspectionDetail(inspectionId);
+    setResponses(detail?.checklistResponses ?? []);
+    setFindings(detail?.findings ?? []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshSignal]);
 
   const responseByItem = useMemo(() => {
     const map = new Map<string, ResponseWithPhotos>();
     for (const r of responses) map.set(r.templateItemId, r);
     return map;
   }, [responses]);
+
+  // Every issue (Finding) raised from a given checklist response, in the
+  // order they were added - "Issue 1", "Issue 2", ... in ChecklistItemRow.
+  const issuesByResponse = useMemo(() => {
+    const map = new Map<string, FindingWithPhotos[]>();
+    for (const f of findings) {
+      if (!f.checklistResponseId) continue;
+      const list = map.get(f.checklistResponseId) ?? [];
+      list.push(f);
+      map.set(f.checklistResponseId, list);
+    }
+    return map;
+  }, [findings]);
 
   const sections = useMemo(() => (templateId ? getCachedTemplateSections(templateId) : []), [templateId]);
 
@@ -299,11 +340,13 @@ export function ChecklistPanel({
                                 onActivate={() => setActiveItemId(item.id)}
                                 notes={response?.notes ?? null}
                                 photos={response?.photos ?? []}
+                                issues={response ? issuesByResponse.get(response.id) ?? [] : []}
                                 onChoose={(status, notes) => handleSetStatus(item, status, notes)}
                                 onUncheck={() => handleUncheck(item)}
                                 onNotesChange={(notes) => handleNotesChange(item, notes)}
                                 onAddPhoto={(notes) => handleAddPhoto(item, notes)}
                                 onAddToSiteMap={(notes) => handleAddToSiteMap(item, notes)}
+                                onEditFinding={onEditFinding}
                               />
                             );
                           })
@@ -334,11 +377,13 @@ function ChecklistItemRow({
   onActivate,
   notes,
   photos,
+  issues,
   onChoose,
   onUncheck,
   onNotesChange,
   onAddPhoto,
   onAddToSiteMap,
+  onEditFinding,
 }: {
   item: LocalTemplateItem;
   status: string | null;
@@ -346,11 +391,18 @@ function ChecklistItemRow({
   onActivate: () => void;
   notes: string | null;
   photos: LocalChecklistResponsePhoto[];
+  // Every issue (Finding) already raised from this item - Matt's ask: three
+  // separate foundation cracks shouldn't have to be combined into one
+  // description, so each gets listed here on its own with its own
+  // description/photos/site-map marker, instead of only the one shared
+  // Notes field above being able to describe a single issue at a time.
+  issues: FindingWithPhotos[];
   onChoose: (status: "SATISFACTORY" | "NEEDS_ATTENTION", notes: string | null) => void;
   onUncheck: () => void;
   onNotesChange: (notes: string | null) => void;
   onAddPhoto: (notes: string | null) => void;
   onAddToSiteMap: (notes: string | null) => void;
+  onEditFinding: (findingId: string) => void;
 }) {
   const [localNotes, setLocalNotes] = useState(notes ?? "");
   const hasIssue = status === "NEEDS_ATTENTION";
@@ -397,6 +449,36 @@ function ChecklistItemRow({
           </Text>
         </View>
       ) : null}
+      {hasIssue && issues.length > 0 ? (
+        <View style={styles.issueListBlock}>
+          {issues.map((issue, index) => (
+            <View key={issue.id} style={styles.issueListRow}>
+              <View style={styles.issueListText}>
+                <Text style={styles.issueListTitle}>Issue {index + 1}</Text>
+                <Text style={styles.issueListDescription} numberOfLines={2}>
+                  {issue.description?.trim() || issue.areaLocation}
+                  {issue.photos.length > 0 ? `  ·  ${issue.photos.length} photo${issue.photos.length === 1 ? "" : "s"}` : ""}
+                  {issue.siteMapArrowStartX != null ? "  ·  📍 on site map" : ""}
+                </Text>
+              </View>
+              <Text style={styles.addPhotoLink} onPress={() => onEditFinding(issue.id)}>
+                Edit
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      {hasIssue ? (
+        <Text
+          style={styles.addAnotherIssueLink}
+          onPress={() => {
+            onActivate();
+            onAddToSiteMap(localNotes.trim() || null);
+          }}
+        >
+          {issues.length > 0 ? `+ Add Another Issue` : "📍 Add to Site Map"}
+        </Text>
+      ) : null}
       {detailsOpen ? (
         <View style={styles.issueDetails}>
           <Field
@@ -418,15 +500,6 @@ function ChecklistItemRow({
               }}
             >
               + Photo
-            </Text>
-            <Text
-              style={styles.addPhotoLink}
-              onPress={() => {
-                onActivate();
-                onAddToSiteMap(localNotes.trim() || null);
-              }}
-            >
-              📍 Add to Site Map
             </Text>
           </View>
         </View>
@@ -510,6 +583,21 @@ const styles = StyleSheet.create({
   issueDetails: { gap: 4 },
   issueSummary: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   issueSummaryText: { flex: 1, fontSize: 13, color: colors.textMuted },
+  issueListBlock: { gap: 8, marginTop: 4 },
+  issueListRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: colors.chip,
+    borderRadius: 8,
+  },
+  issueListText: { flex: 1 },
+  issueListTitle: { fontSize: 12, fontWeight: "700", color: colors.text },
+  issueListDescription: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  addAnotherIssueLink: { color: colors.primary, fontWeight: "600", fontSize: 13, marginTop: 4, paddingVertical: 12 },
   photoRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 4 },
   photoThumb: { width: 48, height: 48, borderRadius: 6 },
   addPhotoLink: { color: colors.primary, fontWeight: "600", fontSize: 13, paddingVertical: 12 },
