@@ -26,6 +26,11 @@ export function pushDirtySketches(): Promise<number> {
     return inFlight;
   }
   inFlight = (async () => {
+    // Yield first so `inFlight` is assigned before this body can finish: a
+    // run with nothing to push completes synchronously, and its `finally`
+    // would otherwise clear the flag before it was set, leaving every later
+    // call believing a push is still running.
+    await Promise.resolve();
     let confirmed = 0;
     try {
       do {
