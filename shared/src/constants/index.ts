@@ -1,6 +1,7 @@
 import { RecommendationPriority, Severity } from "../enums";
 
 export * from "./checklistWizard";
+export * from "./siteMapMerge";
 
 // Findings describe evidence, entry points, and risk factors as guidance
 // text for the Notes field rather than structured pickers - Matt's ask, see

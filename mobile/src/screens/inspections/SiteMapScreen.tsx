@@ -1,12 +1,24 @@
 import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { getSiteMapLevelRank, getWizardStepStatus, SITE_MAP_LEVEL_SUGGESTIONS, SiteMapAnnotationType, SiteMapLevel } from "@pest-app/shared";
+import {
+  applyLevelEdit,
+  getSiteMapLevelRank,
+  getWizardStepStatus,
+  parseRawSketch,
+  RawLevel,
+  RawSketch,
+  SITE_MAP_LEVEL_SUGGESTIONS,
+  SiteMapAnnotationType,
+  SiteMapLevel,
+  visibleSketch,
+} from "@pest-app/shared";
 import React, { useCallback, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { getCachedProperty, getCachedTemplateSections, updateLocalPropertySiteMapSketch } from "../../db/cache";
+import { getCachedProperty, getCachedTemplateSections, isSiteMapSketchDirty } from "../../db/cache";
+import { pushDirtySketches, saveSketchLocally } from "../../sync/siteMapSync";
 import { generateId } from "../../lib/uuid";
 import { getLocalInspectionDetail, LocalInspectionDetail } from "../../db/inspectionStore";
-import { saveSiteMapSketch, uploadSiteMap } from "../../api/properties";
+import { uploadSiteMap } from "../../api/properties";
 import { parseSiteMapSketch } from "../../lib/siteMapSketch";
 import { findChecklistResponseSummary } from "../../lib/checklist";
 import { capturePhoto } from "../../lib/photo";
@@ -74,6 +86,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   const [shapeLabelText, setShapeLabelText] = useState("");
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  // This device holds map edits the server hasn't confirmed yet.
+  const [sketchPending, setSketchPending] = useState(false);
   const [addingLevelSaving, setAddingLevelSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Collapsed by default (a long checklist is a lot to push the map down by)
@@ -88,6 +102,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     if (d) {
       const p = getCachedProperty(d.inspection.propertyId);
       setProperty(p);
+      setSketchPending(p ? isSiteMapSketchDirty(p.id) : false);
       const sketch = parseSiteMapSketch(p?.siteMapSketchJson);
       setSelectedLevelId((current) => {
         if (current && sketch.levels.some((l) => l.id === current)) return current;
@@ -220,53 +235,47 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     }
   }
 
-  async function handleAddLevel(name: string) {
-    if (!property || !name.trim()) return;
-    setAddingLevelSaving(true);
-    setError(null);
-    try {
-      const newLevel: SiteMapLevel = { id: generateId(), name: name.trim(), sortOrder: levels.length, lines: [], labels: [], annotations: [] };
-      const nextSketch = { levels: [...levels, newLevel] };
-      await saveSiteMapSketch(property.id, nextSketch);
-      updateLocalPropertySiteMapSketch(property.id, JSON.stringify(nextSketch));
-      setAddingLevel(false);
-      setNewLevelName("");
-      refresh();
-      setSelectedLevelId(newLevel.id);
-    } catch (err) {
-      setError(err instanceof ApiError || err instanceof Error ? err.message : "Failed to add level");
-    } finally {
-      setAddingLevelSaving(false);
-    }
+  // Every map edit goes through here: it is written to this device first
+  // (so it works offline and is never lost to a failed request), then pushed
+  // to the server in the background, where it's merged per wall/label/shape
+  // with whatever other devices saved - see sync/siteMapSync.ts.
+  function commitSketch(next: RawSketch): void {
+    if (!property) return;
+    saveSketchLocally(property.id, next);
+    setSketchPending(true);
+    refresh();
+    pushDirtySketches().finally(() => setSketchPending(isSiteMapSketchDirty(property.id)));
   }
 
-  // Shared by every action that adds/edits/deletes a wall or label -
-  // replaces just the current level within the full sketch and saves it to
-  // the server immediately. Everything on this screen goes through this one
-  // function, which is what makes the whole thing auto-save: a technician
-  // testing this found a drawn structure disappear because nothing persists
-  // until a manual "Save" tap is remembered, so there is no longer a manual
-  // save step to forget - every wall/label write is already durable the
-  // moment it happens. Returns whether it succeeded so callers (e.g. the
-  // label-edit card) can decide whether to dismiss themselves or stay
-  // open/retryable on failure.
+  // Reads the stored sketch fresh rather than from this render's copy, so a
+  // background merge that just landed (or a previous edit) is never clobbered.
+  function currentRawSketch(): RawSketch {
+    return parseRawSketch(property ? getCachedProperty(property.id)?.siteMapSketchJson : null);
+  }
+
+  function handleAddLevel(name: string) {
+    if (!property || !name.trim()) return;
+    const raw = currentRawSketch();
+    const newLevel: RawLevel = { id: generateId(), name: name.trim(), sortOrder: raw.levels.length, lines: [], labels: [], annotations: [] };
+    commitSketch({ levels: [...raw.levels, newLevel] });
+    setAddingLevel(false);
+    setNewLevelName("");
+    setSelectedLevelId(newLevel.id);
+  }
+
+  // Shared by every action that adds/edits/deletes a wall, label or shape:
+  // applies the change to the selected level and saves it (see commitSketch).
+  // Returns whether it was applied so callers (e.g. the label-edit card) can
+  // decide whether to dismiss themselves.
   async function persistSelectedLevel(mutate: (level: SiteMapLevel) => SiteMapLevel): Promise<boolean> {
     if (!property || !selectedLevel) return false;
-    setSaving(true);
-    setError(null);
-    try {
-      const nextLevels = levels.map((l) => (l.id === selectedLevel.id ? mutate(l) : l));
-      const nextSketch = { levels: nextLevels };
-      await saveSiteMapSketch(property.id, nextSketch);
-      updateLocalPropertySiteMapSketch(property.id, JSON.stringify(nextSketch));
-      refresh();
-      return true;
-    } catch (err) {
-      setError(err instanceof ApiError || err instanceof Error ? err.message : "Failed to update site plan");
-      return false;
-    } finally {
-      setSaving(false);
-    }
+    const raw = currentRawSketch();
+    const rawLevel = raw.levels.find((l) => l.id === selectedLevel.id);
+    if (!rawLevel) return false;
+    const visibleLevel = visibleSketch({ levels: [rawLevel] }).levels[0];
+    const edited = applyLevelEdit(rawLevel, mutate(visibleLevel), Date.now());
+    commitSketch({ levels: raw.levels.map((l) => (l.id === edited.id ? edited : l)) });
+    return true;
   }
 
   // Undoes whichever wall, label, or annotation was auto-saved most
@@ -529,6 +538,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           {siteMapHintText(mode, annotationType) ?? "Tap a shape or wall to move, resize or recolor it"}
         </Text>
       ) : null}
+      {sketchPending ? <Text style={styles.hint}>Saved on this device - will sync when there's a connection</Text> : null}
       {mode === "wall" && !editorOpen && wallCount > 0 ? (
         <Text style={styles.dismissLink} onPress={handleDeleteLastWall}>
           Delete the last wall segment

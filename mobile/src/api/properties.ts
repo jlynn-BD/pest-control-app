@@ -1,4 +1,4 @@
-import type { Inspection, Property, SiteMapSketch } from "@pest-app/shared";
+import type { Inspection, Property, RawSketch } from "@pest-app/shared";
 import { apiRequest } from "./client";
 
 export type ServiceHistoryEntry = Inspection & {
@@ -40,7 +40,7 @@ export function uploadSiteMap(propertyId: string, imageUri: string): Promise<Pro
   return apiRequest<Property>(`/api/properties/${propertyId}/site-map`, { method: "POST", body: form, isFormData: true });
 }
 
-export function saveSiteMapSketch(propertyId: string, sketch: SiteMapSketch): Promise<Property> {
+export function saveSiteMapSketch(propertyId: string, sketch: RawSketch): Promise<Property> {
   return apiRequest<Property>(`/api/properties/${propertyId}/site-map-sketch`, { method: "PATCH", body: sketch });
 }
 

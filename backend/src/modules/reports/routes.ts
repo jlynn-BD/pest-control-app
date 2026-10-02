@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { renderToBuffer } from "@react-pdf/renderer";
 import React from "react";
-import { CHECKLIST_CATEGORY_DISPLAY_ORDER, getSiteMapLevelRank } from "@pest-app/shared";
+import { CHECKLIST_CATEGORY_DISPLAY_ORDER, getSiteMapLevelRank, parseRawSketch, visibleSketch } from "@pest-app/shared";
 import { generateId } from "../../lib/id";
 import { prisma } from "../../lib/prisma";
 import { storage } from "../../lib/storage";
@@ -96,18 +96,9 @@ async function buildReportData(inspectionId: string): Promise<ReportData> {
       },
     ];
   } else if (inspection.property.siteMapSketch) {
-    let sketch: { levels: { id: string; name: string; sortOrder: number; lines: unknown[]; labels: unknown[]; annotations?: unknown[] }[] } = {
-      levels: [],
-    };
-    try {
-      const parsed = JSON.parse(inspection.property.siteMapSketch);
-      // Guards against pre-levels sketch JSON (the flat { lines, labels }
-      // shape this endpoint used before levels existed) - old data just
-      // renders no site map rather than crashing report generation.
-      if (Array.isArray(parsed?.levels)) sketch = parsed;
-    } catch {
-      // Malformed sketch JSON shouldn't block report generation - render without it.
-    }
+    // parseRawSketch tolerates old/malformed JSON (renders no map rather than
+    // failing the report); visibleSketch drops deleted-element tombstones.
+    const sketch = visibleSketch(parseRawSketch(inspection.property.siteMapSketch));
     siteMapPanels = [...sketch.levels]
       .sort((a, b) => {
         const rankDiff = getSiteMapLevelRank(a.name) - getSiteMapLevelRank(b.name);

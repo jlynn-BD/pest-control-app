@@ -7,6 +7,7 @@ import { storage } from "../../lib/storage";
 import { asyncHandler, HttpError } from "../../middleware/error-handler";
 import { requireAuth } from "../../middleware/auth";
 import { upload } from "../../middleware/upload";
+import { mergeSketches, parseRawSketch, RawSketch } from "@pest-app/shared";
 
 export const propertiesRouter = Router();
 propertiesRouter.use(requireAuth);
@@ -126,34 +127,51 @@ propertiesRouter.post(
   })
 );
 
+// Elements carry updatedAt (ms) and, once removed, are kept as tombstones
+// ({ id, deleted: true, updatedAt }) - see shared/constants/siteMapMerge.ts.
+// Coordinates are only required on elements that aren't deleted.
+const stampFields = { updatedAt: z.number().optional(), deleted: z.boolean().optional() };
+const needsCoords = <T extends { deleted?: boolean }>(keys: (keyof T)[]) => (v: T) =>
+  v.deleted === true || keys.every((k) => v[k] !== undefined);
+
 const siteMapSketchSchema = z.object({
   levels: z.array(
     z.object({
       id: z.string().min(1),
       name: z.string().min(1),
       sortOrder: z.number().int(),
-      lines: z.array(z.object({ id: z.string().min(1), x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number() })),
-      labels: z.array(z.object({ id: z.string().min(1), x: z.number(), y: z.number(), text: z.string().min(1) })),
+      lines: z.array(
+        z
+          .object({ id: z.string().min(1), x1: z.number().optional(), y1: z.number().optional(), x2: z.number().optional(), y2: z.number().optional(), ...stampFields })
+          .refine(needsCoords(["x1", "y1", "x2", "y2"]), "line needs coordinates")
+      ),
+      labels: z.array(
+        z
+          .object({ id: z.string().min(1), x: z.number().optional(), y: z.number().optional(), text: z.string().optional(), ...stampFields })
+          .refine((v) => v.deleted === true || (v.x !== undefined && v.y !== undefined && !!v.text), "label needs position and text")
+      ),
       // Lightweight X-mark/arrow/shape markup, not tied to a Finding - see
       // SiteMapAnnotation in shared/types. Optional/defaulted so a sketch
       // saved by a mobile bundle from before this field existed still
       // validates during the deploy transition window.
       annotations: z
         .array(
-          z.object({
-            id: z.string().min(1),
-            type: z.enum(["x", "arrow", "rect"]),
-            color: z.string().min(1),
-            x1: z.number(),
-            y1: z.number(),
-            x2: z.number().optional(),
-            y2: z.number().optional(),
-            // A shape's own name, shown directly on it (rect only in
-            // practice) - optional so annotations from before this existed
-            // still validate. z.parse() drops unlisted fields, which
-            // silently ate every saved shape name until this was added.
-            label: z.string().optional(),
-          })
+          z
+            .object({
+              id: z.string().min(1),
+              type: z.enum(["x", "arrow", "rect"]).optional(),
+              color: z.string().optional(),
+              x1: z.number().optional(),
+              y1: z.number().optional(),
+              x2: z.number().optional(),
+              y2: z.number().optional(),
+              // A shape's own name, shown directly on it (rect only in
+              // practice). z.parse() drops unlisted fields, so anything
+              // new on an annotation has to be listed here.
+              label: z.string().optional(),
+              ...stampFields,
+            })
+            .refine((v) => v.deleted === true || (!!v.type && !!v.color && v.x1 !== undefined && v.y1 !== undefined), "annotation needs type, color and position")
         )
         .optional()
         .default([]),
@@ -171,13 +189,19 @@ const siteMapSketchSchema = z.object({
 propertiesRouter.patch(
   "/:id/site-map-sketch",
   asyncHandler(async (req, res) => {
-    const body = siteMapSketchSchema.parse(req.body);
-    const property = await prisma.property.findFirst({ where: { id: req.params.id, deletedAt: null } });
-    if (!property) throw new HttpError(404, "Property not found");
-
-    const updated = await prisma.property.update({
-      where: { id: property.id },
-      data: { siteMapSketch: JSON.stringify(body), siteMapUpdatedAt: new Date() },
+    const body = siteMapSketchSchema.parse(req.body) as unknown as RawSketch;
+    // Merged with what's already stored (per wall/label/shape, newest change
+    // wins) instead of replacing it, under a row lock so two devices saving
+    // at the same moment can't each merge against the same stale copy.
+    const updated = await prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "Property" WHERE id = ${req.params.id} AND "deletedAt" IS NULL FOR UPDATE`;
+      if (rows.length === 0) throw new HttpError(404, "Property not found");
+      const property = await tx.property.findUniqueOrThrow({ where: { id: req.params.id } });
+      const merged = mergeSketches(parseRawSketch(property.siteMapSketch), body);
+      return tx.property.update({
+        where: { id: property.id },
+        data: { siteMapSketch: JSON.stringify(merged), siteMapUpdatedAt: new Date() },
+      });
     });
     res.json(updated);
   })

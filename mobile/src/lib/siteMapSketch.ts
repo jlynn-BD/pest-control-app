@@ -1,44 +1,13 @@
-import { getSiteMapLevelRank } from "@pest-app/shared";
-import type { SiteMapLevel, SiteMapSketch } from "@pest-app/shared";
+import { getSiteMapLevelRank, parseRawSketch, visibleSketch } from "@pest-app/shared";
+import type { SiteMapSketch } from "@pest-app/shared";
 import type { SiteMapArrow } from "../components/ArrowCanvas";
 
-const EMPTY: SiteMapSketch = { levels: [] };
-
-function isValidLevel(v: unknown): v is SiteMapLevel {
-  return typeof v === "object" && v !== null && typeof (v as SiteMapLevel).id === "string" && typeof (v as SiteMapLevel).name === "string";
-}
-
+// What the app draws: the stored sketch (which also carries per-element
+// timestamps and tombstones for deleted elements - see shared siteMapMerge)
+// with deleted elements removed. Old-format elements without ids get stable
+// synthetic ones inside parseRawSketch.
 export function parseSiteMapSketch(json: string | null | undefined): SiteMapSketch {
-  if (!json) return EMPTY;
-  try {
-    const parsed = JSON.parse(json);
-    const levels = Array.isArray(parsed?.levels) ? parsed.levels.filter(isValidLevel) : [];
-    return {
-      levels: levels.map((l: SiteMapLevel) => ({
-        id: l.id,
-        name: l.name,
-        sortOrder: l.sortOrder ?? 0,
-        // Sketches saved before walls/labels had their own ids (needed for
-        // per-element edit/delete) get stable synthetic ones derived from
-        // position, so old data doesn't crash the editing UI - the first
-        // edit that resaves this level persists them as real ids.
-        lines: Array.isArray(l.lines)
-          ? l.lines.map((line, i) => ({ id: line.id ?? `${l.id}:line:${i}`, x1: line.x1, y1: line.y1, x2: line.x2, y2: line.y2 }))
-          : [],
-        labels: Array.isArray(l.labels)
-          ? l.labels.map((label, i) => ({ id: label.id ?? `${l.id}:label:${i}`, x: label.x, y: label.y, text: label.text }))
-          : [],
-        // Sketches saved before annotations existed at all simply have none
-        // - unlike lines/labels there's no per-item id backfill needed since
-        // the whole array is either present (already carrying real ids,
-        // since this is a new-enough field that every writer always
-        // generates one) or absent entirely.
-        annotations: Array.isArray(l.annotations) ? l.annotations : [],
-      })),
-    };
-  } catch {
-    return EMPTY;
-  }
+  return visibleSketch(parseRawSketch(json));
 }
 
 interface FindingLike {

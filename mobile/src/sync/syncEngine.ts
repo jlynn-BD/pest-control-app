@@ -1,6 +1,7 @@
 import { appendPhotoFile } from "../lib/photoUpload";
 import { apiRequest } from "../api/client";
 import { getCachedCustomer, getCachedProperty, primeCache } from "../db/cache";
+import { pushDirtySketches } from "./siteMapSync";
 import {
   clearSyncConflict,
   countPendingSyncRows,
@@ -282,6 +283,10 @@ async function runSyncOnce(): Promise<SyncResult> {
         noteMediaError(err);
       }
     }
+
+    // Site map edits made offline go up (and merge) before the reference
+    // refresh below, which would otherwise download the older server copy.
+    await pushDirtySketches();
 
     // Also refreshes reference data, picking up server-side edits made to
     // customers/properties/templates while this device was offline.

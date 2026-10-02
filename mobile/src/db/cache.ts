@@ -1,6 +1,6 @@
 import { File, Paths } from "expo-file-system";
 import { Platform } from "react-native";
-import { getDb, isLocalDbAvailable } from "./database";
+import { getDb, getSyncMeta, isLocalDbAvailable, setSyncMeta } from "./database";
 import { apiRequest } from "../api/client";
 import { API_BASE_URL } from "../api/config";
 import { tokenStore } from "../api/tokenStore";
@@ -128,7 +128,12 @@ export async function primeCache(): Promise<void> {
             p.accessNotes,
             p.siteMapImageUrl,
             siteMapLocalUris.get(p.id) ?? null,
-            p.siteMapSketch,
+            // A map edited on this device that hasn't reached the server yet
+            // must not be overwritten by the (older) server copy this refresh
+            // just downloaded - it's pushed and merged by the sync engine.
+            isSiteMapSketchDirty(p.id)
+              ? (db.getFirstSync<{ siteMapSketchJson: string | null }>(`SELECT siteMapSketchJson FROM local_properties WHERE id = ?`, [p.id])?.siteMapSketchJson ?? p.siteMapSketch)
+              : p.siteMapSketch,
             p.siteMapUpdatedAt,
             p.hasSecondFloor == null ? null : p.hasSecondFloor ? 1 : 0,
             p.hasThirdFloor == null ? null : p.hasThirdFloor ? 1 : 0,
@@ -168,6 +173,22 @@ export async function primeCache(): Promise<void> {
       }
     }
   });
+}
+
+// A property's map has local edits not yet confirmed by the server.
+const SKETCH_DIRTY_PREFIX = "sketchDirty:";
+export function isSiteMapSketchDirty(propertyId: string): boolean {
+  return getSyncMeta(SKETCH_DIRTY_PREFIX + propertyId) === "1";
+}
+export function setSiteMapSketchDirty(propertyId: string, dirty: boolean): void {
+  if (dirty) setSyncMeta(SKETCH_DIRTY_PREFIX + propertyId, "1");
+  else getDb().runSync(`DELETE FROM sync_meta WHERE key = ?`, [SKETCH_DIRTY_PREFIX + propertyId]);
+}
+export function listDirtySiteMapSketchIds(): string[] {
+  if (!isLocalDbAvailable()) return [];
+  return getDb()
+    .getAllSync<{ key: string }>(`SELECT key FROM sync_meta WHERE key LIKE ? AND value = '1'`, [SKETCH_DIRTY_PREFIX + "%"])
+    .map((r) => r.key.slice(SKETCH_DIRTY_PREFIX.length));
 }
 
 // Optimistic local update after a successful save, so the sketch reflects
