@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -84,16 +84,34 @@ export function PrimaryButton({
 
 export function Field({
   label,
+  secureTextEntry,
   ...inputProps
 }: { label: string } & TextInputProps) {
+  // Password fields get a Show/Hide toggle so a person can check what they
+  // typed (easy to fumble on a phone keyboard).
+  const [revealed, setRevealed] = useState(false);
   return (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{label}</Text>
-      <TextInput
-        style={styles.input}
-        placeholderTextColor={colors.textMuted}
-        {...inputProps}
-      />
+      <View>
+        <TextInput
+          style={[styles.input, secureTextEntry && styles.inputWithToggle]}
+          placeholderTextColor={colors.textMuted}
+          secureTextEntry={secureTextEntry && !revealed}
+          {...inputProps}
+        />
+        {secureTextEntry ? (
+          <Pressable
+            onPress={() => setRevealed((r) => !r)}
+            style={styles.revealButton}
+            accessibilityRole="button"
+            accessibilityLabel={revealed ? "Hide password" : "Show password"}
+            hitSlop={8}
+          >
+            <Text style={styles.revealText}>{revealed ? "Hide" : "Show"}</Text>
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -162,6 +180,9 @@ const styles = StyleSheet.create({
   primaryButtonText: { color: "#fff", fontWeight: "600", fontSize: 16 },
   field: { marginBottom: 14 },
   fieldLabel: { fontSize: 13, color: colors.textMuted, marginBottom: 6, fontWeight: "500" },
+  inputWithToggle: { paddingRight: 64 },
+  revealButton: { position: "absolute", right: 0, top: 0, bottom: 0, paddingHorizontal: 14, justifyContent: "center" },
+  revealText: { color: colors.primary, fontSize: 14, fontWeight: "600" },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
