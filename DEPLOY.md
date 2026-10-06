@@ -33,6 +33,8 @@ Everyone signs in with their **own** account: email + password + a second step (
 
 **Other protections:** 5 wrong passwords/codes lock the account for 15 minutes; limits on sign-in attempts per address; sign-in activity is recorded (`AuthEvent` table); the API only answers the deployed web app's origin; stored authenticator secrets are encrypted.
 
+**Audit trail (activity log):** every change is recorded as *who did what, to which record, and when*: inspections created/started/completed, findings added/edited/deleted, photos uploaded, site-map edits (marker moves, walls, labels, shapes), checklist answers, signatures, customer/property/appointment changes, reports generated and downloaded, estimates, checklist-template edits, and account actions (people added, turned off, passwords/two-step reset). Edits keep the **previous and new values**; deletes keep a copy of what was deleted. Work done offline is logged when it syncs, with the device's own time kept alongside the server's. Admins and office staff read it under Settings → Activity log (filter by person, area, or search; admins also see sign-ins), and an inspection page has a "View history" link. Entries can't be edited or deleted: there is no route for it and a database trigger refuses it. Passwords, codes and tokens are never written to it. Nothing is purged automatically.
+
 **Emergency switch:** setting `MFA_ENFORCED=false` on the backend turns the requirement off for accounts that haven't set up a second step. Don't leave it that way.
 
 ## Known limitations on the free tier

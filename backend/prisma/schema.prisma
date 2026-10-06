@@ -590,3 +590,39 @@ model StoredFile {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+// Append-only trail of who did what to which record, and when (user -> action
+// -> record -> time), with previous/new values for edits and deletes. Rows
+// are never updated or deleted (a database trigger refuses it) and have no
+// foreign keys, so the trail survives people and records being removed.
+model ActivityLog {
+  id           String   @id
+  createdAt    DateTime @default(now())
+  actorId      String?
+  // Name and role are copied in at the time, so the trail still reads
+  // correctly after a person is renamed or removed.
+  actorName    String
+  actorRole    String?
+  action       String
+  entityType   String
+  entityId     String?
+  entityLabel  String?
+  summary      String
+  inspectionId String?
+  customerId   String?
+  propertyId   String?
+  // { changes: { field: { from, to } }, before: {...}, after: {...} }
+  details      Json?
+  // For work done offline: when the device says it happened. createdAt is
+  // when the server received it and is the trustworthy time.
+  clientTime   DateTime?
+  ip           String?
+  userAgent    String?
+
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+  @@index([inspectionId, createdAt])
+  @@index([customerId, createdAt])
+  @@index([propertyId, createdAt])
+  @@index([entityType, entityId])
+}

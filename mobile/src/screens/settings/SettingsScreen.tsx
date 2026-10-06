@@ -200,6 +200,17 @@ export default function SettingsScreen() {
         )}
       </Card>
 
+      {user?.role === "ADMIN" || user?.role === "OFFICE" ? (
+        <>
+          <Text style={styles.sectionTitle}>Activity log</Text>
+          <Card style={styles.syncCard}>
+            <Text style={styles.meta}>A record of who did what and when: inspections, findings, photos, site-map edits, customer changes, reports{user?.role === "ADMIN" ? ", and sign-ins" : ""}. Edits show the old and new values. It can't be edited or deleted.</Text>
+            <View style={styles.spacerSmall} />
+            <PrimaryButton title="Open activity log" onPress={() => navigation.navigate("ActivityLog")} />
+          </Card>
+        </>
+      ) : null}
+
       {user?.role === "ADMIN" ? (
         <>
           <Text style={styles.sectionTitle}>Team</Text>

@@ -2,6 +2,8 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler";
+import { auditRequests } from "./middleware/audit";
+import { auditRouter } from "./modules/audit/routes";
 import { authRouter } from "./modules/auth/routes";
 import { usersRouter } from "./modules/users/routes";
 import { customersRouter, contactsRouter } from "./modules/customers/routes";
@@ -47,9 +49,12 @@ app.use(
 );
 app.use(express.json({ limit: "5mb" }));
 
-app.get("/api/health", (req, res) => res.json({ status: "ok", time: new Date().toISOString() }));
+// "build" is the git commit Render deployed (handy for confirming a deploy went live).
+app.get("/api/health", (req, res) => res.json({ status: "ok", time: new Date().toISOString(), build: (process.env.RENDER_GIT_COMMIT || "local").slice(0, 7) }));
 
+app.use("/api", auditRequests);
 app.use("/api/auth", authRouter);
+app.use("/api/audit", auditRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/customers", customersRouter);
 app.use("/api/contacts", contactsRouter);

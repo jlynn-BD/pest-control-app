@@ -3,6 +3,9 @@ import { z } from "zod";
 import { prisma } from "../../lib/prisma";
 import { asyncHandler, HttpError } from "../../middleware/error-handler";
 import { requireAuth } from "../../middleware/auth";
+import type { Request } from "express";
+import { diffRecords, logActivity, snapshot } from "../../lib/audit";
+import { ENTITIES, buildSummary } from "../../lib/auditEntities";
 
 export const syncRouter = Router();
 syncRouter.use(requireAuth);
@@ -112,7 +115,42 @@ const NATURAL_KEY_FIELDS: Record<string, string[]> = {
   InspectionSectionSkip: ["inspectionId", "category"],
 };
 
-async function applyChange(change: Change): Promise<PushResult> {
+// Writes the audit-trail entry for a change that was actually applied. Work
+// saved offline reaches the server later, so the device's own timestamp is
+// kept alongside the server's (createdAt) as clientTime.
+async function auditChange(
+  req: Request,
+  change: Change,
+  kind: "created" | "updated" | "deleted",
+  before: Record<string, unknown> | null,
+  data: Record<string, unknown>
+) {
+  const def = ENTITIES[change.entity];
+  if (!def) return;
+  const merged = { ...(before ?? {}), ...data, id: change.id };
+  let details: Record<string, unknown> | null = null;
+  let changes: ReturnType<typeof diffRecords> | undefined;
+  if (kind === "created") details = { after: snapshot(merged, def.ignore) };
+  else if (kind === "deleted") details = { before: snapshot(before, def.ignore) };
+  else {
+    changes = diffRecords(before, data, def.ignore);
+    if (Object.keys(changes).length === 0) return; // retry/resave with no real change
+    details = { changes };
+  }
+  const label = await def.label(merged);
+  await logActivity(req, {
+    action: `${def.type.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase()}.${kind}`,
+    entityType: def.type,
+    entityId: change.id,
+    label,
+    summary: buildSummary(def, kind, label, changes),
+    links: await def.links(merged),
+    details,
+    clientTime: Number.isNaN(Date.parse(change.updatedAt)) ? null : new Date(change.updatedAt),
+  });
+}
+
+async function applyChange(req: Request, change: Change): Promise<PushResult> {
   const model = getModel(change.entity);
   if (!model) throw new HttpError(400, `Unsupported sync entity: ${change.entity}`);
 
@@ -120,10 +158,13 @@ async function applyChange(change: Change): Promise<PushResult> {
     if (!SUPPORTS_SOFT_DELETE.has(change.entity)) {
       return { entity: change.entity, id: change.id, result: "applied" };
     }
+    const toDelete = await model.findUnique({ where: { id: change.id } });
     await model.updateMany({
       where: { id: change.id },
       data: { deletedAt: new Date() },
     });
+    // Only a row that existed and wasn't already deleted is worth recording.
+    if (toDelete && !toDelete.deletedAt) await auditChange(req, change, "deleted", toDelete, {});
     return { entity: change.entity, id: change.id, result: "applied" };
   }
 
@@ -141,6 +182,7 @@ async function applyChange(change: Change): Promise<PushResult> {
     await model.create({
       data: { id: change.id, ...data, ...(SUPPORTS_UPDATED_AT.has(change.entity) ? { updatedAt: new Date(change.updatedAt) } : {}) },
     });
+    await auditChange(req, change, "created", null, data);
     return { entity: change.entity, id: change.id, result: "applied" };
   }
 
@@ -151,6 +193,7 @@ async function applyChange(change: Change): Promise<PushResult> {
     // which does need the new initials/technician/timestamp written.
     if (naturalKeyFields) {
       await model.update({ where: { id: existing.id }, data });
+      await auditChange(req, change, "updated", existing, data);
     }
     return { entity: change.entity, id: change.id, result: "applied" };
   }
@@ -174,6 +217,9 @@ async function applyChange(change: Change): Promise<PushResult> {
       where: { id: existing.id },
       data: { ...data, updatedAt: incomingUpdatedAt, ...(SUPPORTS_SOFT_DELETE.has(change.entity) ? { deletedAt: null } : {}) },
     });
+    // A row that was deleted and is being brought back counts as new work.
+    const revived = Boolean((existing as { deletedAt?: Date | null }).deletedAt);
+    await auditChange(req, change, revived ? "created" : "updated", revived ? null : existing, data);
     return { entity: change.entity, id: change.id, result: "applied" };
   }
 
@@ -190,7 +236,7 @@ syncRouter.post(
     // Applied sequentially (not Promise.all) so a Finding created earlier in
     // the same batch is visible to a Recommendation referencing it later.
     for (const change of changes) {
-      results.push(await applyChange(change));
+      results.push(await applyChange(req, change));
     }
     res.json({ results });
   })

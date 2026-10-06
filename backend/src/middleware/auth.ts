@@ -6,6 +6,8 @@ import { HttpError } from "./error-handler";
 export interface AuthUser {
   id: string;
   role: string;
+  // Full name, for the audit trail
+  name: string;
   // refresh-token family of the sign-in this request belongs to
   sessionId?: string;
 }
@@ -42,7 +44,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   // that deactivating someone or changing their role takes effect at once,
   // instead of after the access token's 15 minutes run out.
   prisma.user
-    .findUnique({ where: { id: payload.sub }, select: { id: true, role: true, active: true, sessionsValidAfter: true } })
+    .findUnique({ where: { id: payload.sub }, select: { id: true, role: true, active: true, sessionsValidAfter: true, firstName: true, lastName: true } })
     .then((user) => {
       if (!user || !user.active) {
         next(new HttpError(401, "Invalid or expired token"));
@@ -54,7 +56,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
         next(new HttpError(401, "Invalid or expired token"));
         return;
       }
-      req.user = { id: user.id, role: user.role, sessionId: payload.sid };
+      req.user = { id: user.id, role: user.role, name: `${user.firstName} ${user.lastName}`.trim(), sessionId: payload.sid };
       next();
     })
     .catch(next);
