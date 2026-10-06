@@ -21,7 +21,7 @@ export function siteMapHintText(mode: SiteMapMode, annotationType?: SiteMapAnnot
     case "wall":
       return "Drag to draw a wall segment";
     case "label":
-      return "Tap to place a label";
+      return "Tap to place a label (tap inside a shape to name it)";
     case "annotate":
       if (annotationType === "x") return "Tap to place an X mark";
       if (annotationType === "rect") return "Drag to draw a shape";

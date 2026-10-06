@@ -84,6 +84,10 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // selected - seeded from the shape's current label on selection, saved
   // explicitly (not on every keystroke) via handleSaveShapeLabel.
   const [shapeLabelText, setShapeLabelText] = useState("");
+  // True only when the Shape panel was opened to NAME a shape (right after
+  // drawing one, or by tapping inside it in +Label mode) - so the keyboard
+  // comes up ready to type, but a plain tap-to-select (to move/delete) doesn't.
+  const [nameAutoFocus, setNameAutoFocus] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   // This device holds map edits the server hasn't confirmed yet.
@@ -315,7 +319,42 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     const id = generateId();
     const annotation = type === "x" ? { id, type, color, x1: start.x, y1: start.y } : { id, type, color, x1: start.x, y1: start.y, x2: end.x, y2: end.y };
     const ok = await persistSelectedLevel((l) => ({ ...l, annotations: [...l.annotations, annotation] }));
-    if (ok) setLastAction({ kind: "annotation", id });
+    if (!ok) return;
+    // A freshly drawn shape opens straight into its Name field, so labelling
+    // it is the very next step - no separate floating label to place on top.
+    if (type === "rect") selectShapeForNaming(id, "");
+    else setLastAction({ kind: "annotation", id });
+  }
+
+  function selectShapeForNaming(id: string, currentName: string) {
+    setMode("view");
+    setPendingLabelPoint(null);
+    setEditingLabel(null);
+    setSelectedWallId(null);
+    setLastAction(null);
+    setSelectedAnnotationId(id);
+    setShapeLabelText(currentName);
+    setNameAutoFocus(true);
+  }
+
+  // In +Label mode, a tap that lands inside a shape names THAT shape rather
+  // than dropping a second box on top of it. Returns whether it did.
+  function nameShapeAt(point: Point): boolean {
+    const PAD = 0.02;
+    let best: { id: string; label: string; area: number } | null = null;
+    for (const a of selectedLevel?.annotations ?? []) {
+      if (a.type !== "rect" || a.x2 == null || a.y2 == null) continue;
+      const minX = Math.min(a.x1, a.x2) - PAD;
+      const maxX = Math.max(a.x1, a.x2) + PAD;
+      const minY = Math.min(a.y1, a.y2) - PAD;
+      const maxY = Math.max(a.y1, a.y2) + PAD;
+      if (point.x < minX || point.x > maxX || point.y < minY || point.y > maxY) continue;
+      const area = (maxX - minX) * (maxY - minY);
+      if (!best || area < best.area) best = { id: a.id, label: a.label ?? "", area };
+    }
+    if (!best) return false;
+    selectShapeForNaming(best.id, best.label);
+    return true;
   }
 
   function handleDeleteSavedAnnotation(id: string) {
@@ -330,6 +369,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     if (editorOpen) return;
     setSelectedAnnotationId(id);
     setShapeLabelText(selectedLevel?.annotations.find((a) => a.id === id)?.label ?? "");
+    setNameAutoFocus(false);
   }
 
   function handleDeleteSelectedAnnotation() {
@@ -346,6 +386,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     const id = selectedAnnotationId;
     if (!id) return;
     const text = shapeLabelText.trim();
+    if (text === (selectedLevel?.annotations.find((a) => a.id === id)?.label ?? "")) return;
     persistSelectedLevel((l) => ({
       ...l,
       annotations: l.annotations.map((a) => (a.id === id ? { ...a, label: text || undefined } : a)),
@@ -574,6 +615,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         onWallDrawn={handleWallDrawn}
         onAnnotationDrawn={handleAnnotationDrawn}
         onLabelTap={(point) => {
+          if (nameShapeAt(point)) return;
           setPendingLabelPoint(point);
           setLabelText("");
         }}
@@ -692,7 +734,16 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           {selectedLevel?.annotations.find((a) => a.id === selectedAnnotationId)?.type === "rect" ? (
             <View style={styles.shapeLabelRow}>
               <View style={styles.shapeLabelField}>
-                <Field label="Name (shown on the shape)" value={shapeLabelText} onChangeText={setShapeLabelText} placeholder="e.g. Garage, Porch" />
+                <Field
+                  label="Name (shown on the shape)"
+                  value={shapeLabelText}
+                  onChangeText={setShapeLabelText}
+                  placeholder="e.g. Garage, Porch"
+                  autoFocus={nameAutoFocus}
+                  returnKeyType="done"
+                  onSubmitEditing={handleSaveShapeLabel}
+                  onBlur={handleSaveShapeLabel}
+                />
               </View>
               <Text style={styles.dismissLink} onPress={handleSaveShapeLabel}>
                 Save
@@ -718,7 +769,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
               <PrimaryButton title="Delete" onPress={handleDeleteSelectedAnnotation} loading={saving} />
             </View>
             <View style={styles.buttonHalf}>
-              <PrimaryButton title="Done" onPress={() => { setSelectedAnnotationId(null); setShapeLabelText(""); }} />
+              <PrimaryButton title="Done" onPress={() => { handleSaveShapeLabel(); setSelectedAnnotationId(null); setShapeLabelText(""); setNameAutoFocus(false); }} />
             </View>
           </View>
         </Card>
