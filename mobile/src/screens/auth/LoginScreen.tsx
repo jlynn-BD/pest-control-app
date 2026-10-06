@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useAuth } from "../../context/AuthContext";
 import { ApiError } from "../../api/client";
 import type { Challenge, LoginResult, SignedIn } from "../../api/auth";
@@ -11,6 +11,8 @@ export default function LoginScreen() {
   const { login, completeSignIn } = useAuth();
   // Deliberately empty: every person signs in with their own account. (The
   // old screen pre-filled a shared demo login.)
+  const emailRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -50,11 +52,26 @@ export default function LoginScreen() {
     else await completeSignIn(res);
   }
 
+  // Browsers and password managers can fill these boxes without telling the
+  // app (so the state stays empty). Read what's actually in the boxes at the
+  // moment of tapping, and never gray the button out on stale state.
+  function currentValue(state: string, ref: React.RefObject<TextInput | null>): string {
+    if (state) return state;
+    const el = ref.current as unknown as { value?: string } | null;
+    return typeof el?.value === "string" ? el.value : "";
+  }
+
   async function handleSubmit() {
+    const typedEmail = currentValue(email, emailRef).trim();
+    const typedPassword = currentValue(password, passwordRef);
+    if (!typedEmail || !typedPassword) {
+      setError("Enter your email and password.");
+      return;
+    }
     setError(null);
     setSubmitting(true);
     try {
-      handleResult(await login(email.trim(), password));
+      handleResult(await login(typedEmail, typedPassword));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to reach the server");
     } finally {
@@ -82,6 +99,7 @@ export default function LoginScreen() {
             onChangeText={setEmail}
             autoCapitalize="none"
             autoCorrect={false}
+            inputRef={emailRef}
             keyboardType="email-address"
             autoComplete="username"
             textContentType="username"
@@ -91,12 +109,14 @@ export default function LoginScreen() {
             value={password}
             onChangeText={setPassword}
             secureTextEntry
+            inputRef={passwordRef}
             autoComplete="current-password"
             textContentType="password"
-            onSubmitEditing={() => email && password && handleSubmit()}
+            returnKeyType="go"
+            onSubmitEditing={handleSubmit}
           />
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          <PrimaryButton title="Log in" onPress={handleSubmit} loading={submitting} disabled={!email.trim() || !password} />
+          <PrimaryButton title="Log in" onPress={handleSubmit} loading={submitting} />
           {slow ? <Text style={styles.slow}>Waking up the server - the first sign-in can take up to a minute. Please keep this open.</Text> : null}
         </View>
       </>

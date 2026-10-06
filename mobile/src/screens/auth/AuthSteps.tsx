@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { Image, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { Image, Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import * as authApi from "../../api/auth";
 import { ApiError } from "../../api/client";
 import { Field, PrimaryButton, colors } from "../../components/ui";
@@ -10,6 +10,14 @@ import { Field, PrimaryButton, colors } from "../../components/ui";
 
 function messageFor(err: unknown): string {
   return err instanceof ApiError || err instanceof Error ? err.message : "Something went wrong. Please try again.";
+}
+
+// Browsers/password managers/SMS autofill can fill a box without telling the
+// app, leaving the state empty. Read what's really in the box when tapped.
+function readValue(state: string, ref: React.RefObject<TextInput | null>): string {
+  if (state) return state;
+  const el = ref.current as unknown as { value?: string } | null;
+  return typeof el?.value === "string" ? el.value : "";
 }
 
 function StepError({ message }: { message: string | null }) {
@@ -29,18 +37,26 @@ function LinkButton({ title, onPress, disabled }: { title: string; onPress: () =
 export function PasswordChangeStep({ challenge, onResult, onCancel }: { challenge: authApi.Challenge; onResult: (r: authApi.LoginResult) => void; onCancel: () => void }) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const passwordRef = useRef<TextInput>(null);
+  const confirmRef = useRef<TextInput>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function submit() {
-    if (password !== confirm) {
+    const newPassword = readValue(password, passwordRef);
+    const again = readValue(confirm, confirmRef);
+    if (!newPassword) {
+      setError("Enter a new password.");
+      return;
+    }
+    if (newPassword !== again) {
       setError("The two passwords don't match.");
       return;
     }
     setError(null);
     setBusy(true);
     try {
-      onResult(await authApi.changeRequiredPassword(challenge.challengeToken, password));
+      onResult(await authApi.changeRequiredPassword(challenge.challengeToken, newPassword));
     } catch (err) {
       setError(messageFor(err));
     } finally {
@@ -52,10 +68,10 @@ export function PasswordChangeStep({ challenge, onResult, onCancel }: { challeng
     <View>
       <Text style={styles.heading}>Choose your own password</Text>
       <Text style={styles.body}>You signed in with a temporary password. Pick a new one that only you know - at least 10 characters.</Text>
-      <Field label="New password" value={password} onChangeText={setPassword} secureTextEntry autoComplete="new-password" textContentType="newPassword" />
-      <Field label="Confirm new password" value={confirm} onChangeText={setConfirm} secureTextEntry autoComplete="new-password" textContentType="newPassword" />
+      <Field label="New password" inputRef={passwordRef} value={password} onChangeText={setPassword} secureTextEntry autoComplete="new-password" textContentType="newPassword" />
+      <Field label="Confirm new password" inputRef={confirmRef} value={confirm} onChangeText={setConfirm} secureTextEntry autoComplete="new-password" textContentType="newPassword" />
       <StepError message={error} />
-      <PrimaryButton title="Save password" onPress={submit} loading={busy} disabled={!password || !confirm} />
+      <PrimaryButton title="Save password" onPress={submit} loading={busy} />
       <LinkButton title="Cancel" onPress={onCancel} />
     </View>
   );
@@ -69,6 +85,7 @@ export function EnrollStep({ challenge, onSignedIn, onCancel }: { challenge: aut
   const [phone, setPhone] = useState("");
   const [smsSentTo, setSmsSentTo] = useState<string | null>(null);
   const [code, setCode] = useState("");
+  const codeRef = useRef<TextInput>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -86,6 +103,10 @@ export function EnrollStep({ challenge, onSignedIn, onCancel }: { challenge: aut
   }
 
   async function sendText() {
+    if (phone.replace(/\D/g, "").length < 10) {
+      setError("Enter your 10-digit mobile number.");
+      return;
+    }
     setError(null);
     setBusy(true);
     try {
@@ -99,10 +120,15 @@ export function EnrollStep({ challenge, onSignedIn, onCancel }: { challenge: aut
   }
 
   async function confirm() {
+    const typed = readValue(code, codeRef);
+    if (typed.replace(/\s/g, "").length !== 6) {
+      setError("Enter the 6-digit code.");
+      return;
+    }
     setError(null);
     setBusy(true);
     try {
-      onSignedIn(await authApi.confirmEnrollment(challenge.challengeToken, code));
+      onSignedIn(await authApi.confirmEnrollment(challenge.challengeToken, typed));
     } catch (err) {
       setError(messageFor(err));
     } finally {
@@ -113,6 +139,7 @@ export function EnrollStep({ challenge, onSignedIn, onCancel }: { challenge: aut
   const codeField = (
     <Field
       label="6-digit code"
+      inputRef={codeRef}
       value={code}
       onChangeText={(t) => setCode(t.replace(/[^0-9 ]/g, ""))}
       keyboardType="number-pad"
@@ -162,7 +189,7 @@ export function EnrollStep({ challenge, onSignedIn, onCancel }: { challenge: aut
         <LinkButton title="On this phone? Open my authenticator app" onPress={() => Linking.openURL(totp.otpauthUrl).catch(() => setError("No authenticator app opened. Enter the key by hand instead."))} />
         {codeField}
         <StepError message={error} />
-        <PrimaryButton title="Confirm" onPress={confirm} loading={busy} disabled={code.replace(/\s/g, "").length !== 6} />
+        <PrimaryButton title="Confirm" onPress={confirm} loading={busy} />
         <LinkButton title="Choose a different method" onPress={() => { setMethod(null); setTotp(null); setCode(""); setError(null); }} />
       </View>
     );
@@ -177,7 +204,7 @@ export function EnrollStep({ challenge, onSignedIn, onCancel }: { challenge: aut
           <Text style={styles.body}>We texted a code to {smsSentTo}. Enter it below.</Text>
           {codeField}
           <StepError message={error} />
-          <PrimaryButton title="Confirm" onPress={confirm} loading={busy} disabled={code.replace(/\s/g, "").length !== 6} />
+          <PrimaryButton title="Confirm" onPress={confirm} loading={busy} />
           <LinkButton
             title="Send the text again"
             disabled={busy}
@@ -196,7 +223,7 @@ export function EnrollStep({ challenge, onSignedIn, onCancel }: { challenge: aut
           <Text style={styles.body}>Enter the mobile number that should receive your sign-in codes. Standard message rates may apply.</Text>
           <Field label="Mobile number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" placeholder="555-123-4567" />
           <StepError message={error} />
-          <PrimaryButton title="Send code" onPress={sendText} loading={busy} disabled={phone.replace(/\D/g, "").length < 10} />
+          <PrimaryButton title="Send code" onPress={sendText} loading={busy} />
         </>
       )}
       <LinkButton title="Choose a different method" onPress={() => { setMethod(null); setSmsSentTo(null); setCode(""); setError(null); }} />
@@ -208,6 +235,7 @@ export function EnrollStep({ challenge, onSignedIn, onCancel }: { challenge: aut
 
 export function VerifyStep({ challenge, onSignedIn, onCancel }: { challenge: authApi.Challenge; onSignedIn: (r: authApi.SignedIn) => void; onCancel: () => void }) {
   const [code, setCode] = useState("");
+  const verifyRef = useRef<TextInput>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
@@ -222,10 +250,15 @@ export function VerifyStep({ challenge, onSignedIn, onCancel }: { challenge: aut
   }, [cooldown]);
 
   async function submit() {
+    const typed = readValue(code, verifyRef).trim();
+    if (!typed) {
+      setError(useRecovery ? "Enter a recovery code." : "Enter the 6-digit code.");
+      return;
+    }
     setError(null);
     setBusy(true);
     try {
-      onSignedIn(await authApi.verifyMfa(challenge.challengeToken, code));
+      onSignedIn(await authApi.verifyMfa(challenge.challengeToken, typed));
     } catch (err) {
       setError(messageFor(err));
     } finally {
@@ -256,10 +289,11 @@ export function VerifyStep({ challenge, onSignedIn, onCancel }: { challenge: aut
             : "Open your authenticator app and type the 6-digit code for PestApp."}
       </Text>
       {useRecovery ? (
-        <Field label="Recovery code" value={code} onChangeText={setCode} autoCapitalize="characters" autoCorrect={false} placeholder="XXXXX-XXXXX" />
+        <Field label="Recovery code" inputRef={verifyRef} value={code} onChangeText={setCode} autoCapitalize="characters" autoCorrect={false} placeholder="XXXXX-XXXXX" />
       ) : (
         <Field
           label="6-digit code"
+          inputRef={verifyRef}
           value={code}
           onChangeText={(t) => setCode(t.replace(/[^0-9 ]/g, ""))}
           keyboardType="number-pad"
@@ -268,12 +302,12 @@ export function VerifyStep({ challenge, onSignedIn, onCancel }: { challenge: aut
           autoComplete="one-time-code"
           textContentType="oneTimeCode"
           autoFocus
-          onSubmitEditing={() => code.replace(/\s/g, "").length === 6 && submit()}
+          onSubmitEditing={submit}
         />
       )}
       {info ? <Text style={styles.info}>{info}</Text> : null}
       <StepError message={error} />
-      <PrimaryButton title="Sign in" onPress={submit} loading={busy} disabled={useRecovery ? code.trim().length < 8 : code.replace(/\s/g, "").length !== 6} />
+      <PrimaryButton title="Sign in" onPress={submit} loading={busy} />
       {sms && !useRecovery ? <LinkButton title={cooldown > 0 ? `Send a new code (${cooldown}s)` : "Send a new code"} onPress={resend} disabled={cooldown > 0} /> : null}
       <LinkButton title={useRecovery ? "Use my authenticator/text code instead" : "Lost your phone? Use a recovery code"} onPress={() => { setUseRecovery(!useRecovery); setCode(""); setError(null); }} />
       <LinkButton title="Back to sign in" onPress={onCancel} />

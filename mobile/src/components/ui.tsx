@@ -85,8 +85,9 @@ export function PrimaryButton({
 export function Field({
   label,
   secureTextEntry,
+  inputRef,
   ...inputProps
-}: { label: string } & TextInputProps) {
+}: { label: string; inputRef?: React.Ref<TextInput> } & TextInputProps) {
   // Password fields get a Show/Hide toggle so a person can check what they
   // typed (easy to fumble on a phone keyboard).
   const [revealed, setRevealed] = useState(false);
@@ -95,6 +96,7 @@ export function Field({
       <Text style={styles.fieldLabel}>{label}</Text>
       <View>
         <TextInput
+          ref={inputRef}
           style={[styles.input, secureTextEntry && styles.inputWithToggle]}
           placeholderTextColor={colors.textMuted}
           secureTextEntry={secureTextEntry && !revealed}

@@ -72,6 +72,10 @@ export default function SettingsScreen() {
   }
 
   async function handleChangePassword() {
+    if (!currentPassword || !newPassword) {
+      setPasswordMessage({ ok: false, text: "Enter your current password and a new one." });
+      return;
+    }
     setPasswordMessage(null);
     setPasswordBusy(true);
     try {
@@ -167,7 +171,7 @@ export default function SettingsScreen() {
             <Field label="New password (10+ characters)" value={newPassword} onChangeText={setNewPassword} secureTextEntry autoComplete="new-password" />
             <View style={styles.buttonRow}>
               <View style={styles.buttonHalf}>
-                <PrimaryButton title="Save" onPress={handleChangePassword} loading={passwordBusy} disabled={!currentPassword || !newPassword} />
+                <PrimaryButton title="Save" onPress={handleChangePassword} loading={passwordBusy} />
               </View>
               <View style={styles.buttonHalf}>
                 <PrimaryButton title="Cancel" onPress={() => { setChangingPassword(false); setPasswordMessage(null); }} />
