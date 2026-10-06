@@ -28,7 +28,9 @@ async function refreshTokens(): Promise<"ok" | "rejected" | "unreachable"> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refreshToken }),
     });
-    if (res.status >= 500) return "unreachable";
+    // 409 = the server just rotated this token and a retry is in flight
+    // (e.g. the earlier response was lost on a bad connection): not a "no".
+    if (res.status >= 500 || res.status === 409) return "unreachable";
     if (!res.ok) return "rejected";
     const data = await res.json();
     await tokenStore.setTokens(data.accessToken, data.refreshToken);

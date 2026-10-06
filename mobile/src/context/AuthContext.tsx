@@ -8,8 +8,14 @@ import { primeCache } from "../db/cache";
 interface AuthContextValue {
   user: User | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  // Step 1 of signing in. Returns what the server wants next (a temporary-
+  // password change, two-step setup, or the code); the sign-in screen walks
+  // through those and finishes with completeSignIn.
+  login: (email: string, password: string) => Promise<authApi.LoginResult>;
+  completeSignIn: (res: authApi.SignedIn) => Promise<void>;
   logout: () => Promise<void>;
+  // Ends every signed-in device, including this one.
+  logoutEverywhere: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -45,19 +51,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
+  async function finishSignIn(res: authApi.SignedIn) {
+    await tokenStore.setTokens(res.accessToken, res.refreshToken);
+    await tokenStore.setUser(res.user);
+    setUser(res.user);
+    primeCache().catch((err) => {
+      // best-effort: worst case the technician primes on next login
+      console.warn("primeCache failed", err);
+    });
+  }
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
       isLoading,
       async login(email, password) {
         const res = await authApi.login(email, password);
-        await tokenStore.setTokens(res.accessToken, res.refreshToken);
-        await tokenStore.setUser(res.user);
-        setUser(res.user);
-        primeCache().catch((err) => {
-          // best-effort: worst case the technician primes on next login
-          console.warn("primeCache failed", err);
-        });
+        // A password-only answer never carries tokens; only a finished
+        // sign-in (after the code, when required) does.
+        if (res.status === "ok") await finishSignIn(res);
+        return res;
+      },
+      async completeSignIn(res) {
+        await finishSignIn(res);
+      },
+      async logoutEverywhere() {
+        await authApi.logoutEverywhere().catch(() => {});
+        await tokenStore.clear();
+        setUser(null);
       },
       async logout() {
         const refreshToken = await tokenStore.getRefreshToken();

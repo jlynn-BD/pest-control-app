@@ -32,6 +32,11 @@ export interface User extends BaseEntity {
   role: UserRole;
   phone?: string | null;
   active: boolean;
+  // Second sign-in factor: null until the person has set one up.
+  mfaMethod?: "SMS" | "TOTP" | null;
+  mustChangePassword?: boolean;
+  lastLoginAt?: string | null;
+  lockedUntil?: string | null;
 }
 
 export interface Customer extends BaseEntity {

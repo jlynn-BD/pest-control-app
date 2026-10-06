@@ -1,6 +1,9 @@
 import { useFocusEffect } from "@react-navigation/native";
 import React, { useCallback, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import * as authApi from "../../api/auth";
+import { ApiError } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import {
   LocalSyncConflict,
@@ -9,10 +12,17 @@ import {
   resolveSyncConflictUseServer,
 } from "../../db/inspectionStore";
 import { getPendingSyncCount, runSync, SyncResult } from "../../sync/syncEngine";
-import { Badge, Card, PrimaryButton, colors } from "../../components/ui";
+import { Badge, Card, Field, PrimaryButton, colors } from "../../components/ui";
 
 export default function SettingsScreen() {
-  const { user, logout } = useAuth();
+  const { user, logout, logoutEverywhere } = useAuth();
+  const navigation = useNavigation<any>();
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordMessage, setPasswordMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [confirmingSignOutAll, setConfirmingSignOutAll] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [lastResult, setLastResult] = useState<SyncResult | null>(null);
@@ -61,8 +71,24 @@ export default function SettingsScreen() {
     setResolvingKey(null);
   }
 
+  async function handleChangePassword() {
+    setPasswordMessage(null);
+    setPasswordBusy(true);
+    try {
+      await authApi.changePassword(currentPassword, newPassword);
+      setPasswordMessage({ ok: true, text: "Password changed. Your other devices have been signed out." });
+      setCurrentPassword("");
+      setNewPassword("");
+      setChangingPassword(false);
+    } catch (err) {
+      setPasswordMessage({ ok: false, text: err instanceof ApiError || err instanceof Error ? err.message : "Couldn't change the password." });
+    } finally {
+      setPasswordBusy(false);
+    }
+  }
+
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
       <Card>
         <Text style={styles.name}>
           {user?.firstName} {user?.lastName}
@@ -124,14 +150,72 @@ export default function SettingsScreen() {
         </>
       ) : null}
 
+      <Text style={styles.sectionTitle}>Security</Text>
+      <Card style={styles.syncCard}>
+        <View style={styles.syncRow}>
+          <Text style={styles.syncLabel}>Two-step sign-in</Text>
+          <Badge
+            label={user?.mfaMethod === "TOTP" ? "Authenticator app" : user?.mfaMethod === "SMS" ? "Text message" : "Not set up"}
+            tone={user?.mfaMethod ? "success" : "warning"}
+          />
+        </View>
+        <Text style={styles.meta}>Lost your phone? Ask an admin to reset your two-step sign-in, or use one of your saved recovery codes.</Text>
+        <View style={styles.spacerSmall} />
+        {changingPassword ? (
+          <>
+            <Field label="Current password" value={currentPassword} onChangeText={setCurrentPassword} secureTextEntry autoComplete="current-password" />
+            <Field label="New password (10+ characters)" value={newPassword} onChangeText={setNewPassword} secureTextEntry autoComplete="new-password" />
+            <View style={styles.buttonRow}>
+              <View style={styles.buttonHalf}>
+                <PrimaryButton title="Save" onPress={handleChangePassword} loading={passwordBusy} disabled={!currentPassword || !newPassword} />
+              </View>
+              <View style={styles.buttonHalf}>
+                <PrimaryButton title="Cancel" onPress={() => { setChangingPassword(false); setPasswordMessage(null); }} />
+              </View>
+            </View>
+          </>
+        ) : (
+          <PrimaryButton title="Change password" onPress={() => { setPasswordMessage(null); setChangingPassword(true); }} />
+        )}
+        {passwordMessage ? <Text style={passwordMessage.ok ? styles.meta : styles.errorText}>{passwordMessage.text}</Text> : null}
+        <View style={styles.spacerSmall} />
+        {confirmingSignOutAll ? (
+          <>
+            <Text style={styles.meta}>This signs you out on every phone, tablet and computer, including this one.</Text>
+            <View style={styles.buttonRow}>
+              <View style={styles.buttonHalf}>
+                <PrimaryButton title="Sign out everywhere" onPress={logoutEverywhere} />
+              </View>
+              <View style={styles.buttonHalf}>
+                <PrimaryButton title="Cancel" onPress={() => setConfirmingSignOutAll(false)} />
+              </View>
+            </View>
+          </>
+        ) : (
+          <PrimaryButton title="Sign out of all devices" onPress={() => setConfirmingSignOutAll(true)} />
+        )}
+      </Card>
+
+      {user?.role === "ADMIN" ? (
+        <>
+          <Text style={styles.sectionTitle}>Team</Text>
+          <Card style={styles.syncCard}>
+            <Text style={styles.meta}>Add people, reset passwords or two-step sign-in, and turn off access for someone who has left.</Text>
+            <View style={styles.spacerSmall} />
+            <PrimaryButton title="Manage team" onPress={() => navigation.navigate("Team")} />
+          </Card>
+        </>
+      ) : null}
+
       <View style={styles.spacer} />
       <PrimaryButton title="Log out" onPress={logout} />
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: 16 },
+  scroll: { flex: 1, backgroundColor: colors.bg },
+  container: { padding: 16, paddingBottom: 40 },
   name: { fontSize: 18, fontWeight: "700", color: colors.text },
   meta: { fontSize: 14, color: colors.textMuted, marginTop: 2 },
   sectionTitle: { fontSize: 15, fontWeight: "700", color: colors.text, marginTop: 20, marginBottom: 8 },

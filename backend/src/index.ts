@@ -21,7 +21,30 @@ import { reportsRouter } from "./modules/reports/routes";
 
 const app = express();
 
-app.use(cors());
+// Render terminates TLS in front of the API and forwards the real client
+// address in X-Forwarded-For; trusting exactly one hop makes req.ip (used by
+// the sign-in rate limiter and audit log) the caller, not Render's proxy.
+app.set("trust proxy", 1);
+app.disable("x-powered-by");
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
+  next();
+});
+
+// The API uses bearer tokens (no cookies), so CORS isn't the main defence,
+// but there's no reason to answer browsers from arbitrary sites: only the
+// deployed web app, local development, and native apps (which send no Origin).
+const allowedOrigins = (process.env.CORS_ORIGINS || "https://pestapp-web.onrender.com").split(",").map((o) => o.trim()).filter(Boolean);
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) callback(null, true);
+      else callback(null, false);
+    },
+  })
+);
 app.use(express.json({ limit: "5mb" }));
 
 app.get("/api/health", (req, res) => res.json({ status: "ok", time: new Date().toISOString() }));

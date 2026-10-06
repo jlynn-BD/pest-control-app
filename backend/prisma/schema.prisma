@@ -32,6 +32,24 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  // Sign-in security. mfaMethod is null until the person finishes enrolling
+  // ("SMS" | "TOTP"); the TOTP secret is stored encrypted, never in clear.
+  // mustChangePassword is set when an admin issues a temporary password.
+  mfaMethod          String?
+  totpSecretEnc      String?
+  totpLastStep       Int?
+  phoneVerifiedAt    DateTime?
+  mfaEnrolledAt      DateTime?
+  recoveryCodeHashes String    @default("[]")
+  mustChangePassword Boolean   @default(false)
+  passwordChangedAt  DateTime?
+  failedLoginCount   Int       @default(0)
+  lockedUntil        DateTime?
+  lastLoginAt        DateTime?
+  // Access tokens issued before this moment are refused - set whenever sessions
+  // are revoked, so a lost phone is cut off at once, not 15 minutes later.
+  sessionsValidAfter DateTime?
+
   refreshTokens        RefreshToken[]
   technicianAppointments Appointment[]      @relation("AppointmentTechnician")
   createdAppointments  Appointment[]      @relation("AppointmentCreatedBy")
@@ -51,9 +69,63 @@ model RefreshToken {
   revokedAt DateTime?
   createdAt DateTime  @default(now())
 
+  // One "family" per sign-in: every rotation of the token keeps the same
+  // familyId and sessionStartedAt, so a session has an absolute lifetime
+  // (it can't be refreshed forever) and a stolen, already-used token can be
+  // detected and the whole family revoked. mfaVerifiedAt is set only when the
+  // second factor was completed - refresh refuses sessions without it.
+  familyId        String?
+  sessionStartedAt DateTime  @default(now())
+  mfaVerifiedAt   DateTime?
+  lastUsedAt      DateTime?
+  // Set only when the token was spent by a normal refresh (not by logout/revoke)
+  rotatedAt       DateTime?
+  userAgent       String?
+  ip              String?
+
   user User @relation(fields: [userId], references: [id])
 
   @@index([userId])
+  @@index([familyId])
+}
+
+// A half-finished sign-in: the password was right, but the second step
+// (temporary-password change, MFA enrollment, or the code) isn't done yet.
+// Nothing here grants access; it only lets the next step be attempted a
+// limited number of times.
+model LoginChallenge {
+  id                   String    @id
+  userId               String
+  codeHash             String?
+  pendingMethod        String?
+  pendingPhone         String?
+  pendingTotpSecretEnc String?
+  attempts             Int       @default(0)
+  sends                Int       @default(0)
+  lastSentAt           DateTime?
+  expiresAt            DateTime
+  consumedAt           DateTime?
+  ip                   String?
+  userAgent            String?
+  createdAt            DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// Append-only record of sign-in activity (who, what, from where) so an admin
+// can see suspicious attempts. Never stores passwords or codes.
+model AuthEvent {
+  id        String   @id
+  userId    String?
+  email     String?
+  type      String
+  ip        String?
+  userAgent String?
+  detail    String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
 }
 
 model Customer {

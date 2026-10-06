@@ -4,7 +4,7 @@ import { Platform, Text } from "react-native";
 import CustomersNavigator from "./CustomersNavigator";
 import InspectionsNavigator from "./InspectionsNavigator";
 import ScheduleScreen from "../screens/schedule/ScheduleScreen";
-import SettingsScreen from "../screens/settings/SettingsScreen";
+import SettingsNavigator from "./SettingsNavigator";
 import { colors } from "../components/ui";
 
 const Tab = createBottomTabNavigator();
@@ -34,7 +34,7 @@ export default function MainTabs() {
       <Tab.Screen name="Schedule" component={ScheduleScreen} />
       <Tab.Screen name="Customers" component={CustomersNavigator} options={{ headerShown: false }} />
       <Tab.Screen name="Inspections" component={InspectionsNavigator} options={{ headerShown: false }} />
-      <Tab.Screen name="Settings" component={SettingsScreen} />
+      <Tab.Screen name="Settings" component={SettingsNavigator} options={{ headerShown: false }} />
     </Tab.Navigator>
   );
 }

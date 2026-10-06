@@ -2,16 +2,25 @@ import React, { useEffect, useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useAuth } from "../../context/AuthContext";
 import { ApiError } from "../../api/client";
+import type { Challenge, LoginResult, SignedIn } from "../../api/auth";
 import { InstallHint } from "../../components/InstallHint";
 import { Field, PrimaryButton, colors } from "../../components/ui";
+import { EnrollStep, PasswordChangeStep, RecoveryCodesStep, VerifyStep } from "./AuthSteps";
 
 export default function LoginScreen() {
-  const { login } = useAuth();
-  const [email, setEmail] = useState("tech@pestapp.dev");
-  const [password, setPassword] = useState("password123");
+  const { login, completeSignIn } = useAuth();
+  // Deliberately empty: every person signs in with their own account. (The
+  // old screen pre-filled a shared demo login.)
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [slow, setSlow] = useState(false);
+  // What the server asked for after the password. null = still on the first form.
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
+  // Set after two-step setup: the finished sign-in is held back until the
+  // person has seen their one-time recovery codes.
+  const [pendingSignIn, setPendingSignIn] = useState<SignedIn | null>(null);
 
   // The server sleeps when idle and can take a minute to wake; without a word
   // on screen it just looks like the button froze.
@@ -24,11 +33,28 @@ export default function LoginScreen() {
     return () => clearTimeout(timer);
   }, [submitting]);
 
+  function startOver() {
+    setChallenge(null);
+    setPendingSignIn(null);
+    setPassword("");
+    setError(null);
+  }
+
+  function handleResult(res: LoginResult) {
+    if (res.status === "challenge") setChallenge(res);
+    // "ok" with no code needed is handled inside login() itself.
+  }
+
+  async function handleSignedIn(res: SignedIn) {
+    if (res.recoveryCodes?.length) setPendingSignIn(res);
+    else await completeSignIn(res);
+  }
+
   async function handleSubmit() {
     setError(null);
     setSubmitting(true);
     try {
-      await login(email.trim(), password);
+      handleResult(await login(email.trim(), password));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to reach the server");
     } finally {
@@ -36,26 +62,52 @@ export default function LoginScreen() {
     }
   }
 
-  return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <Text style={styles.title}>PestApp Field</Text>
+  let body: React.ReactNode;
+  if (pendingSignIn) {
+    body = <RecoveryCodesStep codes={pendingSignIn.recoveryCodes ?? []} onDone={() => completeSignIn(pendingSignIn)} />;
+  } else if (challenge?.next === "password_change") {
+    body = <PasswordChangeStep challenge={challenge} onResult={handleResult} onCancel={startOver} />;
+  } else if (challenge?.next === "mfa_enroll") {
+    body = <EnrollStep challenge={challenge} onSignedIn={handleSignedIn} onCancel={startOver} />;
+  } else if (challenge?.next === "mfa_verify") {
+    body = <VerifyStep challenge={challenge} onSignedIn={handleSignedIn} onCancel={startOver} />;
+  } else {
+    body = (
+      <>
         <Text style={styles.subtitle}>Sign in to view your schedule and inspections</Text>
-
         <View style={styles.form}>
           <Field
             label="Email"
             value={email}
             onChangeText={setEmail}
             autoCapitalize="none"
+            autoCorrect={false}
             keyboardType="email-address"
-            autoComplete="email"
+            autoComplete="username"
+            textContentType="username"
           />
-          <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry />
+          <Field
+            label="Password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoComplete="current-password"
+            textContentType="password"
+            onSubmitEditing={() => email && password && handleSubmit()}
+          />
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          <PrimaryButton title="Log in" onPress={handleSubmit} loading={submitting} />
+          <PrimaryButton title="Log in" onPress={handleSubmit} loading={submitting} disabled={!email.trim() || !password} />
           {slow ? <Text style={styles.slow}>Waking up the server - the first sign-in can take up to a minute. Please keep this open.</Text> : null}
         </View>
+      </>
+    );
+  }
+
+  return (
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <Text style={styles.title}>PestApp Field</Text>
+        {body}
         <InstallHint />
       </ScrollView>
     </KeyboardAvoidingView>
@@ -65,8 +117,8 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.bg },
   container: { flexGrow: 1, justifyContent: "center", padding: 24 },
-  title: { fontSize: 28, fontWeight: "700", color: colors.text, textAlign: "center" },
-  subtitle: { fontSize: 14, color: colors.textMuted, textAlign: "center", marginTop: 6, marginBottom: 32 },
+  title: { fontSize: 28, fontWeight: "700", color: colors.text, textAlign: "center", marginBottom: 6 },
+  subtitle: { fontSize: 14, color: colors.textMuted, textAlign: "center", marginBottom: 32 },
   form: {},
   error: { color: colors.danger, marginBottom: 14, textAlign: "center" },
   slow: { color: colors.textMuted, fontSize: 13, textAlign: "center", marginTop: 12 },
