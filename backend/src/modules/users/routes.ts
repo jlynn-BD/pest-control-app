@@ -179,6 +179,51 @@ usersRouter.delete(
   })
 );
 
+// Permanent removal - only for an account that is already turned off and has
+// no work attached (no inspections, appointments, signatures, reports...).
+// Anyone with history stays, turned off, so past inspections keep their
+// technician. Sign-in records are kept for the audit trail.
+usersRouter.delete(
+  "/:id/permanent",
+  requireRole("ADMIN"),
+  asyncHandler(async (req, res) => {
+    const target = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      select: {
+        id: true,
+        email: true,
+        active: true,
+        _count: {
+          select: {
+            technicianAppointments: true,
+            createdAppointments: true,
+            technicianInspections: true,
+            signaturesAsUser: true,
+            generatedReports: true,
+            ownedRecommendations: true,
+            createdEstimates: true,
+            sectionSkips: true,
+          },
+        },
+      },
+    });
+    if (!target) throw new HttpError(404, "User not found");
+    if (target.id === req.user!.id) throw new HttpError(400, "You can't delete your own account.");
+    if (target.active) throw new HttpError(400, "Turn off their access first, then delete.");
+    const attached = Object.values(target._count).reduce((a, b) => a + b, 0);
+    if (attached > 0) {
+      throw new HttpError(409, "This person has inspections, appointments or other work on record, so they can't be deleted. Leave them turned off - they can't sign in.");
+    }
+    await prisma.$transaction([
+      prisma.refreshToken.deleteMany({ where: { userId: target.id } }),
+      prisma.loginChallenge.deleteMany({ where: { userId: target.id } }),
+      prisma.user.delete({ where: { id: target.id } }),
+    ]);
+    recordAuthEvent(req, "USER_DELETED", { email: target.email, detail: `by ${req.user!.id}` });
+    res.status(204).send();
+  })
+);
+
 usersRouter.post(
   "/:id/reset-password",
   requireRole("ADMIN"),

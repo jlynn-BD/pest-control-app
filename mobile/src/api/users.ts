@@ -26,3 +26,8 @@ export function resetUserMfa(id: string) {
 export function unlockUser(id: string) {
   return apiRequest<void>(`/api/users/${id}/unlock`, { method: "POST" });
 }
+
+// Only works for a turned-off person with no work on record.
+export function deleteUserPermanently(id: string) {
+  return apiRequest<void>(`/api/users/${id}/permanent`, { method: "DELETE" });
+}

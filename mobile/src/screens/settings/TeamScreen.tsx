@@ -37,8 +37,9 @@ export default function TeamScreen() {
   const [phone, setPhone] = useState("");
   const [role, setRole] = useState<Role>("TECHNICIAN");
   const [busy, setBusy] = useState(false);
+  const [showTurnedOff, setShowTurnedOff] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<{ id: string; action: "deactivate" | "reset-mfa" | "reset-password" } | null>(null);
+  const [confirm, setConfirm] = useState<{ id: string; action: "deactivate" | "reset-mfa" | "reset-password" | "delete" } | null>(null);
   // A temporary password is shown exactly once, here, and then dropped.
   const [secret, setSecret] = useState<{ name: string; password: string } | null>(null);
 
@@ -88,6 +89,9 @@ export default function TeamScreen() {
   // The seeded sample accounts (@pestapp.dev) share a known password; they exist
   // so the app can be demoed, and should be switched off once real accounts exist.
   const demoAccounts = (users ?? []).filter((u) => u.active && u.email.toLowerCase().endsWith("@pestapp.dev"));
+
+  const activeUsers = (users ?? []).filter((u) => u.active);
+  const turnedOffUsers = (users ?? []).filter((u) => !u.active);
 
   if (!users) return error ? <Text style={styles.error}>{error}</Text> : <LoadingView label="Loading team..." />;
 
@@ -146,8 +150,23 @@ export default function TeamScreen() {
         <PrimaryButton title="+ Add a person" onPress={() => { setSecret(null); setAdding(true); }} />
       )}
 
-      <Text style={styles.sectionTitle}>People ({users.length})</Text>
-      {users.map((u) => {
+      <Text style={styles.sectionTitle}>People ({activeUsers.length})</Text>
+      {activeUsers.map(renderUser)}
+
+      {turnedOffUsers.length > 0 ? (
+        <>
+          <Pressable onPress={() => setShowTurnedOff(!showTurnedOff)} accessibilityRole="button">
+            <Text style={styles.sectionTitle}>
+              {showTurnedOff ? "▾" : "▸"} Turned off ({turnedOffUsers.length})
+            </Text>
+          </Pressable>
+          {showTurnedOff ? turnedOffUsers.map(renderUser) : null}
+        </>
+      ) : null}
+    </ScrollView>
+  );
+
+  function renderUser(u: User) {
         const isMe = u.id === me?.id;
         const open = expandedId === u.id;
         return (
@@ -193,7 +212,9 @@ export default function TeamScreen() {
                 {confirm?.id === u.id ? (
                   <View>
                     <Text style={styles.meta}>
-                      {confirm.action === "deactivate"
+                      {confirm.action === "delete"
+                        ? `Permanently delete ${u.firstName} ${u.lastName}? This can't be undone. (It only works for someone with no inspections or other work on record.)`
+                        : confirm.action === "deactivate"
                         ? `Turn off ${u.firstName}'s access? They're signed out everywhere right away. Their past work stays in the app.`
                         : confirm.action === "reset-mfa"
                           ? `Reset ${u.firstName}'s two-step sign-in? They're signed out everywhere and must set it up again at their next sign-in.`
@@ -206,7 +227,8 @@ export default function TeamScreen() {
                           loading={busy}
                           onPress={() =>
                             run(async () => {
-                              if (confirm.action === "deactivate") await usersApi.updateUser(u.id, { active: false });
+                              if (confirm.action === "delete") await usersApi.deleteUserPermanently(u.id);
+                              else if (confirm.action === "deactivate") await usersApi.updateUser(u.id, { active: false });
                               else if (confirm.action === "reset-mfa") await usersApi.resetUserMfa(u.id);
                               else {
                                 const res = await usersApi.resetUserPassword(u.id);
@@ -229,7 +251,10 @@ export default function TeamScreen() {
                     {u.active ? (
                       isMe ? null : <PrimaryButton title="Turn off access" onPress={() => setConfirm({ id: u.id, action: "deactivate" })} disabled={busy} />
                     ) : (
-                      <PrimaryButton title="Turn access back on" onPress={() => run(async () => void (await usersApi.updateUser(u.id, { active: true })))} disabled={busy} />
+                      <>
+                        <PrimaryButton title="Turn access back on" onPress={() => run(async () => void (await usersApi.updateUser(u.id, { active: true })))} disabled={busy} />
+                        <PrimaryButton title="Delete permanently" onPress={() => setConfirm({ id: u.id, action: "delete" })} disabled={busy} />
+                      </>
                     )}
                   </View>
                 )}
@@ -237,9 +262,7 @@ export default function TeamScreen() {
             ) : null}
           </Card>
         );
-      })}
-    </ScrollView>
-  );
+  }
 }
 
 const styles = StyleSheet.create({

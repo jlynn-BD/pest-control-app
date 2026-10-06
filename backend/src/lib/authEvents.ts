@@ -13,6 +13,7 @@ export type AuthEventType =
   | "LOGOUT_ALL"
   | "USER_CREATED"
   | "USER_DEACTIVATED"
+  | "USER_DELETED"
   | "USER_REACTIVATED"
   | "ADMIN_PASSWORD_RESET"
   | "ADMIN_MFA_RESET"
