@@ -88,7 +88,15 @@ export const ENTITIES: Record<string, EntityDef> = {
     article: "an",
     noun: "appointment",
     model: "appointment",
-    label: (r) => (r.scheduledStart ? `${new Date(r.scheduledStart as string | Date).toISOString().slice(0, 16).replace("T", " ")} UTC` : undefined),
+    // "Casey Rivera - 77 Cedar Lane" (the time is stored in UTC, which would
+    // read as the wrong hour next to a local-time booking).
+    label: async (r) => {
+      const [c, p] = await Promise.all([
+        prisma.customer.findUnique({ where: { id: str(r.customerId) }, select: { name: true } }),
+        prisma.property.findUnique({ where: { id: str(r.propertyId) }, select: { addressLine1: true } }),
+      ]);
+      return [c?.name, p?.addressLine1].filter(Boolean).join(" - ") || undefined;
+    },
     links: (r) => ({ propertyId: str(r.propertyId), customerId: str(r.customerId), inspectionId: str(r.inspectionId) || undefined }),
   },
   Inspection: {
