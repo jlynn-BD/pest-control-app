@@ -14,7 +14,7 @@ import {
 } from "@pest-app/shared";
 import React, { useCallback, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { getCachedProperty, getCachedTemplateSections, isSiteMapSketchDirty } from "../../db/cache";
+import { getCachedProperty, getCachedTemplateSections, isSiteMapSketchDirty, primeCache } from "../../db/cache";
 import { pushDirtySketches, saveSketchLocally } from "../../sync/siteMapSync";
 import { generateId } from "../../lib/uuid";
 import { getLocalInspectionDetail, LocalInspectionDetail } from "../../db/inspectionStore";
@@ -231,7 +231,11 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     try {
       await uploadSiteMap(property.id, uri);
       setError(null);
-      navigation.goBack();
+      // Pull the new photo down and show it right here, so it's obvious the
+      // picture was saved (before, the screen closed and the photo only
+      // appeared after the next sync).
+      await primeCache().catch(() => {});
+      refresh();
     } catch (err) {
       setError(err instanceof ApiError || err instanceof Error ? err.message : "Failed to upload site plan");
     } finally {

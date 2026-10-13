@@ -1,8 +1,10 @@
 import type { SiteMapAnnotation, SiteMapAnnotationType } from "@pest-app/shared";
 import React, { useMemo, useRef, useState } from "react";
-import { Image, LayoutChangeEvent, PanResponder, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { LayoutChangeEvent, PanResponder, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Line as SvgLine, Polygon, Rect } from "react-native-svg";
 import { arrowHeadPoints, gridLines, Line, Point } from "../lib/arrowGeometry";
+import { API_BASE_URL } from "../api/config";
+import { AuthImage } from "./AuthImage";
 import { colors } from "./ui";
 
 export type SiteMapMode = "view" | "arrow" | "wall" | "label" | "annotate";
@@ -502,7 +504,12 @@ export function SiteMapCanvas({
 
   return (
     <View style={[styles.container, { height }, NO_SELECT, mode !== "view" ? NO_PAGE_SCROLL : null]} onLayout={handleLayout} {...panHandlers}>
-      {imageUri ? <Image source={{ uri: imageUri }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : null}
+      {imageUri ? (
+        // A photo stored on the server comes back as a path ("/api/media/...")
+        // and sits behind login: give it the server's address and load it with
+        // the person's access token (AuthImage), or it renders blank on the web.
+        <AuthImage uri={imageUri.startsWith("/api/") ? `${API_BASE_URL}${imageUri}` : imageUri} style={StyleSheet.absoluteFill} resizeMode="cover" />
+      ) : null}
       {size.width > 0 ? (
         <Svg width={size.width} height={size.height} style={StyleSheet.absoluteFill} pointerEvents="none">
           {!imageUri

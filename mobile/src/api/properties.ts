@@ -1,5 +1,6 @@
 import type { Inspection, Property, RawSketch } from "@pest-app/shared";
 import { apiRequest } from "./client";
+import { appendPhotoFile } from "../lib/photoUpload";
 
 export type ServiceHistoryEntry = Inspection & {
   technician: { id: string; firstName: string; lastName: string };
@@ -34,9 +35,12 @@ export function getPropertyServiceHistory(id: string): Promise<ServiceHistoryEnt
   return apiRequest(`/api/properties/${id}/inspections`);
 }
 
-export function uploadSiteMap(propertyId: string, imageUri: string): Promise<Property> {
+export async function uploadSiteMap(propertyId: string, imageUri: string): Promise<Property> {
   const form = new FormData();
-  form.append("file", { uri: imageUri, name: `site-map-${propertyId}.jpg`, type: "image/jpeg" } as unknown as Blob);
+  // In a browser the file has to be attached as real bytes; the phone-app
+  // style { uri } object is sent as the text "[object Object]", which the
+  // server reports as "No file uploaded".
+  await appendPhotoFile(form, imageUri, `site-map-${propertyId}.jpg`);
   return apiRequest<Property>(`/api/properties/${propertyId}/site-map`, { method: "POST", body: form, isFormData: true });
 }
 
