@@ -52,6 +52,11 @@ const RULES: Rule[] = [
     id: 1,
     custom: { action: "property.site_plan_uploaded", summary: (l) => `uploaded a site-plan photo${l ? ` for ${l}` : ""}` },
   }),
+  R("DELETE", `/properties/${ID}/site-map`, {
+    entity: "Property",
+    id: 1,
+    custom: { action: "property.site_plan_removed", summary: (l) => `removed the site-plan photo${l ? ` for ${l}` : ""}` },
+  }),
   R("PATCH", `/properties/${ID}/site-map-sketch`, { entity: "Property", id: 1, sketch: true }),
   // appointments
   R("POST", "/appointments", { entity: "Appointment", kind: "created" }),

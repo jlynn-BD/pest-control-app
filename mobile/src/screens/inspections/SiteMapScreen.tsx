@@ -18,7 +18,7 @@ import { getCachedProperty, getCachedTemplateSections, isSiteMapSketchDirty, pri
 import { pushDirtySketches, saveSketchLocally } from "../../sync/siteMapSync";
 import { generateId } from "../../lib/uuid";
 import { getLocalInspectionDetail, LocalInspectionDetail } from "../../db/inspectionStore";
-import { uploadSiteMap } from "../../api/properties";
+import { deleteSiteMap, uploadSiteMap } from "../../api/properties";
 import { parseSiteMapSketch } from "../../lib/siteMapSketch";
 import { findChecklistResponseSummary } from "../../lib/checklist";
 import { capturePhoto } from "../../lib/photo";
@@ -89,6 +89,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // comes up ready to type, but a plain tap-to-select (to move/delete) doesn't.
   const [nameAutoFocus, setNameAutoFocus] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [confirmingRemovePhoto, setConfirmingRemovePhoto] = useState(false);
+  const [removingPhoto, setRemovingPhoto] = useState(false);
   const [saving, setSaving] = useState(false);
   // This device holds map edits the server hasn't confirmed yet.
   const [sketchPending, setSketchPending] = useState(false);
@@ -220,6 +222,24 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     setSelectedWallId(null);
     setSelectedAnnotationId(null);
     setShapeLabelText("");
+  }
+
+  // Takes the site-plan photo off the property (the picture is deleted from the
+  // server) and goes back to the drawn map. Needs a connection, like uploading.
+  async function handleRemovePhoto() {
+    if (!property) return;
+    setRemovingPhoto(true);
+    setError(null);
+    try {
+      await deleteSiteMap(property.id);
+      await primeCache().catch(() => {});
+      setConfirmingRemovePhoto(false);
+      refresh();
+    } catch (err) {
+      setError(err instanceof ApiError || err instanceof Error ? err.message : "Couldn't remove the photo. Check your connection and try again.");
+    } finally {
+      setRemovingPhoto(false);
+    }
   }
 
   async function handleUpload() {
@@ -854,6 +874,29 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       {!imageUri && !editorOpen ? (
         <View style={styles.uploadRow}>
           <PrimaryButton title="Upload a site plan photo instead" onPress={handleUpload} loading={uploading} />
+        </View>
+      ) : null}
+
+      {imageUri && !editorOpen ? (
+        <View style={styles.uploadRow}>
+          {confirmingRemovePhoto ? (
+            <Card style={styles.labelPromptCard}>
+              <Text style={styles.editorTitle}>Delete this site plan photo?</Text>
+              <Text style={styles.editHint}>
+                The picture is deleted for everyone who uses this property, and the map goes back to the drawing tools. Markers placed on the photo won't show on the drawn map, but the findings themselves are kept.
+              </Text>
+              <View style={styles.buttonRow}>
+                <View style={styles.buttonHalf}>
+                  <PrimaryButton title="Delete photo" onPress={handleRemovePhoto} loading={removingPhoto} />
+                </View>
+                <View style={styles.buttonHalf}>
+                  <PrimaryButton title="Keep it" onPress={() => setConfirmingRemovePhoto(false)} disabled={removingPhoto} />
+                </View>
+              </View>
+            </Card>
+          ) : (
+            <PrimaryButton title="Delete site plan photo" onPress={() => setConfirmingRemovePhoto(true)} />
+          )}
         </View>
       ) : null}
 

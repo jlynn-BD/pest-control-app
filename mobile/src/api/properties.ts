@@ -44,6 +44,10 @@ export async function uploadSiteMap(propertyId: string, imageUri: string): Promi
   return apiRequest<Property>(`/api/properties/${propertyId}/site-map`, { method: "POST", body: form, isFormData: true });
 }
 
+export function deleteSiteMap(propertyId: string): Promise<void> {
+  return apiRequest<void>(`/api/properties/${propertyId}/site-map`, { method: "DELETE" });
+}
+
 export function saveSiteMapSketch(propertyId: string, sketch: RawSketch): Promise<Property> {
   return apiRequest<Property>(`/api/properties/${propertyId}/site-map-sketch`, { method: "PATCH", body: sketch });
 }

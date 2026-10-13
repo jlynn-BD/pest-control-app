@@ -127,6 +127,22 @@ propertiesRouter.post(
   })
 );
 
+// Removes the site-plan photo for good: the property goes back to the
+// drawn map, and every stored copy of the picture (including ones left behind
+// by earlier replacements) is deleted from storage, not just hidden.
+propertiesRouter.delete(
+  "/:id/site-map",
+  asyncHandler(async (req, res) => {
+    const property = await prisma.property.findFirst({ where: { id: req.params.id, deletedAt: null } });
+    if (!property) throw new HttpError(404, "Property not found");
+    await prisma.$transaction([
+      prisma.property.update({ where: { id: property.id }, data: { siteMapImageUrl: null, siteMapUpdatedAt: new Date() } }),
+      prisma.storedFile.deleteMany({ where: { key: { startsWith: `site-maps/${property.id}/` } } }),
+    ]);
+    res.status(204).send();
+  })
+);
+
 // Elements carry updatedAt (ms) and, once removed, are kept as tombstones
 // ({ id, deleted: true, updatedAt }) - see shared/constants/siteMapMerge.ts.
 // Coordinates are only required on elements that aren't deleted.
