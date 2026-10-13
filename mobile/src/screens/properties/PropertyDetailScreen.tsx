@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React, { useState } from "react";
-import { Image, ScrollView, StyleSheet, Text } from "react-native";
+import { ScrollView, StyleSheet, Text } from "react-native";
+import { API_BASE_URL } from "../../api/config";
+import { AuthImage } from "../../components/AuthImage";
 import { getProperty, getPropertyServiceHistory, uploadSiteMap } from "../../api/properties";
 import { capturePhoto } from "../../lib/photo";
 import { ApiError } from "../../api/client";
@@ -25,7 +27,7 @@ export default function PropertyDetailScreen({ route }: Props) {
   const uploadMutation = useMutation({
     mutationFn: (uri: string) => uploadSiteMap(propertyId, uri),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["properties", propertyId] }),
-    onError: (err) => setError(err instanceof ApiError || err instanceof Error ? err.message : "Failed to upload site plan"),
+    onError: (err) => setError(err instanceof ApiError || err instanceof Error ? err.message : "Failed to create site plan"),
     onSettled: () => setUploading(false),
   });
 
@@ -59,13 +61,19 @@ export default function PropertyDetailScreen({ route }: Props) {
 
       <Text style={styles.sectionTitle}>Site plan</Text>
       {property.siteMapImageUrl ? (
-        <Image source={{ uri: property.siteMapImageUrl }} style={styles.siteMapThumb} resizeMode="cover" />
+        // Stored on the server behind login: needs the server address and the
+        // person's access token or it shows blank.
+        <AuthImage
+          uri={property.siteMapImageUrl.startsWith("/api/") ? `${API_BASE_URL}${property.siteMapImageUrl}` : property.siteMapImageUrl}
+          style={styles.siteMapThumb}
+          resizeMode="cover"
+        />
       ) : (
-        <Text style={styles.emptyText}>No site plan uploaded yet. Technicians mark entry points and issues on it during inspections.</Text>
+        <Text style={styles.emptyText}>No site plan yet. Create one from a photo of the property layout. Technicians mark entry points and issues on it during inspections.</Text>
       )}
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <PrimaryButton
-        title={property.siteMapImageUrl ? "Replace site plan" : "Upload site plan"}
+        title={property.siteMapImageUrl ? "Replace site plan" : "Create site plan"}
         onPress={handleUploadSiteMap}
         loading={uploading}
       />
