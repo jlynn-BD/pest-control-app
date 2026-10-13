@@ -12,7 +12,7 @@ import {
   SiteMapLevel,
   visibleSketch,
 } from "@pest-app/shared";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getCachedProperty, getCachedTemplateSections, isSiteMapSketchDirty, primeCache } from "../../db/cache";
 import { pushDirtySketches, saveSketchLocally } from "../../sync/siteMapSync";
@@ -59,7 +59,11 @@ type LastAction =
   | { kind: "annotation"; id: string };
 
 export default function SiteMapScreen({ route, navigation }: Props) {
-  const { inspectionId, fromChecklistResponseId } = route.params;
+  const { inspectionId, propertyId, fromChecklistResponseId } = route.params;
+  // Opened from a property page (no inspection yet): the person is drawing the
+  // property's site plan on its own. Everything about findings, markers and the
+  // checklist belongs to an inspection, so those parts are left out.
+  const propertyOnly = !inspectionId;
   const [detail, setDetail] = useState<LocalInspectionDetail | null>(null);
   const [property, setProperty] = useState<LocalProperty | null>(null);
   const [selectedLevelId, setSelectedLevelId] = useState<string | null>(null);
@@ -103,10 +107,11 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   const [checklistExpanded, setChecklistExpanded] = useState(false);
 
   const refresh = useCallback(() => {
-    const d = getLocalInspectionDetail(inspectionId);
+    const d = inspectionId ? getLocalInspectionDetail(inspectionId) : null;
     setDetail(d);
-    if (d) {
-      const p = getCachedProperty(d.inspection.propertyId);
+    const pid = d?.inspection.propertyId ?? propertyId;
+    if (pid) {
+      const p = getCachedProperty(pid);
       setProperty(p);
       setSketchPending(p ? isSiteMapSketchDirty(p.id) : false);
       const sketch = parseSiteMapSketch(p?.siteMapSketchJson);
@@ -115,8 +120,16 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         return sketch.levels[0]?.id ?? null;
       });
     }
-  }, [inspectionId]);
+  }, [inspectionId, propertyId]);
 
+  // A property added moments ago (or on another device) may not be in this
+  // device's copy yet - fetch the latest once and try again.
+  useEffect(() => {
+    if (!propertyOnly || !propertyId || getCachedProperty(propertyId)) return;
+    primeCache()
+      .catch(() => {})
+      .finally(refresh);
+  }, [propertyOnly, propertyId, refresh]);
   useFocusEffect(
     useCallback(() => {
       refresh();
@@ -139,7 +152,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     }, [refresh, fromChecklistResponseId])
   );
 
-  if (!detail) return null;
+  if (propertyOnly ? !property : !detail) return null;
 
   const imageUri = property?.siteMapLocalUri || property?.siteMapImageUrl || null;
   const isPhotoMode = Boolean(imageUri);
@@ -163,7 +176,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // they're doing, and so a stray tap elsewhere can't swap out the form
   // mid-edit and lose what they've typed.
   const editorOpen = Boolean(draftArrow) || Boolean(editingFindingId);
-  const checklistSummary = fromChecklistResponseId
+  const checklistSummary = fromChecklistResponseId && detail
     ? findChecklistResponseSummary(
         fromChecklistResponseId,
         detail.checklistResponses,
@@ -171,7 +184,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       )
     : null;
 
-  const allArrows: SiteMapArrow[] = detail.findings
+  const findings = detail?.findings ?? [];
+  const allArrows: SiteMapArrow[] = findings
     .filter((f) => f.floorPlanX != null && f.floorPlanY != null && f.siteMapArrowStartX != null && f.siteMapArrowStartY != null)
     .map((f) => ({
       id: f.id,
@@ -184,7 +198,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     }));
   // In sketch mode an arrow only belongs on the level it was drawn on;
   // in photo mode every arrow shares the one flat canvas.
-  const visibleArrows = isPhotoMode ? allArrows : allArrows.filter((a) => detail.findings.find((f) => f.id === a.id)?.siteMapLevel === selectedLevelId);
+  const visibleArrows = isPhotoMode ? allArrows : allArrows.filter((a) => findings.find((f) => f.id === a.id)?.siteMapLevel === selectedLevelId);
 
   const wallCount = selectedLevel?.lines.length ?? 0;
   const annotationCount = selectedLevel?.annotations.length ?? 0;
@@ -193,7 +207,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // technician review/edit anything already reached without being able to
   // jump ahead out of sequence from the map (see ChecklistPanel's
   // allowedCategories prop / ChecklistScreen for the same restriction).
-  const wizardStatus = detail.inspection.templateId
+  const wizardStatus = detail?.inspection.templateId
     ? getWizardStepStatus(getCachedTemplateSections(detail.inspection.templateId), detail.checklistResponses, property ?? undefined, detail.sectionSkips)
     : null;
   const unlockedCategories = wizardStatus ? wizardStatus.steps.slice(0, wizardStatus.furthestUnlockedIndex + 1).map((s) => s.category) : [];
@@ -527,6 +541,11 @@ export default function SiteMapScreen({ route, navigation }: Props) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {propertyOnly && property ? (
+        <Text style={styles.hint}>
+          Site plan for {property.addressLine1}. Findings get marked on this map during an inspection.
+        </Text>
+      ) : null}
       {checklistSummary && !draftArrow ? (
         <Card style={styles.checklistBannerCard}>
           <Text style={styles.checklistBannerLabel}>📋 Placing marker for checklist item:</Text>
@@ -652,7 +671,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         <Card style={styles.editorCard}>
           <Text style={styles.editorTitle}>New marker</Text>
           <FindingEditorForm
-            inspectionId={inspectionId}
+            inspectionId={inspectionId ?? ""}
             arrowStartX={draftArrow.start.x}
             arrowStartY={draftArrow.start.y}
             arrowEndX={draftArrow.end.x}
@@ -678,7 +697,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         <Card style={styles.editorCard}>
           <Text style={styles.editorTitle}>Edit marker</Text>
           <FindingEditorForm
-            inspectionId={inspectionId}
+            inspectionId={inspectionId ?? ""}
             editingFindingId={editingFindingId}
             onSaved={() => {
               setEditingFindingId(null);
@@ -821,9 +840,11 @@ export default function SiteMapScreen({ route, navigation }: Props) {
 
       {canDraw && !editorOpen ? (
         <View style={styles.toggleRow}>
-          <View style={styles.buttonThird}>
-            <PrimaryButton title={mode === "arrow" ? "Cancel" : "+ Marker"} onPress={() => toggleMode("arrow")} />
-          </View>
+          {propertyOnly ? null : (
+            <View style={styles.buttonThird}>
+              <PrimaryButton title={mode === "arrow" ? "Cancel" : "+ Marker"} onPress={() => toggleMode("arrow")} />
+            </View>
+          )}
           <View style={styles.buttonThird}>
             <PrimaryButton title={mode === "wall" ? "Cancel" : "+ Wall"} onPress={() => toggleMode("wall")} />
           </View>
@@ -926,7 +947,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           checklist item says (or add a marker for it) without losing the
           map. Sits below the map, the editor cards and the drawing tools so
           whatever is being worked on stays right under the map. */}
-      {detail.inspection.templateId ? (
+      {detail?.inspection.templateId ? (
         <View style={styles.section}>
           <Pressable style={styles.checklistHeaderRow} onPress={() => setChecklistExpanded((v) => !v)}>
             <Text style={styles.checklistHeaderTitle}>{checklistExpanded ? "▾" : "▸"} Checklist</Text>
@@ -937,7 +958,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           </Pressable>
           {checklistExpanded ? (
             <ChecklistPanel
-              inspectionId={inspectionId}
+              inspectionId={inspectionId!}
               allowedCategories={unlockedCategories}
               onAddToSiteMap={(responseId) => navigation.setParams({ fromChecklistResponseId: responseId })}
               onEditFinding={(findingId) => setEditingFindingId(findingId)}

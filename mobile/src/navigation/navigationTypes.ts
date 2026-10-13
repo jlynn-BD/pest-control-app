@@ -4,6 +4,9 @@ export type CustomersStackParamList = {
   CustomerForm: undefined;
   PropertyDetail: { propertyId: string };
   PropertyForm: { customerId: string };
+  // The same site-map screen the inspections use, opened for a property that
+  // has no inspection yet (drawing its site plan on its own).
+  SiteMap: { propertyId: string };
   EstimateList: { customerId: string };
   EstimateDetail: { estimateId: string };
   EstimateForm: { estimateId: string };
@@ -27,7 +30,7 @@ export type InspectionsStackParamList = {
   // item that's already been answered - see ChecklistScreen's "Add to Site
   // Map" action. Puts the screen straight into arrow-drawing mode instead
   // of requiring a separate "+Marker" tap.
-  SiteMap: { inspectionId: string; fromChecklistResponseId?: string };
+  SiteMap: { inspectionId?: string; propertyId?: string; fromChecklistResponseId?: string };
   FindingForm: {
     inspectionId: string;
     arrowStartX?: number;

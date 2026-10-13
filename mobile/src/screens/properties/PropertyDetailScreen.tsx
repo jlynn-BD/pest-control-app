@@ -1,24 +1,38 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import React, { useState } from "react";
-import { ScrollView, StyleSheet, Text } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
+import React, { useCallback, useState } from "react";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { API_BASE_URL } from "../../api/config";
 import { AuthImage } from "../../components/AuthImage";
-import { getProperty, getPropertyServiceHistory, uploadSiteMap } from "../../api/properties";
+import { deleteSiteMap, getProperty, getPropertyServiceHistory, uploadSiteMap } from "../../api/properties";
 import { capturePhoto } from "../../lib/photo";
+import { getCachedProperty } from "../../db/cache";
+import { parseSiteMapSketch } from "../../lib/siteMapSketch";
 import { ApiError } from "../../api/client";
 import { CustomersStackParamList } from "../../navigation/navigationTypes";
 import { Badge, Card, ErrorView, LoadingView, PrimaryButton, colors } from "../../components/ui";
 
 type Props = NativeStackScreenProps<CustomersStackParamList, "PropertyDetail">;
 
-export default function PropertyDetailScreen({ route }: Props) {
+export default function PropertyDetailScreen({ route, navigation }: Props) {
   const { propertyId } = route.params;
   const queryClient = useQueryClient();
   const [uploading, setUploading] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const propertyQuery = useQuery({ queryKey: ["properties", propertyId], queryFn: () => getProperty(propertyId) });
+  // Coming back from drawing the site plan (or from an inspection): reload, and
+  // re-read this device's copy, so the page reflects what was just done.
+  const [, setFocusTick] = useState(0);
+  const { refetch: refetchProperty } = propertyQuery;
+  useFocusEffect(
+    useCallback(() => {
+      setFocusTick((n) => n + 1);
+      refetchProperty();
+    }, [refetchProperty])
+  );
   const historyQuery = useQuery({
     queryKey: ["properties", propertyId, "history"],
     queryFn: () => getPropertyServiceHistory(propertyId),
@@ -29,6 +43,15 @@ export default function PropertyDetailScreen({ route }: Props) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["properties", propertyId] }),
     onError: (err) => setError(err instanceof ApiError || err instanceof Error ? err.message : "Failed to create site plan"),
     onSettled: () => setUploading(false),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteSiteMap(propertyId),
+    onSuccess: () => {
+      setConfirmingDelete(false);
+      return queryClient.invalidateQueries({ queryKey: ["properties", propertyId] });
+    },
+    onError: (err) => setError(err instanceof ApiError || err instanceof Error ? err.message : "Couldn't delete the site plan photo"),
   });
 
   async function handleUploadSiteMap() {
@@ -44,6 +67,14 @@ export default function PropertyDetailScreen({ route }: Props) {
     return <ErrorView message="Failed to load property" />;
 
   const property = propertyQuery.data;
+  // Has anything been drawn on the property's map (walls, labels, shapes)?
+  // The copy on this device wins when there is one: it includes drawing that
+  // hasn't reached the server yet.
+  const localSketch = getCachedProperty(propertyId)?.siteMapSketchJson;
+  const hasDrawnPlan = parseSiteMapSketch(localSketch ?? property.siteMapSketch).levels.some(
+    (l) => l.lines.length > 0 || l.labels.length > 0 || l.annotations.length > 0
+  );
+  const hasPlan = Boolean(property.siteMapImageUrl) || hasDrawnPlan;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -68,15 +99,33 @@ export default function PropertyDetailScreen({ route }: Props) {
           style={styles.siteMapThumb}
           resizeMode="cover"
         />
+      ) : hasDrawnPlan ? (
+        <Text style={styles.emptyText}>A site plan has been drawn for this property. Technicians mark entry points and issues on it during inspections.</Text>
       ) : (
-        <Text style={styles.emptyText}>No site plan yet. Create one from a photo of the property layout. Technicians mark entry points and issues on it during inspections.</Text>
+        <Text style={styles.emptyText}>
+          No site plan yet. Create one by drawing the layout of the property: levels, walls, labels and shapes. Technicians mark entry points and issues on it during inspections.
+        </Text>
       )}
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      <PrimaryButton
-        title={property.siteMapImageUrl ? "Replace site plan" : "Create site plan"}
-        onPress={handleUploadSiteMap}
-        loading={uploading}
-      />
+      <View style={styles.buttonStack}>
+      <PrimaryButton title={hasPlan ? "Open site plan" : "Create site plan"} onPress={() => navigation.navigate("SiteMap", { propertyId })} />
+      {property.siteMapImageUrl ? (
+        <>
+          <PrimaryButton title="Replace site plan photo" onPress={handleUploadSiteMap} loading={uploading} />
+          {confirmingDelete ? (
+            <>
+              <Text style={styles.emptyText}>Delete this site plan photo? It's removed for everyone, and the map goes back to the drawing tools. This can't be undone.</Text>
+              <PrimaryButton title="Yes, delete it" onPress={() => deleteMutation.mutate()} loading={deleteMutation.isPending} />
+              <PrimaryButton title="Keep it" onPress={() => setConfirmingDelete(false)} disabled={deleteMutation.isPending} />
+            </>
+          ) : (
+            <PrimaryButton title="Delete site plan photo" onPress={() => setConfirmingDelete(true)} />
+          )}
+        </>
+      ) : !hasDrawnPlan ? (
+        <PrimaryButton title="Use a photo of the layout instead" onPress={handleUploadSiteMap} loading={uploading} />
+      ) : null}
+      </View>
 
       <Text style={styles.sectionTitle}>Service history</Text>
       {historyQuery.isLoading ? (
@@ -103,6 +152,7 @@ export default function PropertyDetailScreen({ route }: Props) {
 }
 
 const styles = StyleSheet.create({
+  buttonStack: { gap: 10 },
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16 },
   title: { fontSize: 22, fontWeight: "700", color: colors.text },

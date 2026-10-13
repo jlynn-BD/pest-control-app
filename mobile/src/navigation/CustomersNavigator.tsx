@@ -5,6 +5,7 @@ import CustomerFormScreen from "../screens/customers/CustomerFormScreen";
 import CustomerListScreen from "../screens/customers/CustomerListScreen";
 import PropertyDetailScreen from "../screens/properties/PropertyDetailScreen";
 import PropertyFormScreen from "../screens/properties/PropertyFormScreen";
+import SiteMapScreen from "../screens/inspections/SiteMapScreen";
 import EstimateListScreen from "../screens/estimates/EstimateListScreen";
 import EstimateDetailScreen from "../screens/estimates/EstimateDetailScreen";
 import EstimateFormScreen from "../screens/estimates/EstimateFormScreen";
@@ -21,6 +22,7 @@ export default function CustomersNavigator() {
       <Stack.Screen name="CustomerForm" component={CustomerFormScreen} options={{ title: "New Customer" }} />
       <Stack.Screen name="PropertyDetail" component={PropertyDetailScreen} options={{ title: "Property" }} />
       <Stack.Screen name="PropertyForm" component={PropertyFormScreen} options={{ title: "New Property" }} />
+      <Stack.Screen name="SiteMap" component={SiteMapScreen as React.ComponentType} options={{ title: "Site Plan" }} />
       <Stack.Screen name="EstimateList" component={EstimateListScreen} options={{ title: "Estimates" }} />
       <Stack.Screen name="EstimateDetail" component={EstimateDetailScreen} options={{ title: "Estimate" }} />
       <Stack.Screen name="EstimateForm" component={EstimateFormScreen} options={{ title: "Edit Estimate" }} />
