@@ -16,7 +16,7 @@ export type InspectionsStackParamList = {
   InspectionList: undefined;
   InspectionDetail: { inspectionId: string };
   LocalInspectionDetail: { inspectionId: string };
-  NewInspection: undefined;
+  NewInspection: { propertyId?: string } | undefined;
   InspectionWorkspace: { inspectionId: string };
   // The mandatory checklist wizard - Exterior -> First Floor -> Second Floor
   // (if applicable) -> Third Floor (if applicable) -> Basement (if

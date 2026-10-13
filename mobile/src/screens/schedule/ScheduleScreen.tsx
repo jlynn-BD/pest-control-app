@@ -3,11 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 import React, { useCallback, useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { listInspections } from "../../api/inspections";
-import { getTechnicianSchedule } from "../../api/appointments";
+import { cancelAppointment, listAppointments, type ScheduledAppointment } from "../../api/appointments";
 import { useAuth } from "../../context/AuthContext";
+import { primeCache } from "../../db/cache";
 import { listLocalInspections, LocalInspectionListItem } from "../../db/inspectionStore";
 import { ensureLocalInspection } from "../../lib/resumeInspection";
-import { Badge, Card, colors } from "../../components/ui";
+import { ScheduleClientForm } from "../../components/ScheduleClientForm";
+import { Badge, Card, PrimaryButton, colors } from "../../components/ui";
 
 const COMPLETED_GREEN = "#2E9E5B";
 const PENDING_YELLOW = "#F2B705";
@@ -53,6 +55,9 @@ export default function ScheduleScreen() {
   const [localRows, setLocalRows] = useState<LocalInspectionListItem[]>([]);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
+  const [scheduling, setScheduling] = useState(false);
+  const [cancelingId, setCancelingId] = useState<string | null>(null);
+  const [cancelBusy, setCancelBusy] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -68,12 +73,29 @@ export default function ScheduleScreen() {
     retry: false,
   });
 
+  // Booked appointments for the month on screen. A technician sees their own;
+  // admins and office staff see everyone's.
+  const ownOnly = user?.role === "TECHNICIAN";
+  const monthStart = new Date(month.getFullYear(), month.getMonth(), 1);
+  const monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 1);
   const appointmentsQuery = useQuery({
-    queryKey: ["schedule", user?.id, selectedDay],
-    queryFn: () => getTechnicianSchedule(user!.id, selectedDay),
+    queryKey: ["appointments", ownOnly ? user?.id : "all", dayKey(monthStart)],
+    queryFn: () =>
+      listAppointments({
+        technicianId: ownOnly ? user!.id : undefined,
+        from: monthStart.toISOString(),
+        to: new Date(monthEnd.getTime() - 1).toISOString(),
+      }),
     enabled: !!user,
     retry: false,
   });
+
+  // Canceled / no-show bookings stay off the calendar; one that already
+  // became an inspection is shown as that inspection instead.
+  const bookings = useMemo(
+    () => (appointmentsQuery.data ?? []).filter((a) => !a.inspectionId && a.status !== "CANCELED" && a.status !== "NO_SHOW"),
+    [appointmentsQuery.data]
+  );
 
   const inspections = useMemo(() => {
     const localIds = new Set(localRows.map((r) => r.id));
@@ -118,8 +140,15 @@ export default function ScheduleScreen() {
       else entry.pending += 1;
       map.set(i.day, entry);
     }
+    for (const a of bookings) {
+      const day = dayKey(new Date(a.scheduledStart));
+      const entry = map.get(day) ?? { completed: 0, pending: 0 };
+      if (a.status === "COMPLETED") entry.completed += 1;
+      else entry.pending += 1;
+      map.set(day, entry);
+    }
     return map;
-  }, [inspections]);
+  }, [inspections, bookings]);
 
   const monthCells = useMemo(() => {
     const first = new Date(month.getFullYear(), month.getMonth(), 1);
@@ -138,12 +167,21 @@ export default function ScheduleScreen() {
       if (i.completed) completed += 1;
       else pending += 1;
     }
+    for (const a of bookings) {
+      const when = new Date(a.scheduledStart);
+      if (when.getFullYear() !== month.getFullYear() || when.getMonth() !== month.getMonth()) continue;
+      if (a.status === "COMPLETED") completed += 1;
+      else pending += 1;
+    }
     return { completed, pending };
-  }, [inspections, month]);
+  }, [inspections, bookings, month]);
 
   const selectedInspections = inspections
     .filter((i) => i.day === selectedDay)
     .sort((a, b) => a.when.getTime() - b.when.getTime());
+  const selectedBookings = bookings
+    .filter((a) => dayKey(new Date(a.scheduledStart)) === selectedDay)
+    .sort((a, b) => new Date(a.scheduledStart).getTime() - new Date(b.scheduledStart).getTime());
   const selectedDate = new Date(`${selectedDay}T00:00:00`);
   const isToday = selectedDay === dayKey(today);
 
@@ -176,6 +214,24 @@ export default function ScheduleScreen() {
   }
 
   const refreshing = inspectionsQuery.isRefetching || appointmentsQuery.isRefetching;
+
+  function startInspectionFor(a: ScheduledAppointment) {
+    navigation.navigate("Inspections", { screen: "NewInspection", params: { propertyId: a.propertyId }, initial: false });
+  }
+
+  async function confirmCancel(a: ScheduledAppointment) {
+    setCancelBusy(true);
+    setOpenError(null);
+    try {
+      await cancelAppointment(a.id);
+      setCancelingId(null);
+      await appointmentsQuery.refetch();
+    } catch {
+      setOpenError("Couldn't cancel that appointment - check your connection and try again.");
+    } finally {
+      setCancelBusy(false);
+    }
+  }
 
   return (
     <ScrollView
@@ -255,6 +311,25 @@ export default function ScheduleScreen() {
       </Text>
       {openError ? <Text style={styles.error}>{openError}</Text> : null}
 
+      {scheduling ? (
+        <ScheduleClientForm
+          day={selectedDay}
+          onCancel={() => setScheduling(false)}
+          onCreated={() => {
+            setScheduling(false);
+            appointmentsQuery.refetch();
+            // A brand-new client/address should be available to start an
+            // inspection from right away.
+            primeCache().catch(() => {});
+          }}
+        />
+      ) : (
+        <PrimaryButton
+          title={`+ Schedule a client on ${selectedDate.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`}
+          onPress={() => setScheduling(true)}
+        />
+      )}
+
       {selectedInspections.map((i) => (
         <Pressable key={i.id} onPress={() => openInspection(i)}>
           <Card style={[styles.card, { borderLeftWidth: 4, borderLeftColor: i.completed ? COMPLETED_GREEN : PENDING_YELLOW }]}>
@@ -270,22 +345,53 @@ export default function ScheduleScreen() {
         </Pressable>
       ))}
 
-      {(appointmentsQuery.data ?? []).map((item) => (
-        <Card key={item.id} style={styles.card}>
-          <View style={styles.rowTop}>
-            <Text style={styles.time}>
-              {new Date(item.scheduledStart).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+      {selectedBookings.map((item) => {
+        const open = item.status === "SCHEDULED" || item.status === "CONFIRMED";
+        return (
+          <Card key={item.id} style={[styles.card, { borderLeftWidth: 4, borderLeftColor: item.status === "COMPLETED" ? COMPLETED_GREEN : PENDING_YELLOW }]}>
+            <View style={styles.rowTop}>
+              <Text style={styles.time}>{new Date(item.scheduledStart).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</Text>
+              <Badge label={item.type.replace(/_/g, " ")} />
+            </View>
+            <Text style={styles.customer}>{item.customer.name}</Text>
+            <Text style={styles.meta}>
+              {item.property.addressLine1}, {item.property.city}
             </Text>
-            <Badge label={item.type.replace(/_/g, " ")} />
-          </View>
-          <Text style={styles.customer}>{item.customer.name}</Text>
-          <Text style={styles.meta}>
-            {item.property.addressLine1}, {item.property.city}
-          </Text>
-        </Card>
-      ))}
+            {!ownOnly && item.technician ? (
+              <Text style={styles.meta}>
+                Technician: {item.technician.firstName} {item.technician.lastName}
+              </Text>
+            ) : null}
+            {item.notes ? <Text style={styles.meta}>{item.notes}</Text> : null}
+            {open ? (
+              cancelingId === item.id ? (
+                <View style={styles.actionRow}>
+                  <Text style={styles.meta}>Cancel this appointment?</Text>
+                  <View style={styles.actionButtons}>
+                    <View style={styles.actionHalf}>
+                      <PrimaryButton title="Yes, cancel it" onPress={() => confirmCancel(item)} loading={cancelBusy} />
+                    </View>
+                    <View style={styles.actionHalf}>
+                      <PrimaryButton title="Keep it" onPress={() => setCancelingId(null)} disabled={cancelBusy} />
+                    </View>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.actionButtons}>
+                  <View style={styles.actionHalf}>
+                    <PrimaryButton title="Start inspection" onPress={() => startInspectionFor(item)} />
+                  </View>
+                  <View style={styles.actionHalf}>
+                    <PrimaryButton title="Cancel" onPress={() => setCancelingId(item.id)} />
+                  </View>
+                </View>
+              )
+            ) : null}
+          </Card>
+        );
+      })}
 
-      {selectedInspections.length === 0 && (appointmentsQuery.data ?? []).length === 0 ? (
+      {selectedInspections.length === 0 && selectedBookings.length === 0 ? (
         <Text style={styles.empty}>Nothing scheduled or inspected on this day.</Text>
       ) : null}
     </ScrollView>
@@ -331,4 +437,7 @@ const styles = StyleSheet.create({
   meta: { fontSize: 13, color: colors.textMuted },
   empty: { color: colors.textMuted, fontSize: 13, fontStyle: "italic", marginTop: 4 },
   error: { color: colors.danger, fontSize: 13 },
+  actionRow: { gap: 6, marginTop: 6 },
+  actionButtons: { flexDirection: "row", gap: 10, marginTop: 6 },
+  actionHalf: { flex: 1 },
 });
