@@ -14,6 +14,7 @@ import {
 } from "../../db/inspectionStore";
 import { deleteInspection } from "../../api/inspections";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
+import { parseSiteMapSketch } from "../../lib/siteMapSketch";
 import type { LocalSignature } from "../../db/types";
 import { AuthImage } from "../../components/AuthImage";
 import { Badge, Card, PrimaryButton, colors } from "../../components/ui";
@@ -46,6 +47,12 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
   const checklistResolved = !detail.inspection.templateId || Boolean(wizardStatus?.canComplete);
   const siteMapMarkerCount = detail.findings.filter((f) => f.floorPlanX != null).length;
   const hasSiteMapImage = Boolean(property?.siteMapLocalUri || property?.siteMapImageUrl);
+  // A plan can be a photo OR a drawn map (levels with walls, labels, shapes).
+  // Only counting the photo made a property with a drawn plan keep saying
+  // "Set up property site plan".
+  const sketchLevels = parseSiteMapSketch(property?.siteMapSketchJson).levels;
+  const drawnItemCount = sketchLevels.reduce((n, l) => n + l.lines.length + l.labels.length + l.annotations.length, 0);
+  const hasSiteMapPlan = hasSiteMapImage || sketchLevels.length > 0;
   // signatures come back oldest-first, so the last one is the current
   // (re-signing adds a new one rather than replacing the old).
   const latestSignature = (type: string) => [...detail.signatures].reverse().find((s) => s.signerType === type) ?? null;
@@ -141,11 +148,13 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
       <View style={styles.section}>
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Site Map</Text>
-          {hasSiteMapImage ? <Badge label={`${siteMapMarkerCount} marker(s)`} /> : null}
+          {hasSiteMapPlan ? (
+            <Badge label={`${siteMapMarkerCount} marker(s)${!hasSiteMapImage && drawnItemCount > 0 ? ` · ${drawnItemCount} drawn item(s)` : ""}`} />
+          ) : null}
         </View>
         <Card style={styles.itemCard}>
           <Text style={styles.addLink} onPress={() => navigation.navigate("SiteMap", { inspectionId })}>
-            {hasSiteMapImage ? "Open site map" : "Set up property site plan"}
+            {hasSiteMapPlan ? "Open site map" : "Set up property site plan"}
           </Text>
         </Card>
       </View>
