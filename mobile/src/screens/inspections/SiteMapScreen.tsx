@@ -405,6 +405,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // Delete (draw a fresh one to replace it) is the whole affordance.
   function handleAnnotationPress(id: string) {
     if (editorOpen) return;
+    setSelectedWallId(null);
     setSelectedAnnotationId(id);
     setShapeLabelText(selectedLevel?.annotations.find((a) => a.id === id)?.label ?? "");
     setNameAutoFocus(false);
@@ -475,6 +476,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // every wall segment sitting permanently below the map.
   function handleWallPress(id: string) {
     if (editorOpen) return;
+    setSelectedAnnotationId(null);
+    setShapeLabelText("");
     setSelectedWallId(id);
   }
 

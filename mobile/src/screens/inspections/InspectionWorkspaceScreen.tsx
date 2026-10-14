@@ -13,6 +13,7 @@ import {
   signatureImageUri,
 } from "../../db/inspectionStore";
 import { deleteInspection } from "../../api/inspections";
+import { runSync } from "../../sync/syncEngine";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { parseSiteMapSketch } from "../../lib/siteMapSketch";
 import type { LocalSignature } from "../../db/types";
@@ -63,6 +64,9 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
 
   function handleComplete() {
     completeLocalInspection(inspectionId);
+    // Send it up right away (the finished inspection's page keeps trying too)
+    // instead of waiting for the next background sync.
+    runSync().catch(() => {});
     navigation.replace("LocalInspectionDetail", { inspectionId });
   }
 

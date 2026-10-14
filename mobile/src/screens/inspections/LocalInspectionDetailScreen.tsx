@@ -1,5 +1,6 @@
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import React, { useMemo } from "react";
+import { useFocusEffect } from "@react-navigation/native";
+import React, { useCallback, useMemo, useState } from "react";
 import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getCachedCustomer, getCachedProperty, getCachedTemplateSections } from "../../db/cache";
 import { getLocalInspectionDetail, signatureImageUri } from "../../db/inspectionStore";
@@ -11,13 +12,54 @@ import { AuthImage } from "../../components/AuthImage";
 import { ReportCard } from "../../components/ReportCard";
 import { InspectionHistoryLink } from "../../components/InspectionHistoryLink";
 import { FindingsAndRecommendations } from "../../components/FindingsAndRecommendations";
-import { Badge, Card, colors } from "../../components/ui";
+import { runSync } from "../../sync/syncEngine";
+import { Badge, Card, PrimaryButton, colors } from "../../components/ui";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "LocalInspectionDetail">;
 
 export default function LocalInspectionDetailScreen({ route }: Props) {
   const { inspectionId } = route.params;
-  const detail = useMemo(() => getLocalInspectionDetail(inspectionId), [inspectionId]);
+  // Re-read after each sync attempt so "not yet synced" turns into "Synced"
+  // (and the report card appears) without leaving the page.
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const detail = useMemo(() => getLocalInspectionDetail(inspectionId), [inspectionId, refreshTick]);
+
+  const trySync = useCallback(async () => {
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      const res = await runSync();
+      if (res.error) setSyncError(res.error);
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : "Could not sync");
+    } finally {
+      setSyncing(false);
+      setRefreshTick((n) => n + 1);
+    }
+  }, []);
+
+  // Opening an unsynced inspection starts a sync, and keeps retrying while
+  // the page is open.
+  useFocusEffect(
+    useCallback(() => {
+      const current = getLocalInspectionDetail(inspectionId);
+      if (!current || current.inspection.syncStatus === "synced") return;
+      trySync();
+      const timer = setInterval(() => {
+        const d = getLocalInspectionDetail(inspectionId);
+        if (!d || d.inspection.syncStatus === "synced") {
+          setRefreshTick((n) => n + 1);
+          clearInterval(timer);
+          return;
+        }
+        trySync();
+      }, 15000);
+      return () => clearInterval(timer);
+    }, [inspectionId, trySync])
+  );
 
   if (!detail) return null;
 
@@ -40,13 +82,17 @@ export default function LocalInspectionDetailScreen({ route }: Props) {
       {detail.inspection.syncStatus === "synced" ? (
         <Badge label="Synced" tone="success" />
       ) : (
-        <Badge label="Stored on this device — not yet synced" tone="warning" />
+        <>
+          <Badge label={syncing ? "Syncing…" : "Stored on this device — not yet synced"} tone="warning" />
+          {syncError ? <Text style={styles.meta}>Could not sync yet: {syncError}</Text> : null}
+          <PrimaryButton title="Sync now" onPress={trySync} loading={syncing} />
+        </>
       )}
       {detail.inspection.status === "COMPLETED" ? (
         detail.inspection.syncStatus === "synced" ? (
           <ReportCard inspectionId={inspectionId} />
         ) : (
-          <Text style={styles.body}>The report can be generated once this inspection has synced - connect to the internet and check back.</Text>
+          <Text style={styles.body}>The report can be generated once this inspection has synced. It is syncing now and this page updates by itself, or tap Sync now.</Text>
         )
       ) : null}
 
