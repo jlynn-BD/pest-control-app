@@ -38,3 +38,7 @@ export function createAppointment(input: CreateAppointmentInput): Promise<Appoin
 export function cancelAppointment(id: string): Promise<Appointment> {
   return apiRequest<Appointment>(`/api/appointments/${id}`, { method: "PATCH", body: { status: "CANCELED" } });
 }
+
+export function markAppointmentInProgress(id: string): Promise<Appointment> {
+  return apiRequest<Appointment>(`/api/appointments/${id}`, { method: "PATCH", body: { status: "IN_PROGRESS" } });
+}

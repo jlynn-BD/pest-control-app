@@ -1,6 +1,6 @@
 import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { listInspections } from "../../api/inspections";
 import { ensureLocalInspection } from "../../lib/resumeInspection";
@@ -13,7 +13,7 @@ import { Card, Field, PrimaryButton, colors } from "../../components/ui";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "NewInspection">;
 
-export default function NewInspectionScreen({ navigation, route }: Props) {
+export default function NewInspectionScreen({ navigation }: Props) {
   const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
@@ -26,22 +26,6 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
   const [startError, setStartError] = useState<string | null>(null);
   // Local copies win over the server list (they may hold newer edits).
   const inProgressByProperty = useMemo(() => new Map([...remoteInProgress, ...localInProgress]), [remoteInProgress, localInProgress]);
-
-  // Arriving from a booked appointment: that property is already chosen.
-  const wantedPropertyId = route.params?.propertyId;
-  const triedRefetch = useRef(false);
-  useEffect(() => {
-    if (!wantedPropertyId) return;
-    if (properties.some((p) => p.id === wantedPropertyId)) {
-      setSelectedPropertyId(wantedPropertyId);
-    } else if (!triedRefetch.current) {
-      // A property added moments ago may not be on this device yet.
-      triedRefetch.current = true;
-      primeCache()
-        .then(() => setProperties(getCachedProperties()))
-        .catch(() => {});
-    }
-  }, [wantedPropertyId, properties]);
 
   useFocusEffect(
     useCallback(() => {

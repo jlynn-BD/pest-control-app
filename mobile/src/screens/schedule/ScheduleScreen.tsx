@@ -8,6 +8,7 @@ import { useAuth } from "../../context/AuthContext";
 import { primeCache } from "../../db/cache";
 import { listLocalInspections, LocalInspectionListItem } from "../../db/inspectionStore";
 import { ensureLocalInspection } from "../../lib/resumeInspection";
+import { inspectionForAppointment, startInspectionFromAppointment } from "../../lib/startInspection";
 import { ScheduleClientForm } from "../../components/ScheduleClientForm";
 import { Badge, Card, PrimaryButton, colors } from "../../components/ui";
 
@@ -92,9 +93,21 @@ export default function ScheduleScreen() {
 
   // Canceled / no-show bookings stay off the calendar; one that already
   // became an inspection is shown as that inspection instead.
+  // A booking that has been started is represented by its inspection (on
+  // this device, or IN_PROGRESS on the server for other devices).
   const bookings = useMemo(
-    () => (appointmentsQuery.data ?? []).filter((a) => !a.inspectionId && a.status !== "CANCELED" && a.status !== "NO_SHOW"),
-    [appointmentsQuery.data]
+    () =>
+      (appointmentsQuery.data ?? []).filter(
+        (a) =>
+          !a.inspectionId &&
+          a.status !== "CANCELED" &&
+          a.status !== "NO_SHOW" &&
+          a.status !== "IN_PROGRESS" &&
+          !inspectionForAppointment(a.id)
+      ),
+    // localRows changes when an inspection is started here
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [appointmentsQuery.data, localRows]
   );
 
   const inspections = useMemo(() => {
@@ -215,8 +228,20 @@ export default function ScheduleScreen() {
 
   const refreshing = inspectionsQuery.isRefetching || appointmentsQuery.isRefetching;
 
-  function startInspectionFor(a: ScheduledAppointment) {
-    navigation.navigate("Inspections", { screen: "NewInspection", params: { propertyId: a.propertyId }, initial: false });
+  const [startingId, setStartingId] = useState<string | null>(null);
+  async function startInspectionFor(a: ScheduledAppointment) {
+    if (!user || startingId) return;
+    setStartingId(a.id);
+    setOpenError(null);
+    try {
+      const inspectionId = await startInspectionFromAppointment(a, user.id);
+      setLocalRows(listLocalInspections(user.id));
+      navigation.navigate("Inspections", { screen: "InspectionWorkspace", params: { inspectionId }, initial: false });
+    } catch (err) {
+      setOpenError(err instanceof Error ? err.message : "Couldn't start the inspection - try again.");
+    } finally {
+      setStartingId(null);
+    }
   }
 
   async function confirmCancel(a: ScheduledAppointment) {
@@ -379,7 +404,7 @@ export default function ScheduleScreen() {
               ) : (
                 <View style={styles.actionButtons}>
                   <View style={styles.actionHalf}>
-                    <PrimaryButton title="Start inspection" onPress={() => startInspectionFor(item)} />
+                    <PrimaryButton title="Start inspection" onPress={() => startInspectionFor(item)} loading={startingId === item.id} />
                   </View>
                   <View style={styles.actionHalf}>
                     <PrimaryButton title="Cancel" onPress={() => setCancelingId(item.id)} />

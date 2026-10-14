@@ -23,6 +23,9 @@ export interface NewInspectionInput {
   customerId: string;
   templateId: string | null;
   technicianId: string;
+  // The slot it was booked for (an inspection started from a booking keeps
+  // that time on the calendar instead of the moment it was started).
+  scheduledAt?: string | null;
 }
 
 export function createLocalInspection(input: NewInspectionInput): LocalInspection {
@@ -35,7 +38,7 @@ export function createLocalInspection(input: NewInspectionInput): LocalInspectio
     templateId: input.templateId,
     technicianId: input.technicianId,
     status: "IN_PROGRESS",
-    scheduledAt: null,
+    scheduledAt: input.scheduledAt ?? null,
     startedAt: now,
     completedAt: null,
     generalNotes: null,
