@@ -1,10 +1,13 @@
 import { useFocusEffect } from "@react-navigation/native";
+import { Severity } from "@pest-app/shared";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { deleteChecklistResponse } from "../api/inspections";
 import { getCachedTemplateSections } from "../db/cache";
 import {
   addLocalChecklistResponsePhoto,
+  addLocalFinding,
+  addLocalFindingPhoto,
   deleteLocalChecklistResponse,
   getLocalInspectionDetail,
   upsertLocalChecklistResponse,
@@ -13,7 +16,7 @@ import type { LocalChecklistResponse, LocalChecklistResponsePhoto, LocalFinding,
 import { CHECKLIST_CATEGORY_DISPLAY_ORDER, CHECKLIST_CATEGORY_LABEL } from "../lib/checklist";
 import { capturePhoto, pickPhotosFromLibrary } from "../lib/photo";
 import { AuthImage } from "./AuthImage";
-import { Badge, Card, Field, colors } from "./ui";
+import { Badge, Card, Field, PrimaryButton, colors } from "./ui";
 
 type ResponseWithPhotos = LocalChecklistResponse & { photos: LocalChecklistResponsePhoto[] };
 type FindingWithPhotos = LocalFinding & { photos: LocalFindingPhoto[] };
@@ -212,6 +215,27 @@ export function ChecklistPanel({
     ]);
   }
 
+  // Another issue under the same checklist item, typed right here: its own
+  // description, severity and photos, no trip to the site map or the finding
+  // form. It's a regular finding linked to this checklist answer, so it shows
+  // in the inspection's findings, the report and the "Issue N" list below.
+  function handleAddIssue(item: LocalTemplateItem, notes: string | null, issue: { description: string; severity: string; photos: string[] }) {
+    const response = commitResponse(item, notes);
+    const finding = addLocalFinding(inspectionId, {
+      areaLocation: item.prompt,
+      locationDetail: null,
+      severity: issue.severity,
+      description: issue.description.trim() || null,
+      lat: null,
+      lng: null,
+      checklistResponseId: response.id,
+    });
+    issue.photos.forEach((uri, index) => {
+      addLocalFindingPhoto(finding.id, { localUri: uri, caption: null, lat: null, lng: null, sortOrder: index });
+    });
+    setFindings(getLocalInspectionDetail(inspectionId)?.findings ?? []);
+  }
+
   function handleAddToSiteMap(item: LocalTemplateItem, notes: string | null) {
     const response = commitResponse(item, notes);
     onAddToSiteMap(response.id);
@@ -347,6 +371,7 @@ export function ChecklistPanel({
                                 onNotesChange={(notes) => handleNotesChange(item, notes)}
                                 onAddPhoto={(notes, source) => handleAddPhoto(item, notes, source)}
                                 onAddToSiteMap={(notes) => handleAddToSiteMap(item, notes)}
+                                onAddIssue={(notes, issue) => handleAddIssue(item, notes, issue)}
                                 onEditFinding={onEditFinding}
                               />
                             );
@@ -384,6 +409,7 @@ function ChecklistItemRow({
   onNotesChange,
   onAddPhoto,
   onAddToSiteMap,
+  onAddIssue,
   onEditFinding,
 }: {
   item: LocalTemplateItem;
@@ -403,8 +429,14 @@ function ChecklistItemRow({
   onNotesChange: (notes: string | null) => void;
   onAddPhoto: (notes: string | null, source: "camera" | "library") => void;
   onAddToSiteMap: (notes: string | null) => void;
+  onAddIssue: (notes: string | null, issue: { description: string; severity: string; photos: string[] }) => void;
   onEditFinding: (findingId: string) => void;
 }) {
+  // The inline "add another issue" mini-form.
+  const [addingIssue, setAddingIssue] = useState(false);
+  const [issueText, setIssueText] = useState("");
+  const [issueSeverity, setIssueSeverity] = useState<string>(Severity.MEDIUM);
+  const [issuePhotos, setIssuePhotos] = useState<string[]>([]);
   const [localNotes, setLocalNotes] = useState(notes ?? "");
   const hasIssue = status === "NEEDS_ATTENTION";
   const hasDetails = !!(notes && notes.trim()) || photos.length > 0;
@@ -469,16 +501,87 @@ function ChecklistItemRow({
           ))}
         </View>
       ) : null}
-      {hasIssue ? (
-        <Text
-          style={styles.addAnotherIssueLink}
-          onPress={() => {
-            onActivate();
-            onAddToSiteMap(localNotes.trim() || null);
-          }}
-        >
-          {issues.length > 0 ? `+ Add Another Issue` : "📍 Add to Site Map"}
-        </Text>
+      {hasIssue && !addingIssue ? (
+        <View style={styles.issueActionRow}>
+          <Text
+            style={styles.addAnotherIssueLink}
+            onPress={() => {
+              onActivate();
+              setAddingIssue(true);
+            }}
+          >
+            + Add another issue
+          </Text>
+          <Text
+            style={styles.addAnotherIssueLink}
+            onPress={() => {
+              onActivate();
+              onAddToSiteMap(localNotes.trim() || null);
+            }}
+          >
+            {issues.length > 0 ? "📍 Another on site map" : "📍 Add to Site Map"}
+          </Text>
+        </View>
+      ) : null}
+      {hasIssue && addingIssue ? (
+        <View style={styles.newIssueBox}>
+          <Text style={styles.issueListTitle}>New issue</Text>
+          <Field label="Describe the issue" placeholder="What did you find?" value={issueText} onChangeText={setIssueText} multiline />
+          <View style={styles.severityRow}>
+            {[Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL].map((sev) => (
+              <Pressable
+                key={sev}
+                onPress={() => setIssueSeverity(sev)}
+                style={[styles.severityChip, issueSeverity === sev && styles.severityChipOn]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: issueSeverity === sev }}
+              >
+                <Text style={[styles.severityText, issueSeverity === sev && styles.severityTextOn]}>{String(sev).charAt(0) + String(sev).slice(1).toLowerCase()}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <View style={styles.photoRow}>
+            {issuePhotos.map((uri) => (
+              <AuthImage key={uri} uri={uri} style={styles.photoThumb} />
+            ))}
+            <Text
+              style={styles.addPhotoLink}
+              onPress={async () => {
+                const uri = await capturePhoto();
+                if (uri) setIssuePhotos((prev) => [...prev, uri]);
+              }}
+            >
+              📷 Take photo
+            </Text>
+            <Text
+              style={styles.addPhotoLink}
+              onPress={async () => {
+                const uris = await pickPhotosFromLibrary();
+                if (uris.length > 0) setIssuePhotos((prev) => [...prev, ...uris]);
+              }}
+            >
+              🖼 From library
+            </Text>
+          </View>
+          <View style={styles.newIssueButtons}>
+            <View style={styles.newIssueButtonHalf}>
+              <PrimaryButton
+                title="Save issue"
+                disabled={!issueText.trim() && issuePhotos.length === 0}
+                onPress={() => {
+                  onAddIssue(localNotes.trim() || null, { description: issueText, severity: issueSeverity, photos: issuePhotos });
+                  setIssueText("");
+                  setIssuePhotos([]);
+                  setIssueSeverity(Severity.MEDIUM);
+                  setAddingIssue(false);
+                }}
+              />
+            </View>
+            <View style={styles.newIssueButtonHalf}>
+              <PrimaryButton title="Cancel" onPress={() => { setAddingIssue(false); setIssueText(""); setIssuePhotos([]); }} />
+            </View>
+          </View>
+        </View>
       ) : null}
       {detailsOpen ? (
         <View style={styles.issueDetails}>
@@ -607,6 +710,15 @@ const styles = StyleSheet.create({
   issueListText: { flex: 1 },
   issueListTitle: { fontSize: 12, fontWeight: "700", color: colors.text },
   issueListDescription: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  issueActionRow: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
+  newIssueBox: { borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 10, marginTop: 6, gap: 6, backgroundColor: colors.bg },
+  severityRow: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
+  severityChip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  severityChipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  severityText: { fontSize: 12, fontWeight: "600", color: colors.text },
+  severityTextOn: { color: "#fff" },
+  newIssueButtons: { flexDirection: "row", gap: 10, marginTop: 4 },
+  newIssueButtonHalf: { flex: 1 },
   addAnotherIssueLink: { color: colors.primary, fontWeight: "600", fontSize: 13, marginTop: 4, paddingVertical: 12 },
   photoRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 4 },
   photoThumb: { width: 48, height: 48, borderRadius: 6 },
