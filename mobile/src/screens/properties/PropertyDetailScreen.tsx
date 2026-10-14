@@ -6,7 +6,7 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { API_BASE_URL } from "../../api/config";
 import { AuthImage } from "../../components/AuthImage";
 import { deleteSiteMap, getProperty, getPropertyServiceHistory, uploadSiteMap } from "../../api/properties";
-import { capturePhoto } from "../../lib/photo";
+import { choosePhoto } from "../../lib/photo";
 import { getCachedProperty } from "../../db/cache";
 import { parseSiteMapSketch } from "../../lib/siteMapSketch";
 import { ApiError } from "../../api/client";
@@ -55,7 +55,7 @@ export default function PropertyDetailScreen({ route, navigation }: Props) {
   });
 
   async function handleUploadSiteMap() {
-    const uri = await capturePhoto();
+    const uri = await choosePhoto();
     if (!uri) return;
     setError(null);
     setUploading(true);

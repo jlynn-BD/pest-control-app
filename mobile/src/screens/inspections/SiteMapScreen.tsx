@@ -21,7 +21,7 @@ import { getLocalInspectionDetail, LocalInspectionDetail } from "../../db/inspec
 import { deleteSiteMap, uploadSiteMap } from "../../api/properties";
 import { parseSiteMapSketch } from "../../lib/siteMapSketch";
 import { findChecklistResponseSummary } from "../../lib/checklist";
-import { capturePhoto } from "../../lib/photo";
+import { choosePhoto } from "../../lib/photo";
 import { ApiError } from "../../api/client";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { Geometry, siteMapHintText, SiteMapArrow, SiteMapCanvas, SiteMapMode } from "../../components/ArrowCanvas";
@@ -258,7 +258,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
 
   async function handleUpload() {
     if (!property) return;
-    const uri = await capturePhoto();
+    const uri = await choosePhoto();
     if (!uri) return;
     setUploading(true);
     setError(null);

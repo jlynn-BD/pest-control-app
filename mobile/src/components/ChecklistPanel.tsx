@@ -11,7 +11,7 @@ import {
 } from "../db/inspectionStore";
 import type { LocalChecklistResponse, LocalChecklistResponsePhoto, LocalFinding, LocalFindingPhoto, LocalTemplateItem } from "../db/types";
 import { CHECKLIST_CATEGORY_DISPLAY_ORDER, CHECKLIST_CATEGORY_LABEL } from "../lib/checklist";
-import { capturePhoto } from "../lib/photo";
+import { capturePhoto, pickPhotosFromLibrary } from "../lib/photo";
 import { AuthImage } from "./AuthImage";
 import { Badge, Card, Field, colors } from "./ui";
 
@@ -200,14 +200,15 @@ export function ChecklistPanel({
     return response;
   }
 
-  async function handleAddPhoto(item: LocalTemplateItem, notes: string | null) {
-    const uri = await capturePhoto();
-    if (!uri) return;
+  // Adds one picture from the camera, or any number chosen from the photo library.
+  async function handleAddPhoto(item: LocalTemplateItem, notes: string | null, source: "camera" | "library") {
+    const uris = source === "camera" ? [await capturePhoto()].filter((u): u is string => Boolean(u)) : await pickPhotosFromLibrary();
+    if (uris.length === 0) return;
     const response = commitResponse(item, notes);
-    const photo = addLocalChecklistResponsePhoto(response.id, { localUri: uri, caption: null, sortOrder: response.photos.length });
+    const added = uris.map((uri, i) => addLocalChecklistResponsePhoto(response.id, { localUri: uri, caption: null, sortOrder: response.photos.length + i }));
     setResponses((prev) => [
       ...prev.filter((r) => r.templateItemId !== item.id),
-      { ...response, photos: [...response.photos, photo] },
+      { ...response, photos: [...response.photos, ...added] },
     ]);
   }
 
@@ -344,7 +345,7 @@ export function ChecklistPanel({
                                 onChoose={(status, notes) => handleSetStatus(item, status, notes)}
                                 onUncheck={() => handleUncheck(item)}
                                 onNotesChange={(notes) => handleNotesChange(item, notes)}
-                                onAddPhoto={(notes) => handleAddPhoto(item, notes)}
+                                onAddPhoto={(notes, source) => handleAddPhoto(item, notes, source)}
                                 onAddToSiteMap={(notes) => handleAddToSiteMap(item, notes)}
                                 onEditFinding={onEditFinding}
                               />
@@ -400,7 +401,7 @@ function ChecklistItemRow({
   onChoose: (status: "SATISFACTORY" | "NEEDS_ATTENTION", notes: string | null) => void;
   onUncheck: () => void;
   onNotesChange: (notes: string | null) => void;
-  onAddPhoto: (notes: string | null) => void;
+  onAddPhoto: (notes: string | null, source: "camera" | "library") => void;
   onAddToSiteMap: (notes: string | null) => void;
   onEditFinding: (findingId: string) => void;
 }) {
@@ -496,10 +497,19 @@ function ChecklistItemRow({
               style={styles.addPhotoLink}
               onPress={() => {
                 onActivate();
-                onAddPhoto(localNotes.trim() || null);
+                onAddPhoto(localNotes.trim() || null, "camera");
               }}
             >
-              + Photo
+              📷 Take photo
+            </Text>
+            <Text
+              style={styles.addPhotoLink}
+              onPress={() => {
+                onActivate();
+                onAddPhoto(localNotes.trim() || null, "library");
+              }}
+            >
+              🖼 From library
             </Text>
           </View>
         </View>

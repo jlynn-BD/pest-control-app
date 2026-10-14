@@ -5,7 +5,7 @@ import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-nativ
 import { getCachedTemplateSections } from "../db/cache";
 import { addLocalFinding, addLocalFindingPhoto, deleteLocalFinding, getLocalInspectionDetail, updateLocalFinding } from "../db/inspectionStore";
 import { deleteFinding, deleteRecommendation } from "../api/inspections";
-import { capturePhoto } from "../lib/photo";
+import { capturePhoto, pickPhotosFromLibrary } from "../lib/photo";
 import { getCurrentCoords } from "../lib/location";
 import { CHECKLIST_CATEGORY_SHORT_LABEL, findChecklistResponseSummary, listChecklistResponseSummaries } from "../lib/checklist";
 import { SegmentedControl } from "./ChipMultiSelect";
@@ -167,6 +167,12 @@ export function FindingEditorForm({
     if (uri) setPhotos((prev) => [...prev, uri]);
   }
 
+  // Any number of pictures from the photo library at once.
+  async function handleAddPhotosFromLibrary() {
+    const uris = await pickPhotosFromLibrary();
+    if (uris.length > 0) setPhotos((prev) => [...prev, ...uris]);
+  }
+
   // Pulls a previously-answered checklist item's notes/photos into this
   // form. Overwrites area/location (that's the whole point - identify the
   // marker by the checklist item it came from) but only touches
@@ -317,7 +323,10 @@ export function FindingEditorForm({
           <AuthImage key={uri} uri={uri} style={styles.photoThumb} />
         ))}
         <Pressable onPress={handleAddPhoto} style={styles.addPhotoButton}>
-          <Text style={styles.addPhotoText}>+ Photo</Text>
+          <Text style={styles.addPhotoText}>📷 Take photo</Text>
+        </Pressable>
+        <Pressable onPress={handleAddPhotosFromLibrary} style={styles.addPhotoButton}>
+          <Text style={styles.addPhotoText}>🖼 From library</Text>
         </Pressable>
       </View>
 
