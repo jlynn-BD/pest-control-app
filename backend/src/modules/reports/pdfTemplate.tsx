@@ -38,6 +38,15 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   checklistPrompt: { fontSize: 9.5, flexGrow: 1, flexBasis: "60%", paddingRight: 8 },
+  // One checklist answer: the question on the left, the status in its own
+  // fixed column on the right, and any note on its own line underneath.
+  // (They used to share one wrapping row, so a note was squeezed in beside
+  // the status and printed right up against it, e.g. "NEEDS ATTENTIONGaps near plumbing".)
+  checklistItem: { borderBottomWidth: 1, borderBottomColor: "#F0F2F1", paddingVertical: 4 },
+  checklistLine: { flexDirection: "row", alignItems: "flex-start" },
+  checklistQuestion: { fontSize: 9.5, flex: 1, paddingRight: 12 },
+  checklistStatus: { width: 100, fontSize: 9, textAlign: "right" },
+  checklistNotes: { fontSize: 9, color: "#3B4741", marginTop: 3, marginLeft: 6, paddingLeft: 6, borderLeftWidth: 2, borderLeftColor: "#E1E6E3" },
   // Fixed at 540x540pt (7.5in x 7.5in at 72pt/in) to match a real printed
   // quad-ruled sketch page, not stretched to fill the column - see
   // gridLines() below for the 13.5pt minor / 67.5pt major square spacing.
@@ -424,10 +433,12 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
           <View style={styles.section} key={si}>
             <Text style={styles.sectionTitle}>{CHECKLIST_CATEGORY_LABEL[section.category] ?? section.category}</Text>
             {section.items.map((item, ii) => (
-              <View key={ii} style={styles.checklistRow}>
-                <Text style={styles.checklistPrompt}>{item.prompt}</Text>
-                <Text style={checklistStatusStyle(item.status)}>{item.status.replace(/_/g, " ")}</Text>
-                {item.notes ? <Text style={styles.cardMeta}>{item.notes}</Text> : null}
+              <View key={ii} style={styles.checklistItem} wrap={false}>
+                <View style={styles.checklistLine}>
+                  <Text style={styles.checklistQuestion}>{item.prompt}</Text>
+                  <Text style={[styles.checklistStatus, checklistStatusStyle(item.status)]}>{item.status.replace(/_/g, " ")}</Text>
+                </View>
+                {item.notes ? <Text style={styles.checklistNotes}>{item.notes}</Text> : null}
               </View>
             ))}
           </View>
