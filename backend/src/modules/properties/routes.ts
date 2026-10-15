@@ -52,7 +52,27 @@ propertiesRouter.post(
   "/",
   asyncHandler(async (req, res) => {
     const body = propertySchema.parse(req.body);
-    const property = await prisma.property.create({ data: { id: generateId(), ...body } });
+    // The same address for the same client is the same property: a second tap on
+    // "Add", a retry after a slow response, or re-entering it later returns the
+    // one that already exists (200) instead of making a duplicate (201).
+    const norm = (v: string) => v.trim();
+    const existing = await prisma.property.findFirst({
+      where: {
+        customerId: body.customerId,
+        deletedAt: null,
+        addressLine1: { equals: norm(body.addressLine1), mode: "insensitive" },
+        city: { equals: norm(body.city), mode: "insensitive" },
+        state: { equals: norm(body.state), mode: "insensitive" },
+        postalCode: { equals: norm(body.postalCode), mode: "insensitive" },
+      },
+    });
+    if (existing) {
+      res.status(200).json(existing);
+      return;
+    }
+    const property = await prisma.property.create({
+      data: { id: generateId(), ...body, addressLine1: norm(body.addressLine1), city: norm(body.city), state: norm(body.state), postalCode: norm(body.postalCode) },
+    });
     res.status(201).json(property);
   })
 );
@@ -81,6 +101,15 @@ propertiesRouter.patch(
 propertiesRouter.delete(
   "/:id",
   asyncHandler(async (req, res) => {
+    // Only a property with nothing attached can go: deleting one that has
+    // inspections or bookings would orphan that work.
+    const [inspections, appointments] = await Promise.all([
+      prisma.inspection.count({ where: { propertyId: req.params.id, deletedAt: null } }),
+      prisma.appointment.count({ where: { propertyId: req.params.id, deletedAt: null, status: { notIn: ["CANCELED"] } } }),
+    ]);
+    if (inspections > 0 || appointments > 0) {
+      throw new HttpError(409, "This property has inspections or bookings on record, so it can't be deleted.");
+    }
     await prisma.property.update({ where: { id: req.params.id }, data: { deletedAt: new Date() } });
     res.status(204).send();
   })

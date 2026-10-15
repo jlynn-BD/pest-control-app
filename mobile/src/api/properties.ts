@@ -31,6 +31,11 @@ export function createProperty(input: CreatePropertyInput): Promise<Property> {
   return apiRequest<Property>("/api/properties", { method: "POST", body: input });
 }
 
+// Only works for a property with no inspections or bookings on record.
+export function deleteProperty(id: string): Promise<void> {
+  return apiRequest<void>(`/api/properties/${id}`, { method: "DELETE" });
+}
+
 export function getPropertyServiceHistory(id: string): Promise<ServiceHistoryEntry[]> {
   return apiRequest(`/api/properties/${id}/inspections`);
 }

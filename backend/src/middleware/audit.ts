@@ -175,6 +175,8 @@ export function auditRequests(req: Request, res: Response, next: NextFunction) {
   beforeReady.then((before) => {
     res.on("finish", () => {
       if (res.statusCode < 200 || res.statusCode >= 300 || !req.user) return;
+      // A "create" answered with 200 returned something that already existed.
+      if (rule.kind === "created" && res.statusCode === 200) return;
       record(req, rule, m, def, before, body).catch((err) => console.error("AUDIT CAPTURE FAILED", err));
     });
     next();

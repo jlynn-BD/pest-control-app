@@ -5,7 +5,8 @@ import React, { useCallback, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { API_BASE_URL } from "../../api/config";
 import { AuthImage } from "../../components/AuthImage";
-import { deleteSiteMap, getProperty, getPropertyServiceHistory, uploadSiteMap } from "../../api/properties";
+import { deleteProperty, deleteSiteMap, getProperty, getPropertyServiceHistory, uploadSiteMap } from "../../api/properties";
+import { primeCache } from "../../db/cache";
 import { choosePhoto } from "../../lib/photo";
 import { getCachedProperty } from "../../db/cache";
 import { parseSiteMapSketch } from "../../lib/siteMapSketch";
@@ -20,6 +21,9 @@ export default function PropertyDetailScreen({ route, navigation }: Props) {
   const queryClient = useQueryClient();
   const [uploading, setUploading] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirmingRemoveProperty, setConfirmingRemoveProperty] = useState(false);
+  const [removingProperty, setRemovingProperty] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const propertyQuery = useQuery({ queryKey: ["properties", propertyId], queryFn: () => getProperty(propertyId) });
@@ -53,6 +57,25 @@ export default function PropertyDetailScreen({ route, navigation }: Props) {
     },
     onError: (err) => setError(err instanceof ApiError || err instanceof Error ? err.message : "Couldn't delete the site plan photo"),
   });
+
+  // Removes a duplicate (or mistaken) property. The server refuses if it has
+  // inspections or bookings, and says so.
+  async function handleRemoveProperty() {
+    setRemovingProperty(true);
+    setRemoveError(null);
+    try {
+      await deleteProperty(propertyId);
+      primeCache().catch(() => {});
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      queryClient.invalidateQueries({ queryKey: ["properties"] });
+      navigation.goBack();
+    } catch (err) {
+      setConfirmingRemoveProperty(false);
+      setRemoveError(err instanceof ApiError || err instanceof Error ? err.message : "Couldn't delete the property.");
+    } finally {
+      setRemovingProperty(false);
+    }
+  }
 
   async function handleUploadSiteMap() {
     const uri = await choosePhoto();
@@ -146,6 +169,18 @@ export default function PropertyDetailScreen({ route, navigation }: Props) {
             <Text style={styles.meta}>{inspection.findings.length} finding(s) recorded</Text>
           </Card>
         ))
+      )}
+
+      <Text style={styles.sectionTitle}>Remove this property</Text>
+      {removeError ? <Text style={styles.error}>{removeError}</Text> : null}
+      {confirmingRemoveProperty ? (
+        <View style={styles.buttonStack}>
+          <Text style={styles.emptyText}>Delete this property? Use this for a duplicate or a mistake. It can only be deleted if it has no inspections or bookings.</Text>
+          <PrimaryButton title="Yes, delete property" onPress={handleRemoveProperty} loading={removingProperty} />
+          <PrimaryButton title="Keep it" onPress={() => setConfirmingRemoveProperty(false)} disabled={removingProperty} />
+        </View>
+      ) : (
+        <PrimaryButton title="Delete property" onPress={() => setConfirmingRemoveProperty(true)} />
       )}
     </ScrollView>
   );
