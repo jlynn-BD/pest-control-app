@@ -310,7 +310,6 @@ export function SiteMapCanvas({
   selectedLabelId = null,
   selectedWallId = null,
   selectedAnnotationId = null,
-  height = 320,
 }: {
   imageUri: string | null;
   arrows: SiteMapArrow[];
@@ -339,7 +338,6 @@ export function SiteMapCanvas({
   selectedLabelId?: string | null;
   selectedWallId?: string | null;
   selectedAnnotationId?: string | null;
-  height?: number;
 }) {
   const [size, setSize] = useState({ width: 0, height: 0 });
   // Shape being dragged right now: shown at its in-progress position, and
@@ -503,7 +501,7 @@ export function SiteMapCanvas({
   }
 
   return (
-    <View style={[styles.container, { height }, NO_SELECT, mode !== "view" ? NO_PAGE_SCROLL : null]} onLayout={handleLayout} {...panHandlers}>
+    <View style={[styles.container, NO_SELECT, mode !== "view" ? NO_PAGE_SCROLL : null]} onLayout={handleLayout} {...panHandlers}>
       {imageUri ? (
         // A photo stored on the server comes back as a path ("/api/media/...")
         // and sits behind login: give it the server's address and load it with
@@ -776,7 +774,13 @@ export function SiteMapCanvas({
 }
 
 const styles = StyleSheet.create({
+  // Always square, whatever the screen: the PDF report prints this map on a
+  // square page, so a map drawn on a wide iPad screen used to come out
+  // squeezed sideways. Same shape everywhere = what you draw is what prints.
   container: {
+    aspectRatio: 1,
+    maxWidth: 560,
+    alignSelf: "center",
     width: "100%",
     borderRadius: 10,
     borderWidth: 1,

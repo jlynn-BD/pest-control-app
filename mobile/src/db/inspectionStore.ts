@@ -676,7 +676,23 @@ export function deleteLocalInspectionSectionSkip(inspectionId: string, category:
 export function completeLocalInspection(inspectionId: string): void {
   const db = getDb();
   const now = nowIso();
-  db.runSync(`UPDATE inspections SET status = 'COMPLETED', completedAt = ?, updatedAt = ? WHERE id = ?`, [now, now, inspectionId]);
+  // Must be flagged for sync: an inspection that had already synced earlier
+  // (the background sync runs while it is still open) would otherwise keep
+  // showing "Synced" while the server still has it as in progress, and the
+  // report could not be generated.
+  db.runSync(`UPDATE inspections SET status = 'COMPLETED', completedAt = ?, updatedAt = ?, syncStatus = 'pending' WHERE id = ?`, [now, now, inspectionId]);
+}
+
+// Opens a finished inspection back up for changes (something was forgotten):
+// back to IN_PROGRESS with no completion time. Signatures and everything
+// recorded stay; completing it again (and regenerating the report) is how it
+// is finished.
+export function reopenLocalInspection(inspectionId: string): void {
+  const now = nowIso();
+  getDb().runSync(
+    `UPDATE inspections SET status = 'IN_PROGRESS', completedAt = NULL, updatedAt = ?, syncStatus = 'pending' WHERE id = ?`,
+    [now, inspectionId]
+  );
 }
 
 // Adding a child record after the inspection itself was already synced

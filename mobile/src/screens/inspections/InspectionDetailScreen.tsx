@@ -10,6 +10,7 @@ import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { SiteMapCanvas } from "../../components/ArrowCanvas";
 import { AuthImage } from "../../components/AuthImage";
 import { ReportCard } from "../../components/ReportCard";
+import { EditInspectionButton } from "../../components/EditInspectionButton";
 import { InspectionHistoryLink } from "../../components/InspectionHistoryLink";
 import { FindingsAndRecommendations } from "../../components/FindingsAndRecommendations";
 import { Badge, Card, ErrorView, LoadingView, PrimaryButton, colors } from "../../components/ui";
@@ -40,6 +41,7 @@ export default function InspectionDetailScreen({ route }: Props) {
       <Text style={styles.meta}>{inspection.property.addressLine1}</Text>
 
       <InspectionHistoryLink inspectionId={inspectionId} title={inspection.customer.name} />
+      {inspection.status === "COMPLETED" ? <EditInspectionButton inspectionId={inspectionId} /> : null}
       {inspection.status === "COMPLETED" ? <ReportCard inspectionId={inspectionId} /> : null}
 
       {siteMapPanels.map((panel, i) => (

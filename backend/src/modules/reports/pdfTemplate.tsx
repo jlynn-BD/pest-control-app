@@ -53,6 +53,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 2,
   },
+  siteMapShapeCaption: {
+    position: "absolute",
+    fontSize: 8,
+    fontWeight: 700,
+    color: "#1A2421",
+    backgroundColor: "rgba(255,255,255,0.9)",
+    borderRadius: 2,
+    paddingVertical: 1,
+    paddingHorizontal: 3,
+  },
   siteMapStructureLabel: {
     position: "absolute",
     fontSize: 8,
@@ -171,6 +181,8 @@ export interface ReportSiteMapAnnotation {
   y1: number;
   x2?: number;
   y2?: number;
+  // The name given to a shape ("Kitchen", "Bathroom"), printed on it.
+  label?: string;
 }
 
 // One per level in sketch mode ("Site Map — Exterior", "Site Map — 1st
@@ -363,6 +375,20 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
                     );
                   })}
                 </Svg>
+                {/* The names given to shapes, in the shape's top-left corner like on screen. */}
+                {panel.annotations
+                  .filter((a) => a.type === "rect" && a.label)
+                  .map((a, i) => (
+                    <Text
+                      key={`shape-caption-${i}`}
+                      style={[
+                        styles.siteMapShapeCaption,
+                        { left: `${Math.min(Math.max(Math.min(a.x1, a.x2 ?? a.x1) * 100 + 0.5, 0.5), 85)}%`, top: `${Math.min(Math.max(Math.min(a.y1, a.y2 ?? a.y1) * 100 + 0.5, 0.5), 96)}%` },
+                      ]}
+                    >
+                      {a.label}
+                    </Text>
+                  ))}
                 {panel.labels.map((l, i) => (
                   <Text
                     key={`structure-label-${i}`}

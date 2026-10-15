@@ -259,6 +259,7 @@ export function buildSummary(def: EntityDef, action: "created" | "updated" | "de
   if (def.type === "Inspection" && changes?.status) {
     const to = String(changes.status.to);
     if (to === "COMPLETED") return `completed the inspection${tail}`;
+    if (to === "IN_PROGRESS" && String(changes.status.from) === "COMPLETED") return `reopened the inspection to make changes${tail}`;
     if (to === "IN_PROGRESS") return `started the inspection${tail}`;
     return `changed the inspection status to ${to.toLowerCase().replace(/_/g, " ")}${tail}`;
   }
