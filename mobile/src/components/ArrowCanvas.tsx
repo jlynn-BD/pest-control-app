@@ -46,8 +46,14 @@ function useSiteMapGesture(
   completesOnTap: boolean,
   onLineComplete: (start: Point, end: Point) => void,
   onTap: (point: Point) => void,
+  // Pulls a point (pixels) onto the grid / a nearby wall end while drawing
+  // walls and shapes; `from` is the already-placed start of the line.
+  snapPoint?: (p: Point, from?: Point) => Point,
   minLineLength = 12
 ) {
+  const snapRef = useRef(snapPoint);
+  snapRef.current = snapPoint;
+  const snap = (p: Point, from?: Point) => (snapRef.current ? snapRef.current(p, from) : p);
   const modeRef = useRef(mode);
   modeRef.current = mode;
   const completesOnTapRef = useRef(completesOnTap);
@@ -68,13 +74,14 @@ function useSiteMapGesture(
         onStartShouldSetPanResponder: () => modeRef.current !== "view",
         onMoveShouldSetPanResponder: () => modeRef.current !== "view",
         onPanResponderGrant: (evt) => {
-          const p = { x: evt.nativeEvent.locationX, y: evt.nativeEvent.locationY };
+          const p = snap({ x: evt.nativeEvent.locationX, y: evt.nativeEvent.locationY });
           startRef.current = p;
           setPointer(p);
           if (!completesOnTapRef.current) setLive({ start: p, end: p });
         },
         onPanResponderMove: (evt) => {
-          const here = { x: evt.nativeEvent.locationX, y: evt.nativeEvent.locationY };
+          const raw = { x: evt.nativeEvent.locationX, y: evt.nativeEvent.locationY };
+          const here = startRef.current && !completesOnTapRef.current ? snap(raw, startRef.current) : raw;
           setPointer(here);
           if (!startRef.current || completesOnTapRef.current) return;
           setLive({ start: startRef.current, end: here });
@@ -85,7 +92,8 @@ function useSiteMapGesture(
           setLive(null);
           setPointer(null);
           if (!start) return;
-          const end = { x: evt.nativeEvent.locationX, y: evt.nativeEvent.locationY };
+          const rawEnd = { x: evt.nativeEvent.locationX, y: evt.nativeEvent.locationY };
+          const end = completesOnTapRef.current ? rawEnd : snap(rawEnd, start);
           const dist = Math.hypot(end.x - start.x, end.y - start.y);
           if (completesOnTapRef.current) {
             if (dist < minLineLength) onTapRef.current(start);
@@ -119,7 +127,7 @@ function useSiteMapGesture(
           onMouseMove: (e: { clientX: number; clientY: number; currentTarget: { getBoundingClientRect: () => DOMRect } }) => {
             if (modeRef.current === "view" || startRef.current) return;
             const r = e.currentTarget.getBoundingClientRect();
-            setPointer({ x: e.clientX - r.left, y: e.clientY - r.top });
+            setPointer(snap({ x: e.clientX - r.left, y: e.clientY - r.top }));
           },
           onMouseLeave: () => {
             if (!startRef.current) setPointer(null);
@@ -219,6 +227,87 @@ type HandleKind = "move" | "p1" | "p2" | "tl" | "tr" | "bl" | "br";
 
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
+// ---- Snapping & picking -----------------------------------------------
+// Grid cells match the faint background grid (40 minor divisions).
+const GRID_STEP = 1 / 40;
+// Pixel distance within which a point is pulled onto a nearby wall end / the
+// grid, and the angle (radians) within which a wall is locked level/plumb.
+const MAGNET_PX = 14;
+const AXIS_LOCK_RAD = (6 * Math.PI) / 180;
+// Two wall ends this close (fraction of the map) count as one connected corner.
+const CORNER_EPS = 0.006;
+
+type Pt = { x: number; y: number };
+
+// Pulls a point (normalized) onto a nearby wall end if one is within reach,
+// otherwise onto the grid. `from` is the fixed other end of the line being
+// drawn/edited: when the result is within a few degrees of level or plumb it
+// is locked exactly level/plumb.
+function snapNormalized(p: Pt, ends: Pt[], width: number, height: number, from?: Pt): Pt {
+  let best: Pt | null = null;
+  let bestD = MAGNET_PX;
+  for (const e of ends) {
+    const d = Math.hypot((e.x - p.x) * width, (e.y - p.y) * height);
+    if (d < bestD) {
+      bestD = d;
+      best = e;
+    }
+  }
+  if (best) return { x: best.x, y: best.y };
+  let out = { x: Math.round(p.x / GRID_STEP) * GRID_STEP, y: Math.round(p.y / GRID_STEP) * GRID_STEP };
+  if (from) {
+    const dx = (p.x - from.x) * width;
+    const dy = (p.y - from.y) * height;
+    const len = Math.hypot(dx, dy);
+    if (len > 8) {
+      const ang = Math.atan2(Math.abs(dy), Math.abs(dx));
+      if (ang < AXIS_LOCK_RAD) out = { x: out.x, y: from.y };
+      else if (Math.PI / 2 - ang < AXIS_LOCK_RAD) out = { x: from.x, y: out.y };
+    }
+  }
+  return { x: clamp01(out.x), y: clamp01(out.y) };
+}
+
+function distToSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len2 = dx * dx + dy * dy;
+  const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / len2));
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+
+// How far (px) a tap is from a wall / annotation - the real shape, not its
+// padded bounding box, so the nearest thing to the finger wins.
+function distToElement(
+  tapX: number,
+  tapY: number,
+  g: { x1: number; y1: number; x2?: number; y2?: number },
+  type: "wall" | "x" | "arrow" | "rect",
+  width: number,
+  height: number
+): number {
+  const x1 = g.x1 * width;
+  const y1 = g.y1 * height;
+  if (type === "x") return Math.hypot(tapX - x1, tapY - y1);
+  const x2 = (g.x2 ?? g.x1) * width;
+  const y2 = (g.y2 ?? g.y1) * height;
+  if (type !== "rect") return distToSegment(tapX, tapY, x1, y1, x2, y2);
+  const minX = Math.min(x1, x2);
+  const maxX = Math.max(x1, x2);
+  const minY = Math.min(y1, y2);
+  const maxY = Math.max(y1, y2);
+  const inside = tapX >= minX && tapX <= maxX && tapY >= minY && tapY <= maxY;
+  const edge = Math.min(
+    distToSegment(tapX, tapY, minX, minY, maxX, minY),
+    distToSegment(tapX, tapY, maxX, minY, maxX, maxY),
+    distToSegment(tapX, tapY, maxX, maxY, minX, maxY),
+    distToSegment(tapX, tapY, minX, maxY, minX, minY)
+  );
+  // Inside a box counts as a modest distance, so a wall or a small shape
+  // drawn over a big room is still the one picked when tapped near it.
+  return inside ? Math.min(edge, 12) : edge;
+}
+
 // New shape geometry after dragging a handle by (dxn, dyn), both as fractions
 // of the map size. "move" slides the whole shape but stops at the map edge;
 // p1/p2 move one end of a line or arrow; the tl/tr/bl/br corners resize a
@@ -279,10 +368,13 @@ function DragSurface({
   onDrag,
   onDrop,
   onCancel,
+  onTap,
   children,
   pointerEvents,
 }: {
   pointerEvents?: "auto" | "none";
+  // A touch that ended without moving: where it landed, inside this surface.
+  onTap?: (x: number, y: number) => void;
   style: object;
   onDrag: (dx: number, dy: number) => void;
   onDrop: (dx: number, dy: number) => void;
@@ -295,6 +387,9 @@ function DragSurface({
   dropRef.current = onDrop;
   const cancelRef = useRef(onCancel);
   cancelRef.current = onCancel;
+  const tapRef = useRef(onTap);
+  tapRef.current = onTap;
+  const downAt = useRef({ x: 0, y: 0 });
   // Distance travelled is worked out from the finger's position at each
   // event rather than the responder's running totals, which only update on
   // move events - so a quick flick that jumps straight to its end point still
@@ -307,9 +402,15 @@ function DragSurface({
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: (e) => {
           startRef.current = { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY };
+          downAt.current = { x: e.nativeEvent.locationX, y: e.nativeEvent.locationY };
         },
         onPanResponderMove: (e) => dragRef.current(e.nativeEvent.pageX - startRef.current.x, e.nativeEvent.pageY - startRef.current.y),
-        onPanResponderRelease: (e) => dropRef.current(e.nativeEvent.pageX - startRef.current.x, e.nativeEvent.pageY - startRef.current.y),
+        onPanResponderRelease: (e) => {
+          const dx = e.nativeEvent.pageX - startRef.current.x;
+          const dy = e.nativeEvent.pageY - startRef.current.y;
+          dropRef.current(dx, dy);
+          if (Math.abs(dx) < 3 && Math.abs(dy) < 3) tapRef.current?.(downAt.current.x, downAt.current.y);
+        },
         onPanResponderTerminationRequest: () => false,
         onPanResponderTerminate: () => cancelRef.current(),
       }),
@@ -342,8 +443,10 @@ export function SiteMapCanvas({
   onAnnotationPress,
   onAnnotationChange,
   onWallChange,
+  onWallsChange,
   onLabelChange,
   onCaptionChange,
+  snap = true,
   selectedLabelId = null,
   selectedWallId = null,
   selectedAnnotationId = null,
@@ -369,6 +472,12 @@ export function SiteMapCanvas({
   // shape; resolves once the change is saved.
   onAnnotationChange?: (annotationId: string, geometry: Geometry) => Promise<unknown> | void;
   onWallChange?: (wallId: string, geometry: Required<Geometry>) => Promise<unknown> | void;
+  // Several walls changed by one drag (a wall end dragged together with the
+  // other walls joined to it) - saved as a single edit so Undo reverses it all.
+  onWallsChange?: (changes: { id: string; geometry: Required<Geometry> }[]) => Promise<unknown> | void;
+  // Pull drawn/dragged points onto the grid and onto nearby wall ends, and
+  // lock near-level/plumb walls exactly level/plumb.
+  snap?: boolean;
   // Called once, when a finger lifts after dragging the selected label to a
   // new spot - same "commit on drop" shape as onAnnotationChange/onWallChange.
   onLabelChange?: (labelId: string, point: Point) => Promise<unknown> | void;
@@ -381,7 +490,13 @@ export function SiteMapCanvas({
   const [size, setSize] = useState({ width: 0, height: 0 });
   // Shape being dragged right now: shown at its in-progress position, and
   // only saved when the finger lifts.
-  const [draft, setDraft] = useState<{ kind: "annotation" | "wall"; id: string; g: Geometry } | null>(null);
+  const [draft, setDraft] = useState<{
+    kind: "annotation" | "wall";
+    id: string;
+    g: Geometry;
+    // Walls joined to the one being dragged, moving with it.
+    also?: { id: string; g: Required<Geometry> }[];
+  } | null>(null);
   // Kept separate from `draft` above - a label's geometry is a bare point
   // (SiteMapLabel has x/y, not the x1/y1/x2/y2 shape walls/annotations use),
   // and dragging one is never happening at the same time as dragging a
@@ -391,10 +506,78 @@ export function SiteMapCanvas({
   // A shape name being dragged right now (offset from the shape's corner).
   const [draftCaption, setDraftCaption] = useState<{ id: string; dx: number; dy: number } | null>(null);
   const shownAnnotations = annotations.map((a) => (draft?.kind === "annotation" && draft.id === a.id ? { ...a, ...draft.g } : a));
-  const shownWalls = savedLines.map((l) =>
-    draft?.kind === "wall" && draft.id === l.id ? { ...l, ...(draft.g as Required<Geometry>) } : l
-  );
+  const shownWalls = savedLines.map((l) => {
+    if (draft?.kind !== "wall") return l;
+    if (draft.id === l.id) return { ...l, ...(draft.g as Required<Geometry>) };
+    const joined = draft.also?.find((o) => o.id === l.id);
+    return joined ? { ...l, ...joined.g } : l;
+  });
+
+  // Every wall end on the map (other than the given wall): what a dragged end
+  // can snap to.
+  function wallEnds(excludeId?: string): Pt[] {
+    const out: Pt[] = [];
+    for (const l of [...savedLines, ...pendingLines]) {
+      if (l.id === excludeId) continue;
+      out.push({ x: l.x1, y: l.y1 }, { x: l.x2, y: l.y2 });
+    }
+    return out;
+  }
+  const snapsNow = snap && (mode === "wall" || (mode === "annotate" && annotationType === "rect"));
+  // Pixel-space wrapper for the drawing gesture.
+  function snapPixels(p: Point, from?: Point): Point {
+    if (!snapsNow || size.width === 0 || size.height === 0) return p;
+    const n = snapNormalized(
+      { x: p.x / size.width, y: p.y / size.height },
+      mode === "wall" ? wallEnds() : [],
+      size.width,
+      size.height,
+      from && mode === "wall" ? { x: from.x / size.width, y: from.y / size.height } : undefined
+    );
+    return { x: n.x * size.width, y: n.y * size.height };
+  }
   const shownLabels = labels.map((l) => (draftLabel && draftLabel.id === l.id ? { ...l, x: draftLabel.x, y: draftLabel.y } : l));
+
+  // The wall/shape actually nearest a tap (true distance to the line or
+  // outline, not its padded bounding box). Overlapping boxes - a short wall
+  // inside a room, two walls meeting at a corner - used to hand the tap to
+  // whichever box was on top, so the wall you touched often wasn't the one
+  // selected. `fallback` is what the touched hit area stood for; it wins when
+  // nothing is within reach of the finger.
+  function pickAt(
+    tapX: number,
+    tapY: number,
+    fallback: { kind: "wall" | "annotation"; id: string },
+    includeWalls: boolean
+  ): { kind: "wall" | "annotation"; id: string } {
+    const W = size.width;
+    const H = size.height;
+    let best = fallback;
+    let bestD = 44;
+    if (includeWalls) {
+      for (const l of [...shownWalls, ...pendingLines]) {
+        if (l.id === selectedWallId) continue;
+        const d = distToElement(tapX, tapY, l, "wall", W, H);
+        if (d < bestD) {
+          bestD = d;
+          best = { kind: "wall", id: l.id };
+        }
+      }
+    }
+    for (const a of shownAnnotations) {
+      if (mode === "view" && a.id === selectedAnnotationId) continue;
+      const d = distToElement(tapX, tapY, a, a.type, W, H);
+      if (d < bestD) {
+        bestD = d;
+        best = { kind: "annotation", id: a.id };
+      }
+    }
+    return best;
+  }
+  function selectPicked(pick: { kind: "wall" | "annotation"; id: string }) {
+    if (pick.kind === "wall") onWallPress?.(pick.id);
+    else onAnnotationPress?.(pick.id);
+  }
 
   function handleLayout(e: LayoutChangeEvent) {
     const { width, height: h } = e.nativeEvent.layout;
@@ -420,7 +603,8 @@ export function SiteMapCanvas({
       const norm = { x: point.x / size.width, y: point.y / size.height };
       if (mode === "label") onLabelTap?.(norm);
       else if (mode === "annotate" && annotationType === "x" && annotationColor) onAnnotationDrawn?.("x", annotationColor, norm, norm);
-    }
+    },
+    snapPixels
   );
 
   // Handles + a move surface for whichever wall/annotation is selected, so a
@@ -439,18 +623,65 @@ export function SiteMapCanvas({
     const sx2 = shown.x2 ?? shown.x1;
     const sy2 = shown.y2 ?? shown.y1;
 
-    const drag = (handle: HandleKind) => (dx: number, dy: number) =>
-      setDraft({ kind, id: target.id, g: applyDrag(base, handle, dx / W, dy / H) });
+    // Where the shape ends up for a drag of this handle: the raw finger
+    // movement, pulled onto the grid / a nearby wall end (when snapping is
+    // on). A wall end dragged also takes along every wall joined to it.
+    const compute = (handle: HandleKind, dx: number, dy: number) => {
+      const raw = applyDrag(base, handle, dx / W, dy / H);
+      const isLine = selAnn ? selAnn.type === "arrow" : true;
+      const isWall = !selAnn;
+      const origEnd = handle === "p1" ? { x: base.x1, y: base.y1 } : handle === "p2" ? { x: base.x2 ?? base.x1, y: base.y2 ?? base.y1 } : null;
+      // Wall ends other than the one being dragged (and anything joined to it).
+      const ends = !isWall
+        ? []
+        : wallEnds(target.id).filter((e) => !origEnd || Math.hypot(e.x - origEnd.x, e.y - origEnd.y) > CORNER_EPS);
+      let g = raw;
+      if (snap && (handle === "p1" || handle === "p2") && isLine) {
+        const moved = handle === "p1" ? { x: raw.x1, y: raw.y1 } : { x: raw.x2 ?? raw.x1, y: raw.y2 ?? raw.y1 };
+        const fixed = handle === "p1" ? { x: base.x2 ?? base.x1, y: base.y2 ?? base.y1 } : { x: base.x1, y: base.y1 };
+        const p = snapNormalized(moved, ends, W, H, fixed);
+        g = handle === "p1" ? { ...raw, x1: p.x, y1: p.y } : { ...raw, x2: p.x, y2: p.y };
+      } else if (snap && (handle === "tl" || handle === "tr" || handle === "bl" || handle === "br")) {
+        const p = snapNormalized({ x: raw.x1, y: raw.y1 }, [], W, H);
+        const x2 = raw.x2 ?? raw.x1;
+        const y2 = raw.y2 ?? raw.y1;
+        // Skip the snap if it would squash the shape below its minimum size.
+        if (Math.abs(p.x - x2) >= 0.03 && Math.abs(p.y - y2) >= 0.03) g = { ...raw, x1: p.x, y1: p.y };
+      } else if (snap && handle === "move") {
+        // Slide so the shape's first corner / wall end lands on the grid or a wall end.
+        const first = { x: raw.x1, y: raw.y1 };
+        const p = snapNormalized(first, isWall ? wallEnds(target.id) : [], W, H);
+        g = applyDrag(base, "move", dx / W + (p.x - first.x), dy / H + (p.y - first.y));
+      }
+      let also: { id: string; g: Required<Geometry> }[] = [];
+      if (isWall && origEnd && (handle === "p1" || handle === "p2")) {
+        const np = handle === "p1" ? { x: g.x1, y: g.y1 } : { x: g.x2 ?? g.x1, y: g.y2 ?? g.y1 };
+        for (const l of savedLines) {
+          if (l.id === target.id) continue;
+          const j1 = Math.hypot(l.x1 - origEnd.x, l.y1 - origEnd.y) <= CORNER_EPS;
+          const j2 = Math.hypot(l.x2 - origEnd.x, l.y2 - origEnd.y) <= CORNER_EPS;
+          if (!j1 && !j2) continue;
+          also.push({ id: l.id, g: { x1: j1 ? np.x : l.x1, y1: j1 ? np.y : l.y1, x2: j2 ? np.x : l.x2, y2: j2 ? np.y : l.y2 } });
+        }
+      }
+      return { g, also };
+    };
+    const drag = (handle: HandleKind) => (dx: number, dy: number) => {
+      const { g, also } = compute(handle, dx, dy);
+      setDraft({ kind, id: target.id, g, also });
+    };
     const drop = (handle: HandleKind) => async (dx: number, dy: number) => {
       if (Math.abs(dx) < 3 && Math.abs(dy) < 3) {
         setDraft(null); // a tap, not a drag
         return;
       }
-      const g = applyDrag(base, handle, dx / W, dy / H);
-      setDraft({ kind, id: target.id, g });
+      const { g, also } = compute(handle, dx, dy);
+      setDraft({ kind, id: target.id, g, also });
       try {
         if (kind === "annotation") await onAnnotationChange?.(target.id, g);
-        else await onWallChange?.(target.id, g as Required<Geometry>);
+        else if (also.length > 0 && onWallsChange) {
+          await onWallsChange([{ id: target.id, geometry: g as Required<Geometry> }, ...also.map((o) => ({ id: o.id, geometry: o.g }))]);
+        } else await onWallChange?.(target.id, g as Required<Geometry>);
       } finally {
         setDraft(null);
       }
@@ -478,15 +709,33 @@ export function SiteMapCanvas({
           ];
     const moveRect = selAnn
       ? annotationHitRect({ ...selAnn, ...shown } as SiteMapAnnotation, W, H)
-      : wallHitRect({ ...(target as WallLine), ...(shown as Required<Geometry>) }, W, H);
+      : wallHitRect({ ...(target as WallLine), ...(shown as Required<Geometry>) }, W, H, 22);
 
     return (
       <>
-        <DragSurface style={[styles.wallHitArea, moveRect]} onDrag={drag("move")} onDrop={drop("move")} onCancel={cancel} />
+        <DragSurface
+          style={[styles.wallHitArea, moveRect]}
+          onDrag={drag("move")}
+          onDrop={drop("move")}
+          onCancel={cancel}
+          // A tap on the selected item's box that is really nearer a
+          // different wall/shape selects that one instead.
+          onTap={(x, y) => {
+            const tapX = moveRect.left + x;
+            const tapY = moveRect.top + y;
+            const own = distToElement(tapX, tapY, shown, selAnn ? selAnn.type : "wall", W, H);
+            const pick = pickAt(tapX, tapY, { kind: kind === "annotation" ? "annotation" : "wall", id: target.id }, true);
+            if (pick.id === target.id) return;
+            const other = pick.kind === "wall" ? shownWalls.find((l) => l.id === pick.id) : shownAnnotations.find((a) => a.id === pick.id);
+            if (!other) return;
+            const od = distToElement(tapX, tapY, other, pick.kind === "wall" ? "wall" : (other as SiteMapAnnotation).type, W, H);
+            if (od < own) selectPicked(pick);
+          }}
+        />
         {handles.map((h) => (
           <DragSurface
             key={h.key}
-            style={[styles.handleTouch, { left: h.x - 20, top: h.y - 20 }]}
+            style={[styles.handleTouch, { left: h.x - 28, top: h.y - 28 }]}
             onDrag={drag(h.key)}
             onDrop={drop(h.key)}
             onCancel={cancel}
@@ -759,7 +1008,10 @@ export function SiteMapCanvas({
         ? [...shownWalls, ...pendingLines].filter((l) => l.id !== selectedWallId).map((l) => (
             <Pressable
               key={`wall-hit-${l.id}`}
-              onPress={() => onWallPress?.(l.id)}
+              onPress={(e) => {
+                const r = wallHitRect(l, size.width, size.height);
+                selectPicked(pickAt(r.left + e.nativeEvent.locationX, r.top + e.nativeEvent.locationY, { kind: "wall", id: l.id }, true));
+              }}
               style={[styles.wallHitArea, wallHitRect(l, size.width, size.height)]}
             />
           ))
@@ -777,7 +1029,12 @@ export function SiteMapCanvas({
         ? shownAnnotations.filter((a) => !(mode === "view" && a.id === selectedAnnotationId)).map((a) => (
             <Pressable
               key={`ann-hit-${a.id}`}
-              onPress={() => onAnnotationPress?.(a.id)}
+              onPress={(e) => {
+                const r = annotationHitRect(a, size.width, size.height);
+                selectPicked(
+                  pickAt(r.left + e.nativeEvent.locationX, r.top + e.nativeEvent.locationY, { kind: "annotation", id: a.id }, mode === "view")
+                );
+              }}
               style={[styles.wallHitArea, annotationHitRect(a, size.width, size.height)]}
             />
           ))
@@ -933,6 +1190,6 @@ const styles = StyleSheet.create({
   },
   shapeCaptionText: { fontSize: 11, fontWeight: "700", color: colors.text },
   wallHitArea: { position: "absolute" },
-  handleTouch: { position: "absolute", width: 40, height: 40, alignItems: "center", justifyContent: "center" },
-  handleDot: { width: 18, height: 18, borderRadius: 9, backgroundColor: "#fff", borderWidth: 3, borderColor: colors.primary },
+  handleTouch: { position: "absolute", width: 56, height: 56, alignItems: "center", justifyContent: "center" },
+  handleDot: { width: 26, height: 26, borderRadius: 13, backgroundColor: "#fff", borderWidth: 4, borderColor: colors.primary },
 });

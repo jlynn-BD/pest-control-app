@@ -12,7 +12,7 @@ import {
   SiteMapLevel,
   visibleSketch,
 } from "@pest-app/shared";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getCachedProperty, getCachedTemplateSections, isSiteMapSketchDirty, primeCache } from "../../db/cache";
 import { pushDirtySketches, saveSketchLocally } from "../../sync/siteMapSync";
@@ -95,6 +95,12 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   const [uploading, setUploading] = useState(false);
   const [confirmingRemovePhoto, setConfirmingRemovePhoto] = useState(false);
   const [removingPhoto, setRemovingPhoto] = useState(false);
+  // Pull drawn/dragged points onto the grid and nearby wall ends.
+  const [snap, setSnap] = useState(true);
+  // The level as it was before each edit, newest last - what Undo steps back
+  // through. `undoCount` is just so the button re-renders when it changes.
+  const undoStack = useRef<{ levelId: string; level: SiteMapLevel }[]>([]);
+  const [undoCount, setUndoCount] = useState(0);
   const [saving, setSaving] = useState(false);
   // This device holds map edits the server hasn't confirmed yet.
   const [sketchPending, setSketchPending] = useState(false);
@@ -315,6 +321,9 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     const rawLevel = raw.levels.find((l) => l.id === selectedLevel.id);
     if (!rawLevel) return false;
     const visibleLevel = visibleSketch({ levels: [rawLevel] }).levels[0];
+    undoStack.current.push({ levelId: rawLevel.id, level: visibleLevel });
+    if (undoStack.current.length > 40) undoStack.current.shift();
+    setUndoCount(undoStack.current.length);
     const edited = applyLevelEdit(rawLevel, mutate(visibleLevel), Date.now());
     commitSketch({ levels: raw.levels.map((l) => (l.id === edited.id ? edited : l)) });
     return true;
@@ -326,12 +335,33 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // without having to hunt for it on the canvas.
   async function handleUndoLastAction() {
     if (!lastAction) return;
-    const ok = await persistSelectedLevel((l) => {
-      if (lastAction.kind === "wall") return { ...l, lines: l.lines.filter((line) => line.id !== lastAction.id) };
-      if (lastAction.kind === "label") return { ...l, labels: l.labels.filter((label) => label.id !== lastAction.id) };
-      return { ...l, annotations: l.annotations.filter((a) => a.id !== lastAction.id) };
-    });
-    if (ok) setLastAction(null);
+    handleUndo();
+    setLastAction(null);
+  }
+
+  // Steps the selected level back to how it was before its latest change -
+  // moves, resizes, deletes and recolours as well as additions. Anything
+  // restored is saved (and synced) as a fresh edit.
+  function handleUndo() {
+    if (!property || !selectedLevel) return;
+    const stack = undoStack.current;
+    let i = stack.length - 1;
+    while (i >= 0 && stack[i].levelId !== selectedLevel.id) i--;
+    if (i < 0) return;
+    const [{ level }] = stack.splice(i, 1);
+    setUndoCount(stack.length);
+    const raw = currentRawSketch();
+    const rawLevel = raw.levels.find((l) => l.id === selectedLevel.id);
+    if (!rawLevel) return;
+    const edited = applyLevelEdit(rawLevel, level, Date.now());
+    commitSketch({ levels: raw.levels.map((l) => (l.id === edited.id ? edited : l)) });
+    // Whatever was selected may no longer exist.
+    if (selectedWallId && !level.lines.some((l) => l.id === selectedWallId)) setSelectedWallId(null);
+    if (selectedAnnotationId && !level.annotations.some((a) => a.id === selectedAnnotationId)) {
+      setSelectedAnnotationId(null);
+      setShapeLabelText("");
+    }
+    setEditingLabel((cur) => (cur && !level.labels.some((l) => l.id === cur.id) ? null : cur));
   }
 
   async function handleWallDrawn(start: Point, end: Point) {
@@ -467,6 +497,67 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       ...l,
       lines: l.lines.map((line) => (line.id === id ? { ...line, x1: g.x1, y1: g.y1, x2: g.x2, y2: g.y2 } : line)),
     }));
+  }
+
+  // One drag that moved a wall end together with the walls joined to it.
+  function handleUpdateWalls(changes: { id: string; geometry: Required<Geometry> }[]) {
+    const byId = new Map(changes.map((c) => [c.id, c.geometry]));
+    return persistSelectedLevel((l) => ({
+      ...l,
+      lines: l.lines.map((line) => {
+        const g = byId.get(line.id);
+        return g ? { ...line, x1: g.x1, y1: g.y1, x2: g.x2, y2: g.y2 } : line;
+      }),
+    }));
+  }
+
+  // Arrow-button nudge of whatever wall / shape is selected: one grid square
+  // at a time, for an exact placement a finger can't give.
+  function handleNudgeSelected(dx: number, dy: number) {
+    const STEP = 1 / 40;
+    const shift = (g: { x1: number; y1: number; x2?: number; y2?: number }) => {
+      const xs = [g.x1, g.x2 ?? g.x1];
+      const ys = [g.y1, g.y2 ?? g.y1];
+      const sx = Math.min(1 - Math.max(...xs), Math.max(-Math.min(...xs), dx * STEP));
+      const sy = Math.min(1 - Math.max(...ys), Math.max(-Math.min(...ys), dy * STEP));
+      return { x1: g.x1 + sx, y1: g.y1 + sy, ...(g.x2 !== undefined ? { x2: g.x2 + sx, y2: (g.y2 ?? g.y1) + sy } : {}) };
+    };
+    if (selectedWallId) {
+      const id = selectedWallId;
+      persistSelectedLevel((l) => ({ ...l, lines: l.lines.map((line) => (line.id === id ? { ...line, ...shift(line) } : line)) }));
+    } else if (selectedAnnotationId) {
+      const id = selectedAnnotationId;
+      persistSelectedLevel((l) => ({ ...l, annotations: l.annotations.map((a) => (a.id === id ? { ...a, ...shift(a) } : a)) }));
+    }
+  }
+
+  // Makes the selected wall exactly level or plumb (whichever it is closer
+  // to), keeping its first end where it is. Walls joined to the moved end
+  // follow it, so corners stay closed.
+  function handleStraightenSelectedWall() {
+    const id = selectedWallId;
+    if (!id) return;
+    persistSelectedLevel((l) => {
+      const wall = l.lines.find((line) => line.id === id);
+      if (!wall) return l;
+      const horizontal = Math.abs(wall.x2 - wall.x1) >= Math.abs(wall.y2 - wall.y1);
+      const nx = horizontal ? wall.x2 : wall.x1;
+      const ny = horizontal ? wall.y1 : wall.y2;
+      const EPS = 0.006;
+      return {
+        ...l,
+        lines: l.lines.map((line) => {
+          if (line.id === id) return { ...line, x2: nx, y2: ny };
+          const j1 = Math.hypot(line.x1 - wall.x2, line.y1 - wall.y2) <= EPS;
+          const j2 = Math.hypot(line.x2 - wall.x2, line.y2 - wall.y2) <= EPS;
+          return {
+            ...line,
+            ...(j1 ? { x1: nx, y1: ny } : {}),
+            ...(j2 ? { x2: nx, y2: ny } : {}),
+          };
+        }),
+      };
+    });
   }
 
   function handleRecolorSelectedAnnotation(color: string) {
@@ -633,6 +724,20 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           {siteMapHintText(mode, annotationType) ?? "Tap a shape or wall to move, resize or recolor it"}
         </Text>
       ) : null}
+      {canDraw && !editorOpen ? (
+        <View style={styles.toolsRow}>
+          <Pressable
+            onPress={handleUndo}
+            disabled={!undoStack.current.some((u) => u.levelId === selectedLevel?.id)}
+            style={[styles.toolChip, !undoStack.current.some((u) => u.levelId === selectedLevel?.id) && styles.toolChipOff]}
+          >
+            <Text style={styles.toolChipText}>↶ Undo</Text>
+          </Pressable>
+          <Pressable onPress={() => setSnap((v) => !v)} style={[styles.toolChip, snap && styles.toolChipOn]}>
+            <Text style={[styles.toolChipText, snap && styles.toolChipTextOn]}>Snap to grid &amp; corners: {snap ? "On" : "Off"}</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {sketchPending ? <Text style={styles.hint}>Saved on this device - will sync when there's a connection</Text> : null}
       {mode === "wall" && !editorOpen && wallCount > 0 ? (
         <Text style={styles.dismissLink} onPress={handleDeleteLastWall}>
@@ -658,6 +763,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         onAnnotationPress={handleAnnotationPress}
         onAnnotationChange={handleUpdateAnnotation}
         onWallChange={handleUpdateWall}
+        onWallsChange={handleUpdateWalls}
+        snap={snap}
         onLabelChange={handleUpdateLabelPosition}
         onCaptionChange={handleUpdateCaption}
         selectedLabelId={editingLabel?.id ?? null}
@@ -766,7 +873,18 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       {selectedWallId ? (
         <Card style={styles.labelPromptCard}>
           <Text style={styles.editorTitle}>Wall segment</Text>
-          <Text style={styles.editHint}>Drag the wall to move it, or drag a dot to change its length or angle.</Text>
+          <Text style={styles.editHint}>Drag the wall to move it, or drag a dot to change its length or angle. Walls joined to a dot move with it.</Text>
+          <View style={styles.nudgeRow}>
+            <Text style={styles.nudgeLabel}>Nudge</Text>
+            {([["←", -1, 0], ["↑", 0, -1], ["↓", 0, 1], ["→", 1, 0]] as const).map(([arrow, dx, dy]) => (
+              <Pressable key={arrow} onPress={() => handleNudgeSelected(dx, dy)} accessibilityLabel={`Nudge ${arrow}`} style={styles.nudgeBtn}>
+                <Text style={styles.nudgeBtnText}>{arrow}</Text>
+              </Pressable>
+            ))}
+            <Pressable onPress={handleStraightenSelectedWall} style={[styles.nudgeBtn, styles.nudgeWide]}>
+              <Text style={styles.nudgeBtnText}>Straighten</Text>
+            </Pressable>
+          </View>
           <View style={styles.buttonRow}>
             <View style={styles.buttonHalf}>
               <PrimaryButton title="Delete" onPress={handleDeleteSelectedWall} loading={saving} />
@@ -786,6 +904,14 @@ export default function SiteMapScreen({ route, navigation }: Props) {
               ? "Drag the mark to move it."
               : "Drag the shape to move it, or drag a dot to resize it."}
           </Text>
+          <View style={styles.nudgeRow}>
+            <Text style={styles.nudgeLabel}>Nudge</Text>
+            {([["←", -1, 0], ["↑", 0, -1], ["↓", 0, 1], ["→", 1, 0]] as const).map(([arrow, dx, dy]) => (
+              <Pressable key={arrow} onPress={() => handleNudgeSelected(dx, dy)} accessibilityLabel={`Nudge ${arrow}`} style={styles.nudgeBtn}>
+                <Text style={styles.nudgeBtnText}>{arrow}</Text>
+              </Pressable>
+            ))}
+          </View>
           {selectedLevel?.annotations.find((a) => a.id === selectedAnnotationId)?.type === "rect" ? (
             <View style={styles.shapeLabelRow}>
               <View style={styles.shapeLabelField}>
@@ -1039,6 +1165,17 @@ const styles = StyleSheet.create({
   editorCard: { marginTop: 14, gap: 4, borderColor: colors.primary, borderWidth: 2 },
   editorTitle: { fontSize: 15, fontWeight: "700", color: colors.text, marginBottom: 4 },
   lastActionCard: { marginTop: 12, gap: 4, borderColor: colors.primary, borderWidth: 1 },
+  toolsRow: { flexDirection: "row", gap: 8, marginTop: 10, flexWrap: "wrap" },
+  toolChip: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  toolChipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  toolChipOff: { opacity: 0.4 },
+  toolChipText: { fontSize: 14, fontWeight: "600", color: colors.text },
+  toolChipTextOn: { color: "#fff" },
+  nudgeRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" },
+  nudgeLabel: { fontSize: 13, fontWeight: "600", color: colors.textMuted },
+  nudgeBtn: { minWidth: 48, height: 44, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", backgroundColor: colors.card },
+  nudgeWide: { paddingHorizontal: 14 },
+  nudgeBtnText: { fontSize: 18, fontWeight: "700", color: colors.text },
   dismissLink: { color: colors.primary, fontWeight: "600", fontSize: 13, marginTop: 4, paddingVertical: 12 },
   error: { color: colors.danger, textAlign: "center", marginTop: 10 },
   findingsListCard: { marginTop: 16, gap: 4 },
