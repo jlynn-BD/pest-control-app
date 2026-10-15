@@ -443,6 +443,14 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     }));
   }
 
+  // A shape's name dragged to a new spot (stored as an offset from the shape).
+  function handleUpdateCaption(id: string, offset: { dx: number; dy: number }) {
+    return persistSelectedLevel((l) => ({
+      ...l,
+      annotations: l.annotations.map((a) => (a.id === id ? { ...a, labelDx: offset.dx, labelDy: offset.dy } : a)),
+    }));
+  }
+
   // Moving or resizing a selected shape: called once when the finger lifts,
   // and saved like every other edit on this screen.
   function handleUpdateAnnotation(id: string, g: Geometry) {
@@ -651,6 +659,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         onAnnotationChange={handleUpdateAnnotation}
         onWallChange={handleUpdateWall}
         onLabelChange={handleUpdateLabelPosition}
+        onCaptionChange={handleUpdateCaption}
         selectedLabelId={editingLabel?.id ?? null}
         selectedWallId={selectedWallId}
         selectedAnnotationId={selectedAnnotationId}

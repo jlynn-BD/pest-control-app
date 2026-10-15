@@ -192,6 +192,8 @@ export interface ReportSiteMapAnnotation {
   y2?: number;
   // The name given to a shape ("Kitchen", "Bathroom"), printed on it.
   label?: string;
+  labelDx?: number;
+  labelDy?: number;
 }
 
 // One per level in sketch mode ("Site Map — Exterior", "Site Map — 1st
@@ -392,7 +394,10 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
                       key={`shape-caption-${i}`}
                       style={[
                         styles.siteMapShapeCaption,
-                        { left: `${Math.min(Math.max(Math.min(a.x1, a.x2 ?? a.x1) * 100 + 0.5, 0.5), 85)}%`, top: `${Math.min(Math.max(Math.min(a.y1, a.y2 ?? a.y1) * 100 + 0.5, 0.5), 96)}%` },
+                        {
+                          left: `${Math.min(Math.max((Math.min(a.x1, a.x2 ?? a.x1) + (a.labelDx ?? 0)) * 100 + 0.5, 0.5), 85)}%`,
+                          top: `${Math.min(Math.max((Math.min(a.y1, a.y2 ?? a.y1) + (a.labelDy ?? 0)) * 100 + 0.5, 0.5), 96)}%`,
+                        },
                       ]}
                     >
                       {a.label}

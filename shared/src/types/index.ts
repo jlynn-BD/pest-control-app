@@ -129,6 +129,12 @@ export interface SiteMapAnnotation {
   // still parse fine. Lets a technician name a shape directly instead of
   // placing a separate floating SiteMapSketchLabel on top of it.
   label?: string;
+  // Where the name sits on the shape, as an offset from the shape's top-left
+  // corner (as a fraction of the map). Unset = the default top-left spot.
+  // An offset (not an absolute point) so the name stays put on the shape when
+  // the shape is moved or resized.
+  labelDx?: number;
+  labelDy?: number;
 }
 
 // A sketch is split into technician-defined levels (e.g. "Exterior", "1st

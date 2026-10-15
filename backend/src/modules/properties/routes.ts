@@ -214,6 +214,8 @@ const siteMapSketchSchema = z.object({
               // practice). z.parse() drops unlisted fields, so anything
               // new on an annotation has to be listed here.
               label: z.string().optional(),
+              labelDx: z.number().optional(),
+              labelDy: z.number().optional(),
               ...stampFields,
             })
             .refine((v) => v.deleted === true || (!!v.type && !!v.color && v.x1 !== undefined && v.y1 !== undefined), "annotation needs type, color and position")

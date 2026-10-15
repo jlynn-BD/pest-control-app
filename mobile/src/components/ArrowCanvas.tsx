@@ -1,7 +1,7 @@
 import type { SiteMapAnnotation, SiteMapAnnotationType } from "@pest-app/shared";
 import React, { useMemo, useRef, useState } from "react";
 import { LayoutChangeEvent, PanResponder, Platform, Pressable, StyleSheet, Text, View } from "react-native";
-import Svg, { Line as SvgLine, Polygon, Rect } from "react-native-svg";
+import Svg, { Circle, Line as SvgLine, Polygon, Rect } from "react-native-svg";
 import { arrowHeadPoints, gridLines, Line, Point } from "../lib/arrowGeometry";
 import { API_BASE_URL } from "../api/config";
 import { AuthImage } from "./AuthImage";
@@ -58,6 +58,9 @@ function useSiteMapGesture(
   onTapRef.current = onTap;
   const startRef = useRef<Point | null>(null);
   const [live, setLive] = useState<{ start: Point; end: Point } | null>(null);
+  // Exactly where the pointer is right now (finger or mouse), so the canvas
+  // can draw a crosshair there - a fingertip hides the spot it is pointing at.
+  const [pointer, setPointer] = useState<Point | null>(null);
 
   const panResponder = useMemo(
     () =>
@@ -67,16 +70,20 @@ function useSiteMapGesture(
         onPanResponderGrant: (evt) => {
           const p = { x: evt.nativeEvent.locationX, y: evt.nativeEvent.locationY };
           startRef.current = p;
+          setPointer(p);
           if (!completesOnTapRef.current) setLive({ start: p, end: p });
         },
         onPanResponderMove: (evt) => {
+          const here = { x: evt.nativeEvent.locationX, y: evt.nativeEvent.locationY };
+          setPointer(here);
           if (!startRef.current || completesOnTapRef.current) return;
-          setLive({ start: startRef.current, end: { x: evt.nativeEvent.locationX, y: evt.nativeEvent.locationY } });
+          setLive({ start: startRef.current, end: here });
         },
         onPanResponderRelease: (evt) => {
           const start = startRef.current;
           startRef.current = null;
           setLive(null);
+          setPointer(null);
           if (!start) return;
           const end = { x: evt.nativeEvent.locationX, y: evt.nativeEvent.locationY };
           const dist = Math.hypot(end.x - start.x, end.y - start.y);
@@ -98,12 +105,29 @@ function useSiteMapGesture(
         onPanResponderTerminate: () => {
           startRef.current = null;
           setLive(null);
+          setPointer(null);
         },
       }),
     []
   );
 
-  return { panHandlers: panResponder.panHandlers, live };
+  // Mouse hover (desktop/iPad with a trackpad): follow the cursor before any
+  // press so the aim point is visible while choosing where to start.
+  const hoverProps =
+    Platform.OS === "web"
+      ? ({
+          onMouseMove: (e: { clientX: number; clientY: number; currentTarget: { getBoundingClientRect: () => DOMRect } }) => {
+            if (modeRef.current === "view" || startRef.current) return;
+            const r = e.currentTarget.getBoundingClientRect();
+            setPointer({ x: e.clientX - r.left, y: e.clientY - r.top });
+          },
+          onMouseLeave: () => {
+            if (!startRef.current) setPointer(null);
+          },
+        } as object)
+      : {};
+
+  return { panHandlers: panResponder.panHandlers, live, pointer, hoverProps };
 }
 
 export interface SiteMapArrow {
@@ -240,13 +264,25 @@ function applyDrag(base: Geometry, kind: HandleKind, dxn: number, dyn: number): 
 // down (dx/dy in pixels) - used for both the resize handles and the "drag the
 // shape itself to move it" surface. It refuses to give the gesture up, so a
 // drag that drifts vertically can't be stolen by the page scroll.
+const AIM_COLOR = "#1F7A5C";
+
+// Mouse users see an open hand over anything draggable.
+// Crosshair cursor over the map while a drawing tool is active.
+function drawCursor(mode: SiteMapMode): object | null {
+  return Platform.OS === "web" ? ({ cursor: mode === "view" ? "default" : "crosshair" } as object) : null;
+}
+
+const GRAB_CURSOR = Platform.OS === "web" ? ({ cursor: "grab" } as object) : null;
+
 function DragSurface({
   style,
   onDrag,
   onDrop,
   onCancel,
   children,
+  pointerEvents,
 }: {
+  pointerEvents?: "auto" | "none";
   style: object;
   onDrag: (dx: number, dy: number) => void;
   onDrop: (dx: number, dy: number) => void;
@@ -280,7 +316,7 @@ function DragSurface({
     []
   );
   return (
-    <View {...responder.panHandlers} style={[style, NO_PAGE_SCROLL]}>
+    <View {...responder.panHandlers} pointerEvents={pointerEvents} style={[style, NO_PAGE_SCROLL, GRAB_CURSOR]}>
       {children}
     </View>
   );
@@ -307,6 +343,7 @@ export function SiteMapCanvas({
   onAnnotationChange,
   onWallChange,
   onLabelChange,
+  onCaptionChange,
   selectedLabelId = null,
   selectedWallId = null,
   selectedAnnotationId = null,
@@ -335,6 +372,8 @@ export function SiteMapCanvas({
   // Called once, when a finger lifts after dragging the selected label to a
   // new spot - same "commit on drop" shape as onAnnotationChange/onWallChange.
   onLabelChange?: (labelId: string, point: Point) => Promise<unknown> | void;
+  // A shape's name dragged to a new spot on it (offset from the shape's top-left).
+  onCaptionChange?: (annotationId: string, offset: { dx: number; dy: number }) => Promise<unknown> | void;
   selectedLabelId?: string | null;
   selectedWallId?: string | null;
   selectedAnnotationId?: string | null;
@@ -349,6 +388,8 @@ export function SiteMapCanvas({
   // wall/shape (only one thing is ever selected at once), so there is no
   // need to unify them into one state slot.
   const [draftLabel, setDraftLabel] = useState<{ id: string; x: number; y: number } | null>(null);
+  // A shape name being dragged right now (offset from the shape's corner).
+  const [draftCaption, setDraftCaption] = useState<{ id: string; dx: number; dy: number } | null>(null);
   const shownAnnotations = annotations.map((a) => (draft?.kind === "annotation" && draft.id === a.id ? { ...a, ...draft.g } : a));
   const shownWalls = savedLines.map((l) =>
     draft?.kind === "wall" && draft.id === l.id ? { ...l, ...(draft.g as Required<Geometry>) } : l
@@ -362,7 +403,7 @@ export function SiteMapCanvas({
 
   const completesOnTap = mode === "label" || (mode === "annotate" && annotationType === "x");
 
-  const { panHandlers, live } = useSiteMapGesture(
+  const { panHandlers, live, pointer, hoverProps } = useSiteMapGesture(
     mode,
     completesOnTap,
     (start, end) => {
@@ -501,7 +542,12 @@ export function SiteMapCanvas({
   }
 
   return (
-    <View style={[styles.container, NO_SELECT, mode !== "view" ? NO_PAGE_SCROLL : null]} onLayout={handleLayout} {...panHandlers}>
+    <View
+      style={[styles.container, NO_SELECT, mode !== "view" ? NO_PAGE_SCROLL : null, drawCursor(mode)]}
+      onLayout={handleLayout}
+      {...panHandlers}
+      {...hoverProps}
+    >
       {imageUri ? (
         // A photo stored on the server comes back as a path ("/api/media/...")
         // and sits behind login: give it the server's address and load it with
@@ -634,6 +680,25 @@ export function SiteMapCanvas({
               </>
             )
           ) : null}
+          {/* Where you are pointing, while a drawing tool is active: a ring at
+              the exact spot with guide lines running the full width and height
+              of the map. A fingertip hides the spot it touches, but the guide
+              lines stick out on every side so the aim point stays readable. */}
+          {mode !== "view" && pointer ? (
+            <>
+              <SvgLine x1={0} y1={pointer.y} x2={size.width} y2={pointer.y} stroke={AIM_COLOR} strokeWidth={1} strokeDasharray="5,4" opacity={0.7} />
+              <SvgLine x1={pointer.x} y1={0} x2={pointer.x} y2={size.height} stroke={AIM_COLOR} strokeWidth={1} strokeDasharray="5,4" opacity={0.7} />
+              <Circle cx={pointer.x} cy={pointer.y} r={10} stroke={AIM_COLOR} strokeWidth={2} fill="none" />
+              <Circle cx={pointer.x} cy={pointer.y} r={2.5} fill={AIM_COLOR} />
+            </>
+          ) : null}
+          {/* Where the line/shape/arrow started. */}
+          {mode !== "view" && live && (Math.abs(live.end.x - live.start.x) > 1 || Math.abs(live.end.y - live.start.y) > 1) ? (
+            <>
+              <Circle cx={live.start.x} cy={live.start.y} r={7} stroke={AIM_COLOR} strokeWidth={2} fill="#ffffff" fillOpacity={0.9} />
+              <Circle cx={live.start.x} cy={live.start.y} r={2} fill={AIM_COLOR} />
+            </>
+          ) : null}
         </Svg>
       ) : null}
       {/* Rendered before (so it loses ties to) every other tappable thing
@@ -728,14 +793,40 @@ export function SiteMapCanvas({
         ? shownAnnotations
             .filter((a) => a.type === "rect" && a.label)
             .map((a) => {
-              const left = Math.min(a.x1, a.x2 ?? a.x1) * size.width + 6;
-              const top = Math.min(a.y1, a.y2 ?? a.y1) * size.height + 4;
+              const own = annotations.find((x) => x.id === a.id) ?? a;
+              const live = draftCaption && draftCaption.id === a.id ? draftCaption : null;
+              const dx = live ? live.dx : own.labelDx ?? 0;
+              const dy = live ? live.dy : own.labelDy ?? 0;
+              const left = Math.min(Math.max((Math.min(a.x1, a.x2 ?? a.x1) + dx) * size.width + 6, 2), size.width - 40);
+              const top = Math.min(Math.max((Math.min(a.y1, a.y2 ?? a.y1) + dy) * size.height + 4, 2), size.height - 22);
+              // Drag a shape's name to wherever it reads best; it keeps its
+              // place on the shape if the shape is later moved or resized.
               return (
-                <View key={`ann-caption-${a.id}`} pointerEvents="none" style={[styles.shapeCaption, { left, top }]}>
+                <DragSurface
+                  key={`ann-caption-${a.id}`}
+                  pointerEvents={mode === "view" ? "auto" : "none"}
+                  style={[styles.shapeCaption, { left, top }]}
+                  onDrag={(ddx, ddy) => setDraftCaption({ id: a.id, dx: (own.labelDx ?? 0) + ddx / size.width, dy: (own.labelDy ?? 0) + ddy / size.height })}
+                  onDrop={async (ddx, ddy) => {
+                    if (Math.abs(ddx) < 4 && Math.abs(ddy) < 4) {
+                      setDraftCaption(null);
+                      onAnnotationPress?.(a.id); // a tap selects the shape
+                      return;
+                    }
+                    const next = { dx: (own.labelDx ?? 0) + ddx / size.width, dy: (own.labelDy ?? 0) + ddy / size.height };
+                    setDraftCaption({ id: a.id, ...next });
+                    try {
+                      await onCaptionChange?.(a.id, next);
+                    } finally {
+                      setDraftCaption(null);
+                    }
+                  }}
+                  onCancel={() => setDraftCaption(null)}
+                >
                   <Text style={styles.shapeCaptionText} numberOfLines={1}>
                     {a.label}
                   </Text>
-                </View>
+                </DragSurface>
               );
             })
         : null}
@@ -752,22 +843,45 @@ export function SiteMapCanvas({
           spot and needs to win the touch, the same reasoning as the wall/
           annotation hit-areas above excluding their own selected item. */}
       {size.width > 0
-        ? shownLabels.filter((l) => l.id !== selectedLabelId).map((l) => (
-            <Pressable
-              key={`label-${l.id}`}
-              onPress={() => onLabelPress?.(l.id)}
-              pointerEvents={mode === "view" ? "auto" : "none"}
-              style={[
-                styles.structureLabel,
-                l.id === selectedLabelId && styles.structureLabelSelected,
-                { left: Math.min(Math.max(l.x * size.width - 6, 4), size.width - 100), top: Math.min(Math.max(l.y * size.height - 10, 4), size.height - 22) },
-              ]}
-            >
-              <Text style={styles.structureLabelText} numberOfLines={1}>
-                {l.text}
-              </Text>
-            </Pressable>
-          ))
+        ? shownLabels.filter((l) => l.id !== selectedLabelId).map((l) => {
+            const original = labels.find((x) => x.id === l.id) ?? l;
+            return (
+              // Press and drag a label anywhere to move it; a plain tap still
+              // opens it for editing. Inert while a drawing tool is active, so
+              // a label under the pen never steals the stroke.
+              <DragSurface
+                key={`label-${l.id}`}
+                pointerEvents={mode === "view" ? "auto" : "none"}
+                style={[
+                  styles.structureLabel,
+                  { left: Math.min(Math.max(l.x * size.width - 6, 4), size.width - 100), top: Math.min(Math.max(l.y * size.height - 10, 4), size.height - 22) },
+                ]}
+                onDrag={(dx, dy) => {
+                  const g = applyDrag({ x1: original.x, y1: original.y }, "move", dx / size.width, dy / size.height);
+                  setDraftLabel({ id: l.id, x: g.x1, y: g.y1 });
+                }}
+                onDrop={async (dx, dy) => {
+                  if (Math.abs(dx) < 4 && Math.abs(dy) < 4) {
+                    setDraftLabel(null);
+                    onLabelPress?.(l.id); // a tap, not a drag
+                    return;
+                  }
+                  const g = applyDrag({ x1: original.x, y1: original.y }, "move", dx / size.width, dy / size.height);
+                  setDraftLabel({ id: l.id, x: g.x1, y: g.y1 });
+                  try {
+                    await onLabelChange?.(l.id, { x: g.x1, y: g.y1 });
+                  } finally {
+                    setDraftLabel(null);
+                  }
+                }}
+                onCancel={() => setDraftLabel(null)}
+              >
+                <Text style={styles.structureLabelText} numberOfLines={1}>
+                  {l.text}
+                </Text>
+              </DragSurface>
+            );
+          })
         : null}
     </View>
   );
