@@ -14,6 +14,7 @@ import {
   getLocalInspectionDetail,
 } from "../../db/inspectionStore";
 import type { LocalInspectionSectionSkip, LocalProperty } from "../../db/types";
+import { useCompletedLock } from "../../lib/useCompletedLock";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "InspectionWizard">;
@@ -28,6 +29,7 @@ type Props = NativeStackScreenProps<InspectionsStackParamList, "InspectionWizard
 // property as not having that area - never by silently leaving it blank.
 export default function InspectionWizardScreen({ route, navigation }: Props) {
   const { inspectionId } = route.params;
+  useCompletedLock(inspectionId, navigation);
   const { user } = useAuth();
   const [property, setProperty] = useState<LocalProperty | null>(null);
   const [propertyId, setPropertyId] = useState<string | null>(null);

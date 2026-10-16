@@ -14,6 +14,7 @@ import {
 } from "../../db/inspectionStore";
 import { deleteInspection } from "../../api/inspections";
 import { runSync } from "../../sync/syncEngine";
+import { useCompletedLock } from "../../lib/useCompletedLock";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { parseSiteMapSketch } from "../../lib/siteMapSketch";
 import type { LocalSignature } from "../../db/types";
@@ -24,6 +25,7 @@ type Props = NativeStackScreenProps<InspectionsStackParamList, "InspectionWorksp
 
 export default function InspectionWorkspaceScreen({ route, navigation }: Props) {
   const { inspectionId } = route.params;
+  useCompletedLock(inspectionId, navigation);
   const [detail, setDetail] = useState<LocalInspectionDetail | null>(null);
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
 

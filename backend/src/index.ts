@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler";
 import { auditRequests } from "./middleware/audit";
+import { blockEditsToCompletedInspections } from "./lib/inspectionLock";
 import { auditRouter } from "./modules/audit/routes";
 import { authRouter } from "./modules/auth/routes";
 import { usersRouter } from "./modules/users/routes";
@@ -53,6 +54,7 @@ app.use(express.json({ limit: "5mb" }));
 app.get("/api/health", (req, res) => res.json({ status: "ok", time: new Date().toISOString(), build: (process.env.RENDER_GIT_COMMIT || "local").slice(0, 7) }));
 
 app.use("/api", auditRequests);
+app.use("/api", blockEditsToCompletedInspections);
 app.use("/api/auth", authRouter);
 app.use("/api/audit", auditRouter);
 app.use("/api/users", usersRouter);

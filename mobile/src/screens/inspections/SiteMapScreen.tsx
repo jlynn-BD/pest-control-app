@@ -13,7 +13,7 @@ import {
   visibleSketch,
 } from "@pest-app/shared";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { getCachedProperty, getCachedTemplateSections, isSiteMapSketchDirty, primeCache } from "../../db/cache";
 import { pushDirtySketches, saveSketchLocally } from "../../sync/siteMapSync";
 import { generateId } from "../../lib/uuid";
@@ -23,6 +23,7 @@ import { parseSiteMapSketch } from "../../lib/siteMapSketch";
 import { findChecklistResponseSummary } from "../../lib/checklist";
 import { choosePhoto } from "../../lib/photo";
 import { ApiError } from "../../api/client";
+import { useCompletedLock } from "../../lib/useCompletedLock";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { Geometry, siteMapHintText, SiteMapArrow, SiteMapCanvas, SiteMapMode } from "../../components/ArrowCanvas";
 import { ChecklistPanel } from "../../components/ChecklistPanel";
@@ -59,7 +60,12 @@ type LastAction =
   | { kind: "annotation"; id: string };
 
 export default function SiteMapScreen({ route, navigation }: Props) {
+  // Wide screen (tablet / landscape): the map on the left, and everything that
+  // goes with it (selection panels, tools, forms) beside it on the right, so
+  // editing never means scrolling away from the map.
+  const wide = useWindowDimensions().width >= 900;
   const { inspectionId, propertyId, fromChecklistResponseId } = route.params;
+  useCompletedLock(inspectionId, navigation);
   // Opened from a property page (no inspection yet): the person is drawing the
   // property's site plan on its own. Everything about findings, markers and the
   // checklist belongs to an inspection, so those parts are left out.
@@ -745,6 +751,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         </Text>
       ) : null}
 
+      <View style={wide ? styles.wideRow : null}>
+      <View style={wide ? styles.wideMap : null}>
       <SiteMapCanvas
         imageUri={imageUri}
         arrows={visibleArrows}
@@ -782,6 +790,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           setLabelText("");
         }}
       />
+      </View>
+      <View style={wide ? styles.widePanel : null}>
 
       {/* Drawing a marker or tapping an existing one opens this editor right
           here, below the still-visible map, instead of navigating to a
@@ -1105,12 +1115,17 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           ) : null}
         </View>
       ) : null}
+      </View>
+      </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  wideRow: { flexDirection: "row", gap: 16, alignItems: "flex-start" },
+  wideMap: { flex: 5 },
+  widePanel: { flex: 4 },
   content: { padding: 16, paddingBottom: 40 },
   label: { fontSize: 13, color: colors.textMuted, marginBottom: 8, fontWeight: "500" },
   levelRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 },

@@ -2,6 +2,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React, { useLayoutEffect } from "react";
 import { ScrollView, StyleSheet } from "react-native";
 import { getLocalInspectionDetail } from "../../db/inspectionStore";
+import { useCompletedLock } from "../../lib/useCompletedLock";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { FindingEditorForm } from "../../components/FindingEditorForm";
 import { colors } from "../../components/ui";
@@ -15,6 +16,7 @@ type Props = NativeStackScreenProps<InspectionsStackParamList, "FindingForm">;
 // screen's inline editor panel.
 export default function FindingFormScreen({ route, navigation }: Props) {
   const { inspectionId, editingFindingId } = route.params;
+  useCompletedLock(inspectionId, navigation);
 
   useLayoutEffect(() => {
     if (!editingFindingId) return;

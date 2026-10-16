@@ -16,6 +16,7 @@ import {
   getUploadableSignatures,
   markChecklistResponsePhotoSynced,
   markFindingPhotoSynced,
+  markInspectionCompletedFromServer,
   markSignatureSynced,
   markSynced,
   recordSyncConflict,
@@ -39,7 +40,7 @@ interface SyncChangePayload {
 interface PushResultItem {
   entity: string;
   id: string;
-  result: "applied" | "conflict";
+  result: "applied" | "conflict" | "locked";
   serverRow?: unknown;
 }
 
@@ -194,6 +195,7 @@ async function runSyncOnce(): Promise<SyncResult> {
   let pushed = 0;
   let uploaded = 0;
   let conflicts = 0;
+  let lockedChanges = 0;
   // One bad photo/signature (too big, corrupt, a server hiccup) must not
   // stop everything queued behind it from syncing - remember the first
   // failure, keep going, and report it at the end. The failed item stays
@@ -227,6 +229,13 @@ async function runSyncOnce(): Promise<SyncResult> {
           // Applied successfully this time - drop any earlier conflict
           // recorded for this same row (e.g. after "Keep my version").
           clearSyncConflict(result.entity, result.id);
+        } else if (result.result === "locked") {
+          // The inspection was already completed on the server: its changes
+          // are not accepted any more, so stop re-sending them.
+          lockedChanges += 1;
+          const table = ENTITY_TABLE[result.entity];
+          if (table) markSynced(table, result.id);
+          if (result.entity === "Inspection") markInspectionCompletedFromServer(result.id, result.serverRow);
         } else {
           conflicts += 1;
           const change = changeById.get(key);
@@ -292,7 +301,11 @@ async function runSyncOnce(): Promise<SyncResult> {
     // customers/properties/templates while this device was offline.
     await primeCache();
 
-    return { pushed, uploaded, conflicts, error: firstMediaError };
+    const lockedNote =
+      lockedChanges > 0
+        ? `${lockedChanges} change${lockedChanges === 1 ? " was" : "s were"} not saved because that inspection had already been completed.`
+        : null;
+    return { pushed, uploaded, conflicts, error: firstMediaError ?? lockedNote };
   } catch (err) {
     return { pushed, uploaded, conflicts, error: err instanceof Error ? err.message : String(err) };
   }

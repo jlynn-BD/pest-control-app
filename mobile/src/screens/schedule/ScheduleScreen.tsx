@@ -1,7 +1,7 @@
 import { NavigationProp, ParamListBase, useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useQuery } from "@tanstack/react-query";
 import React, { useCallback, useMemo, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { listInspections } from "../../api/inspections";
 import { cancelAppointment, listAppointments, type ScheduledAppointment } from "../../api/appointments";
 import { useAuth } from "../../context/AuthContext";
@@ -49,6 +49,7 @@ function inspectionDate(i: DateFields): Date {
 
 export default function ScheduleScreen() {
   const { user } = useAuth();
+  const wide = useWindowDimensions().width >= 900;
   const navigation = useNavigation<NavigationProp<ParamListBase>>();
   const today = new Date();
   const [month, setMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
@@ -272,6 +273,10 @@ export default function ScheduleScreen() {
         />
       }
     >
+      {/* On a wide screen (tablet / landscape) the calendar and the selected
+          day's list sit side by side; on a phone they stack. */}
+      <View style={wide ? styles.wideRow : styles.stackCol}>
+      <View style={wide ? styles.wideCol : styles.stackCol}>
       <View style={styles.monthRow}>
         <Pressable onPress={() => shiftMonth(-1)} style={styles.monthButton} accessibilityLabel="Previous month">
           <Text style={styles.monthButtonText}>‹</Text>
@@ -329,7 +334,9 @@ export default function ScheduleScreen() {
           );
         })}
       </View>
+      </View>
 
+      <View style={wide ? styles.wideCol : styles.stackCol}>
       <Text style={styles.heading}>
         {isToday ? "Today · " : ""}
         {selectedDate.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}
@@ -419,12 +426,17 @@ export default function ScheduleScreen() {
       {selectedInspections.length === 0 && selectedBookings.length === 0 ? (
         <Text style={styles.empty}>Nothing scheduled or inspected on this day.</Text>
       ) : null}
+      </View>
+      </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  wideRow: { flexDirection: "row", gap: 20, alignItems: "flex-start" },
+  wideCol: { flex: 1, gap: 8 },
+  stackCol: { gap: 8 },
   content: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 32, gap: 8 },
   monthRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   monthTitle: { fontSize: 18, fontWeight: "700", color: colors.text },

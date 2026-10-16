@@ -6,6 +6,7 @@ import { requireAuth } from "../../middleware/auth";
 import type { Request } from "express";
 import { diffRecords, logActivity, snapshot } from "../../lib/audit";
 import { ENTITIES, buildSummary } from "../../lib/auditEntities";
+import { lockedInspectionIds } from "../../lib/inspectionLock";
 
 export const syncRouter = Router();
 syncRouter.use(requireAuth);
@@ -22,7 +23,9 @@ type Change = z.infer<typeof changeSchema>;
 interface PushResult {
   entity: string;
   id: string;
-  result: "applied" | "conflict";
+  // "locked": the inspection was already completed, so this change was not
+  // saved (serverRow is the inspection's current state, for an Inspection change).
+  result: "applied" | "conflict" | "locked";
   serverRow?: unknown;
 }
 
@@ -150,9 +153,33 @@ async function auditChange(
   });
 }
 
-async function applyChange(req: Request, change: Change): Promise<PushResult> {
+// Which inspection a change belongs to (an Inspection change is about itself;
+// the rest carry inspectionId, or - for a delete - it is read off the row).
+async function inspectionIdForChange(change: Change): Promise<string | null> {
+  if (change.entity === "Inspection") return change.id;
+  const fromData = change.data?.inspectionId;
+  if (typeof fromData === "string") return fromData;
+  const model = getModel(change.entity);
+  const row = model ? await model.findUnique({ where: { id: change.id }, select: { inspectionId: true } }) : null;
+  return row?.inspectionId ?? null;
+}
+
+async function applyChange(req: Request, change: Change, locked: Set<string>, inspectionId: string | null): Promise<PushResult> {
   const model = getModel(change.entity);
   if (!model) throw new HttpError(400, `Unsupported sync entity: ${change.entity}`);
+
+  // A completed inspection is a finished record: nothing about it changes any
+  // more. (A retry of a change the server already has is still confirmed, so a
+  // lost response doesn't leave the device re-sending it forever.)
+  if (inspectionId && locked.has(inspectionId)) {
+    const current = await model.findUnique({ where: { id: change.id } });
+    const sameStamp =
+      current && "updatedAt" in current && new Date(change.updatedAt).getTime() === (current as { updatedAt: Date }).updatedAt.getTime();
+    const alreadyGone = change.op === "delete" && current && (current as { deletedAt?: Date | null }).deletedAt;
+    if (!sameStamp && !alreadyGone) {
+      return { entity: change.entity, id: change.id, result: "locked", serverRow: change.entity === "Inspection" ? current : undefined };
+    }
+  }
 
   if (change.op === "delete") {
     if (!SUPPORTS_SOFT_DELETE.has(change.entity)) {
@@ -233,10 +260,16 @@ syncRouter.post(
   asyncHandler(async (req, res) => {
     const { changes } = pushSchema.parse(req.body);
     const results: PushResult[] = [];
+    // Decided once, from how things stand before this batch: an inspection
+    // completed earlier is locked, but one being completed by this very batch
+    // still takes the rest of its changes (a device that finished offline
+    // sends the inspection and everything on it together).
+    const inspectionIds = await Promise.all(changes.map((c) => inspectionIdForChange(c)));
+    const locked = await lockedInspectionIds(inspectionIds.filter((id): id is string => Boolean(id)));
     // Applied sequentially (not Promise.all) so a Finding created earlier in
     // the same batch is visible to a Recommendation referencing it later.
-    for (const change of changes) {
-      results.push(await applyChange(req, change));
+    for (let i = 0; i < changes.length; i++) {
+      results.push(await applyChange(req, changes[i], locked, inspectionIds[i]));
     }
     res.json({ results });
   })

@@ -11,7 +11,6 @@ import { SiteMapCanvas } from "../../components/ArrowCanvas";
 import { AuthImage } from "../../components/AuthImage";
 import { ReportCard } from "../../components/ReportCard";
 import { InspectionHistoryLink } from "../../components/InspectionHistoryLink";
-import { EditInspectionButton } from "../../components/EditInspectionButton";
 import { FindingsAndRecommendations } from "../../components/FindingsAndRecommendations";
 import { runSync } from "../../sync/syncEngine";
 import { Badge, Card, PrimaryButton, colors } from "../../components/ui";
@@ -79,7 +78,6 @@ export default function LocalInspectionDetailScreen({ route }: Props) {
         <Badge label={detail.inspection.status.replace(/_/g, " ")} tone={detail.inspection.status === "COMPLETED" ? "success" : "default"} />
       </View>
       <Text style={styles.meta}>{property?.addressLine1}</Text>
-      {detail.inspection.status === "COMPLETED" ? <EditInspectionButton inspectionId={inspectionId} /> : null}
       <InspectionHistoryLink inspectionId={inspectionId} title={customer?.name} />
       {detail.inspection.syncStatus === "synced" ? (
         <Badge label="Synced" tone="success" />

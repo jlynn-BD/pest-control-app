@@ -683,18 +683,6 @@ export function completeLocalInspection(inspectionId: string): void {
   db.runSync(`UPDATE inspections SET status = 'COMPLETED', completedAt = ?, updatedAt = ?, syncStatus = 'pending' WHERE id = ?`, [now, now, inspectionId]);
 }
 
-// Opens a finished inspection back up for changes (something was forgotten):
-// back to IN_PROGRESS with no completion time. Signatures and everything
-// recorded stay; completing it again (and regenerating the report) is how it
-// is finished.
-export function reopenLocalInspection(inspectionId: string): void {
-  const now = nowIso();
-  getDb().runSync(
-    `UPDATE inspections SET status = 'IN_PROGRESS', completedAt = NULL, updatedAt = ?, syncStatus = 'pending' WHERE id = ?`,
-    [now, inspectionId]
-  );
-}
-
 // Adding a child record after the inspection itself was already synced
 // (e.g. syncing mid-inspection, then adding more findings) must re-flag it
 // so the next sync run picks up the new updatedAt - otherwise it stays
@@ -735,6 +723,17 @@ export function markSynced(
   id: string
 ): void {
   getDb().runSync(`UPDATE ${table} SET syncStatus = 'synced' WHERE id = ?`, [id]);
+}
+
+// The server says this inspection was already completed (e.g. on another
+// device), so this device's later changes to it were not accepted: show it as
+// completed here too, and stop trying to send the rejected changes.
+export function markInspectionCompletedFromServer(inspectionId: string, serverRow: unknown): void {
+  const row = (serverRow ?? {}) as { completedAt?: string | null };
+  getDb().runSync(`UPDATE inspections SET status = 'COMPLETED', completedAt = COALESCE(?, completedAt), syncStatus = 'synced' WHERE id = ?`, [
+    row.completedAt ?? null,
+    inspectionId,
+  ]);
 }
 
 // Same five entities the sync engine pushes - kept here (not in

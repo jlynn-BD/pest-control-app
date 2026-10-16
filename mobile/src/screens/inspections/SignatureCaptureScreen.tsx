@@ -5,6 +5,7 @@ import { addLocalSignature } from "../../db/inspectionStore";
 import { useAuth } from "../../context/AuthContext";
 import { useSignaturePad } from "../../components/SignaturePad";
 import { SignatureBox, SignatureSvgHandle } from "../../components/SignatureBox";
+import { useCompletedLock } from "../../lib/useCompletedLock";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { Field, PrimaryButton, colors } from "../../components/ui";
 
@@ -12,6 +13,7 @@ type Props = NativeStackScreenProps<InspectionsStackParamList, "SignatureCapture
 
 export default function SignatureCaptureScreen({ route, navigation }: Props) {
   const { inspectionId, signerType } = route.params;
+  useCompletedLock(inspectionId, navigation);
   const { user } = useAuth();
   const pad = useSignaturePad();
   const svgRef = useRef<SignatureSvgHandle>(null);

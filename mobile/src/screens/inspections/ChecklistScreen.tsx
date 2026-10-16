@@ -6,6 +6,7 @@ import { ScrollView, StyleSheet } from "react-native";
 import { ChecklistPanel } from "../../components/ChecklistPanel";
 import { getCachedProperty, getCachedTemplateSections } from "../../db/cache";
 import { getLocalInspectionDetail } from "../../db/inspectionStore";
+import { useCompletedLock } from "../../lib/useCompletedLock";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { colors } from "../../components/ui";
 
@@ -20,6 +21,7 @@ type Props = NativeStackScreenProps<InspectionsStackParamList, "Checklist">;
 // anything reached so far without being able to jump ahead out of sequence.
 export default function ChecklistScreen({ route, navigation }: Props) {
   const { inspectionId } = route.params;
+  useCompletedLock(inspectionId, navigation);
   const [allowedCategories, setAllowedCategories] = useState<string[] | undefined>(undefined);
 
   useFocusEffect(
