@@ -132,7 +132,7 @@ function useSiteMapGesture(
     Platform.OS === "web"
       ? ({
           onMouseMove: (e: { clientX: number; clientY: number; currentTarget: { getBoundingClientRect: () => DOMRect } }) => {
-            if (modeRef.current === "view" || startRef.current) return;
+            if (modeRef.current === "view" || modeRef.current === "pan" || startRef.current) return;
             const r = e.currentTarget.getBoundingClientRect();
             setPointer(snap({ x: e.clientX - r.left, y: e.clientY - r.top }));
           },
@@ -469,6 +469,7 @@ function SiteMapCanvasInner({
   onGridChange,
   onPanLive,
   onPanEnd,
+  panOnDrag = false,
   grid: gridProp,
   snap = true,
   selectedLabelId = null,
@@ -512,6 +513,9 @@ function SiteMapCanvasInner({
   // view; null when it lets go), and where the drag ended.
   onPanLive?: (delta: { dx: number; dy: number } | null) => void;
   onPanEnd?: (dx: number, dy: number) => void;
+  // Dragging empty space moves the sheet even in the normal (view) mode - for
+  // screens big enough that the page doesn't need that touch for scrolling.
+  panOnDrag?: boolean;
   // Called once, when a finger lifts after dragging the selected label to a
   // new spot - same "commit on drop" shape as onAnnotationChange/onWallChange.
   onLabelChange?: (labelId: string, point: Point) => Promise<unknown> | void;
@@ -626,8 +630,13 @@ function SiteMapCanvasInner({
 
   const completesOnTap = mode === "label" || (mode === "annotate" && annotationType === "x");
 
+  // With nothing selected for drawing, dragging empty space moves the sheet
+  // (grid and drawing together), like dragging a map. Taps on walls and shapes
+  // still select them: they claim the touch first.
+  const gestureMode: SiteMapMode = mode === "view" && panOnDrag ? "pan" : mode;
+
   const { panHandlers, live, pointer, hoverProps } = useSiteMapGesture(
-    mode,
+    gestureMode,
     completesOnTap,
     (start, end) => {
       if (size.width === 0 || size.height === 0) return;
@@ -635,7 +644,7 @@ function SiteMapCanvasInner({
       if (mode === "arrow") onArrowDrawn?.(norm.start, norm.end);
       else if (mode === "wall") onWallDrawn?.(norm.start, norm.end);
       else if (mode === "measure") onMeasureDrawn?.(norm.start, norm.end);
-      else if (mode === "pan") onPanEnd?.(norm.end.x - norm.start.x, norm.end.y - norm.start.y);
+      else if (gestureMode === "pan") onPanEnd?.(norm.end.x - norm.start.x, norm.end.y - norm.start.y);
       else if (mode === "grid") {
         // Dragging the map slides the grid by the same distance.
         const wrap = (v: number) => ((v % grid.cell) + grid.cell) % grid.cell;
@@ -665,10 +674,10 @@ function SiteMapCanvasInner({
   // While the map is being dragged around, tell whoever owns the view so
   // everything follows the finger.
   useEffect(() => {
-    if (mode !== "pan") return;
+    if (gestureMode !== "pan") return;
     onPanLive?.(live && size.width > 0 ? { dx: (live.end.x - live.start.x) / size.width, dy: (live.end.y - live.start.y) / size.height } : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [live, mode]);
+  }, [live, gestureMode]);
 
 
   // Handles + a move surface for whichever wall/annotation is selected, so a
@@ -889,7 +898,7 @@ function SiteMapCanvasInner({
 
   return (
     <View
-      style={[styles.container, NO_SELECT, mode !== "view" ? NO_PAGE_SCROLL : null, drawCursor(mode)]}
+      style={[styles.container, NO_SELECT, gestureMode !== "view" ? NO_PAGE_SCROLL : null, drawCursor(gestureMode)]}
       onLayout={handleLayout}
       {...panHandlers}
       {...hoverProps}
@@ -1017,7 +1026,7 @@ function SiteMapCanvasInner({
               />
             );
           })}
-          {live && mode !== "pan" && mode !== "grid" ? (
+          {live && gestureMode !== "pan" && mode !== "grid" ? (
             mode === "annotate" && annotationType === "rect" ? (
               <Rect
                 x={Math.min(live.start.x, live.end.x)}

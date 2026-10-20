@@ -75,7 +75,12 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // Wide screen (tablet / landscape): the map on the left, and everything that
   // goes with it (selection panels, tools, forms) beside it on the right, so
   // editing never means scrolling away from the map.
-  const wide = useWindowDimensions().width >= 900;
+  const windowWidth = useWindowDimensions().width;
+  const wide = windowWidth >= 900;
+  // On a tablet or bigger, dragging the map moves it. On a phone the map fills
+  // the screen width and the same drag is how the page scrolls, so there it is
+  // the "Move map" button instead.
+  const wideEnoughToDrag = windowWidth >= 600;
   const { inspectionId, propertyId, fromChecklistResponseId } = route.params;
   useCompletedLock(inspectionId, navigation);
   // Opened from a property page (no inspection yet): the person is drawing the
@@ -673,19 +678,32 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     return persistSelectedLevel((l) => ({ ...l, grid: next }));
   }
 
-  // Bigger / smaller squares, scaled around the middle of the map so the part
-  // being looked at stays where it is. What a square is worth in feet is left
-  // alone: resizing the squares is how the grid is lined up with the drawing.
-  function handleResizeGrid(factor: number) {
-    const cell = Math.min(MAX_GRID_CELL, Math.max(MIN_GRID_CELL, grid.cell * factor));
-    // The middle of what is on screen, in sheet coordinates.
+  // The grid's squares can be made any size without touching the scale: what a
+  // length on the map is worth in feet (feet per unit of the sheet) stays as it
+  // is, so every measurement stays right whatever the grid looks like. Only
+  // "Set scale" (from a measured line) changes the scale. The squares are
+  // resized around the middle of what is on screen so they stay where they are.
+  function gridWithSquareFeet(feet: number): SiteMapGrid {
+    const feetPerUnit = grid.feetPerCell / grid.cell;
+    const cell = Math.min(MAX_GRID_CELL, Math.max(MIN_GRID_CELL, feet / feetPerUnit));
     const cx = view.x + 0.5 / view.zoom;
     const cy = view.y + 0.5 / view.zoom;
-    const k = (cx - grid.ox) / grid.cell;
     const wrap = (v: number) => ((v % cell) + cell) % cell;
-    const ox = wrap(cx - k * cell);
+    const kx = (cx - grid.ox) / grid.cell;
     const ky = (cy - grid.oy) / grid.cell;
-    handleGridChange({ ...grid, cell, ox, oy: wrap(cy - ky * cell) });
+    return { ...grid, cell, ox: wrap(cx - kx * cell), oy: wrap(cy - ky * cell), feetPerCell: cell * feetPerUnit };
+  }
+
+  // Bigger / smaller squares: steps through everyday sizes (6 in, 1 ft, 2 ft, 5 ft ...).
+  const SQUARE_SIZES_FT = [0.25, 0.5, 1, 2, 2.5, 3, 4, 5, 10, 20, 25, 50, 100, 200];
+  function handleResizeGrid(direction: 1 | -1) {
+    const cur = grid.feetPerCell;
+    const next =
+      direction > 0 ? SQUARE_SIZES_FT.find((f) => f > cur * 1.0001) : [...SQUARE_SIZES_FT].reverse().find((f) => f < cur * 0.9999);
+    if (next === undefined) return;
+    const g = gridWithSquareFeet(next);
+    handleGridChange(g);
+    setFeetText(String(Number(g.feetPerCell.toFixed(3))));
   }
 
   function handleNudgeGrid(dx: number, dy: number) {
@@ -700,12 +718,16 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       return;
     }
     // The box shows a rounded value, so leaving it untouched is not an edit.
-    if (Math.abs(n - grid.feetPerCell) > 0.001) handleGridChange({ ...grid, feetPerCell: n });
+    if (Math.abs(n - grid.feetPerCell) > 0.001) handleGridChange(gridWithSquareFeet(n));
   }
 
   function handleResetGrid() {
-    handleGridChange({ ...DEFAULT_SITE_MAP_GRID, showLengths: grid.showLengths });
-    setFeetText(String(DEFAULT_SITE_MAP_GRID.feetPerCell));
+    // Back to the standard squares and position - but the scale (what a length
+    // is worth in feet) is left alone, so measurements do not change.
+    const feetPerUnit = grid.feetPerCell / grid.cell;
+    const cell = DEFAULT_SITE_MAP_GRID.cell;
+    handleGridChange({ ...DEFAULT_SITE_MAP_GRID, cell, feetPerCell: cell * feetPerUnit, showLengths: grid.showLengths });
+    setFeetText(String(Number((cell * feetPerUnit).toFixed(3))));
   }
 
   function handleToggleLengths() {
@@ -896,7 +918,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           active, which shoved the whole map down and back up each time. */}
       {canDraw && !editorOpen ? (
         <Text style={[styles.drawHint, !siteMapHintText(mode, annotationType) && styles.drawHintIdle]}>
-          {siteMapHintText(mode, annotationType) ?? "Tap a shape or wall to move, resize or recolor it"}
+          {siteMapHintText(mode, annotationType) ?? (wideEnoughToDrag && !isPhotoMode ? "Tap a shape or wall to edit it. Drag the grid to move around" : "Tap a shape or wall to edit it")}
         </Text>
       ) : null}
       {canDraw && !editorOpen ? (
@@ -963,6 +985,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         grid={grid}
         view={view}
         onViewChange={setView}
+        panOnDrag={!isPhotoMode && wideEnoughToDrag}
         onGridChange={handleGridChange}
         onMeasureDrawn={handleMeasureDrawn}
         onLabelChange={handleUpdateLabelPosition}
@@ -1101,14 +1124,14 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         <Card style={styles.labelPromptCard}>
           <Text style={styles.editorTitle}>Grid</Text>
           <Text style={styles.editHint}>
-            Drag the map to slide the grid, and use the buttons to make its squares bigger or smaller. Line it up with what you are drawing, then say what a square is worth so distances come out right. The map is about {formatFeet((1 / grid.cell) * grid.feetPerCell)} across.
+            Drag the map to slide the grid, and use the buttons to make its squares bigger or smaller. Squares can be any size and measurements stay accurate whatever you pick. To change the scale itself, measure something you know and tap Set scale. The original map area is about {formatFeet((1 / grid.cell) * grid.feetPerCell)} across.
           </Text>
           <View style={styles.nudgeRow}>
             <Text style={styles.nudgeLabel}>Size</Text>
-            <Pressable onPress={() => handleResizeGrid(1 / 1.15)} accessibilityLabel="Smaller squares" style={[styles.nudgeBtn, styles.nudgeWide]}>
+            <Pressable onPress={() => handleResizeGrid(-1)} accessibilityLabel="Smaller squares" style={[styles.nudgeBtn, styles.nudgeWide]}>
               <Text style={styles.nudgeBtnText}>− Smaller</Text>
             </Pressable>
-            <Pressable onPress={() => handleResizeGrid(1.15)} accessibilityLabel="Larger squares" style={[styles.nudgeBtn, styles.nudgeWide]}>
+            <Pressable onPress={() => handleResizeGrid(1)} accessibilityLabel="Larger squares" style={[styles.nudgeBtn, styles.nudgeWide]}>
               <Text style={styles.nudgeBtnText}>+ Larger</Text>
             </Pressable>
           </View>
