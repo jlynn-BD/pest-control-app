@@ -107,6 +107,7 @@ export default function LocalInspectionDetailScreen({ route }: Props) {
             labels={panel.labels}
             annotations={panel.annotations}
             grid={panel.grid}
+            view={panel.view}
             mode="view"
           />
         </View>

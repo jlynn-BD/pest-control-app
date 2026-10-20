@@ -3,9 +3,13 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import {
   applyLevelEdit,
   getSiteMapLevelRank,
+  clampZoom,
+  DEFAULT_SITE_MAP_VIEW,
+  fitView,
   formatFeet,
   getWizardStepStatus,
   gridFeet,
+  levelPoints,
   MAX_GRID_CELL,
   MIN_GRID_CELL,
   DEFAULT_SITE_MAP_GRID,
@@ -17,6 +21,7 @@ import {
   SiteMapAnnotationType,
   SiteMapGrid,
   SiteMapLevel,
+  SiteMapView,
   visibleSketch,
 } from "@pest-app/shared";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -117,6 +122,11 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // Grid tools: the "each square is N feet" box, and the real length typed in
   // to turn a measured line into the map's scale.
   const [feetText, setFeetText] = useState("");
+  // The window onto each level's sheet, remembered while this screen is open
+  // (it is just where you are looking, so it is not saved or synced).
+  const [views, setViews] = useState<Record<string, SiteMapView>>({});
+  // The "Length (feet)" box of the selected wall while it is being typed in.
+  const [wallLenText, setWallLenText] = useState<string | null>(null);
   const [knownLengthText, setKnownLengthText] = useState("");
   const [saving, setSaving] = useState(false);
   // This device holds map edits the server hasn't confirmed yet.
@@ -194,6 +204,11 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   const canDraw = isPhotoMode || Boolean(selectedLevel);
   // The level's layout grid, which is also its ruler (a square = feetPerCell feet).
   const grid = resolveGrid(selectedLevel?.grid);
+  // The map is an endless sheet and the screen a window onto it. Until it is
+  // moved or zoomed, the window fits everything drawn (the original square when
+  // nothing has left it).
+  const fit = selectedLevel ? fitView(levelPoints(selectedLevel)) : DEFAULT_SITE_MAP_VIEW;
+  const view: SiteMapView = (selectedLevelId ? views[selectedLevelId] : undefined) ?? fit;
   // The finding editor is open (drafting a new marker or editing an
   // existing one) - every other map-editing affordance (drawing walls,
   // placing labels, switching levels) is hidden while it's open, so the
@@ -542,10 +557,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   function handleNudgeSelected(dx: number, dy: number) {
     const STEP = grid.cell;
     const shift = (g: { x1: number; y1: number; x2?: number; y2?: number }) => {
-      const xs = [g.x1, g.x2 ?? g.x1];
-      const ys = [g.y1, g.y2 ?? g.y1];
-      const sx = Math.min(1 - Math.max(...xs), Math.max(-Math.min(...xs), dx * STEP));
-      const sy = Math.min(1 - Math.max(...ys), Math.max(-Math.min(...ys), dy * STEP));
+      const sx = dx * STEP;
+      const sy = dy * STEP;
       return { x1: g.x1 + sx, y1: g.y1 + sy, ...(g.x2 !== undefined ? { x2: g.x2 + sx, y2: (g.y2 ?? g.y1) + sy } : {}) };
     };
     if (selectedWallId) {
@@ -586,6 +599,75 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     });
   }
 
+  // --- Moving around the endless sheet ----------------------------------
+  function setView(next: SiteMapView) {
+    if (selectedLevelId) setViews((cur) => ({ ...cur, [selectedLevelId]: next }));
+  }
+
+  // Zoom about the middle of the screen, so what you are looking at stays put.
+  function handleZoom(factor: number) {
+    const zoom = clampZoom(view.zoom * factor);
+    const cx = view.x + 0.5 / view.zoom;
+    const cy = view.y + 0.5 / view.zoom;
+    setView({ x: cx - 0.5 / zoom, y: cy - 0.5 / zoom, zoom });
+  }
+
+  // Step the window a quarter of a screen in a direction (the buttons for
+  // moving without dragging).
+  function handleMoveView(dx: number, dy: number) {
+    setView({ ...view, x: view.x + (dx * 0.25) / view.zoom, y: view.y + (dy * 0.25) / view.zoom });
+  }
+
+  function handleFitView() {
+    setView(fit);
+  }
+
+  // --- Extending walls ---------------------------------------------------
+  // Sets the selected wall to a length, keeping its first end where it is and
+  // moving the other along the same line. Walls joined to the moved end follow
+  // it, so the outline stays closed.
+  function setSelectedWallLength(worldLength: number) {
+    const id = selectedWallId;
+    if (!id || !(worldLength > 0)) return;
+    persistSelectedLevel((l) => {
+      const wall = l.lines.find((line) => line.id === id);
+      if (!wall) return l;
+      const dx = wall.x2 - wall.x1;
+      const dy = wall.y2 - wall.y1;
+      const len = Math.hypot(dx, dy);
+      if (len === 0) return l;
+      const nx = wall.x1 + (dx / len) * worldLength;
+      const ny = wall.y1 + (dy / len) * worldLength;
+      const EPS = 0.006;
+      return {
+        ...l,
+        lines: l.lines.map((line) => {
+          if (line.id === id) return { ...line, x2: nx, y2: ny };
+          const j1 = Math.hypot(line.x1 - wall.x2, line.y1 - wall.y2) <= EPS;
+          const j2 = Math.hypot(line.x2 - wall.x2, line.y2 - wall.y2) <= EPS;
+          return { ...line, ...(j1 ? { x1: nx, y1: ny } : {}), ...(j2 ? { x2: nx, y2: ny } : {}) };
+        }),
+      };
+    });
+  }
+
+  // One grid square longer / shorter.
+  function handleStretchSelectedWall(squares: number) {
+    const wall = selectedLevel?.lines.find((l) => l.id === selectedWallId);
+    if (!wall) return;
+    const len = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    setSelectedWallLength(Math.max(grid.cell, len + squares * grid.cell));
+    setWallLenText(null);
+  }
+
+  // The typed-in length, in feet.
+  function handleSaveWallLength() {
+    const feet = parseFloat(wallLenText ?? "");
+    setWallLenText(null);
+    if (!Number.isFinite(feet) || feet <= 0) return;
+    setSelectedWallLength((feet / grid.feetPerCell) * grid.cell);
+  }
+
   // --- Grid & measurements ---------------------------------------------
   function handleGridChange(next: SiteMapGrid) {
     return persistSelectedLevel((l) => ({ ...l, grid: next }));
@@ -596,11 +678,14 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // alone: resizing the squares is how the grid is lined up with the drawing.
   function handleResizeGrid(factor: number) {
     const cell = Math.min(MAX_GRID_CELL, Math.max(MIN_GRID_CELL, grid.cell * factor));
-    const k = (0.5 - grid.ox) / grid.cell;
+    // The middle of what is on screen, in sheet coordinates.
+    const cx = view.x + 0.5 / view.zoom;
+    const cy = view.y + 0.5 / view.zoom;
+    const k = (cx - grid.ox) / grid.cell;
     const wrap = (v: number) => ((v % cell) + cell) % cell;
-    const ox = wrap(0.5 - k * cell);
-    const ky = (0.5 - grid.oy) / grid.cell;
-    handleGridChange({ ...grid, cell, ox, oy: wrap(0.5 - ky * cell) });
+    const ox = wrap(cx - k * cell);
+    const ky = (cy - grid.oy) / grid.cell;
+    handleGridChange({ ...grid, cell, ox, oy: wrap(cy - ky * cell) });
   }
 
   function handleNudgeGrid(dx: number, dy: number) {
@@ -666,6 +751,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     if (editorOpen) return;
     setSelectedAnnotationId(null);
     setShapeLabelText("");
+    setWallLenText(null);
     setSelectedWallId(id);
   }
 
@@ -823,6 +909,19 @@ export default function SiteMapScreen({ route, navigation }: Props) {
             <Text style={styles.toolChipText}>↶ Undo</Text>
           </Pressable>
           {isPhotoMode ? null : (
+            <>
+              <Pressable onPress={() => toggleMode("pan")} style={[styles.toolChip, mode === "pan" && styles.toolChipOn]}>
+                <Text style={[styles.toolChipText, mode === "pan" && styles.toolChipTextOn]}>✋ Move map</Text>
+              </Pressable>
+              <Pressable onPress={() => handleZoom(1 / 1.3)} accessibilityLabel="Zoom out" style={styles.toolChip}>
+                <Text style={styles.toolChipText}>− Zoom</Text>
+              </Pressable>
+              <Pressable onPress={() => handleZoom(1.3)} accessibilityLabel="Zoom in" style={styles.toolChip}>
+                <Text style={styles.toolChipText}>+ Zoom</Text>
+              </Pressable>
+            </>
+          )}
+          {isPhotoMode ? null : (
             <Pressable onPress={handleToggleLengths} style={[styles.toolChip, grid.showLengths && styles.toolChipOn]}>
               <Text style={[styles.toolChipText, grid.showLengths && styles.toolChipTextOn]}>Wall lengths: {grid.showLengths ? "On" : "Off"}</Text>
             </Pressable>
@@ -862,6 +961,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         onWallsChange={handleUpdateWalls}
         snap={snap}
         grid={grid}
+        view={view}
+        onViewChange={setView}
         onGridChange={handleGridChange}
         onMeasureDrawn={handleMeasureDrawn}
         onLabelChange={handleUpdateLabelPosition}
@@ -971,6 +1072,31 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         </Card>
       ) : null}
 
+      {mode === "pan" && !editorOpen ? (
+        <Card style={styles.labelPromptCard}>
+          <Text style={styles.editorTitle}>Move around</Text>
+          <Text style={styles.editHint}>
+            The map has no edge. Drag it to move around, or use the arrows. Zoom out to get room to extend your walls, then draw or drag them out as far as you need.
+          </Text>
+          <View style={styles.nudgeRow}>
+            <Text style={styles.nudgeLabel}>Move</Text>
+            {([["←", -1, 0], ["↑", 0, -1], ["↓", 0, 1], ["→", 1, 0]] as const).map(([arrow, dx, dy]) => (
+              <Pressable key={arrow} onPress={() => handleMoveView(dx, dy)} accessibilityLabel={`Move view ${arrow}`} style={styles.nudgeBtn}>
+                <Text style={styles.nudgeBtnText}>{arrow}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <View style={styles.buttonRow}>
+            <View style={styles.buttonHalf}>
+              <PrimaryButton title="Show everything" onPress={handleFitView} />
+            </View>
+            <View style={styles.buttonHalf}>
+              <PrimaryButton title="Done" onPress={() => setMode("view")} />
+            </View>
+          </View>
+        </Card>
+      ) : null}
+
       {mode === "grid" && !editorOpen ? (
         <Card style={styles.labelPromptCard}>
           <Text style={styles.editorTitle}>Grid</Text>
@@ -1029,6 +1155,33 @@ export default function SiteMapScreen({ route, navigation }: Props) {
               <Text style={styles.nudgeBtnText}>Straighten</Text>
             </Pressable>
           </View>
+          {(() => {
+            const w = selectedLevel?.lines.find((l) => l.id === selectedWallId);
+            if (!w) return null;
+            const feet = gridFeet(grid, w.x2 - w.x1, w.y2 - w.y1);
+            return (
+              <View>
+                <View style={styles.nudgeRow}>
+                  <Text style={styles.nudgeLabel}>Length</Text>
+                  <Pressable onPress={() => handleStretchSelectedWall(-1)} accessibilityLabel="Shorter" style={[styles.nudgeBtn, styles.nudgeWide]}>
+                    <Text style={styles.nudgeBtnText}>− Shorter</Text>
+                  </Pressable>
+                  <Pressable onPress={() => handleStretchSelectedWall(1)} accessibilityLabel="Longer" style={[styles.nudgeBtn, styles.nudgeWide]}>
+                    <Text style={styles.nudgeBtnText}>+ Longer</Text>
+                  </Pressable>
+                </View>
+                <Field
+                  label={`Length in feet (now ${formatFeet(feet)})`}
+                  value={wallLenText ?? String(Number(feet.toFixed(2)))}
+                  onChangeText={setWallLenText}
+                  keyboardType="decimal-pad"
+                  returnKeyType="done"
+                  onSubmitEditing={handleSaveWallLength}
+                  onBlur={() => (wallLenText !== null ? handleSaveWallLength() : undefined)}
+                />
+              </View>
+            );
+          })()}
           <View style={styles.buttonRow}>
             <View style={styles.buttonHalf}>
               <PrimaryButton title="Delete" onPress={handleDeleteSelectedWall} loading={saving} />

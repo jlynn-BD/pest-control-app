@@ -1,5 +1,5 @@
-import { getSiteMapLevelRank, parseRawSketch, visibleSketch } from "@pest-app/shared";
-import type { SiteMapGrid, SiteMapSketch } from "@pest-app/shared";
+import { fitView, getSiteMapLevelRank, levelPoints, parseRawSketch, visibleSketch } from "@pest-app/shared";
+import type { SiteMapGrid, SiteMapSketch, SiteMapView } from "@pest-app/shared";
 import type { SiteMapArrow } from "../components/ArrowCanvas";
 
 // What the app draws: the stored sketch (which also carries per-element
@@ -28,6 +28,8 @@ export interface SiteMapPanel {
   labels: SiteMapSketch["levels"][number]["labels"];
   annotations: SiteMapSketch["levels"][number]["annotations"];
   grid?: SiteMapGrid;
+  // Which part of the (endless) sheet to show: everything drawn.
+  view?: SiteMapView;
   arrows: SiteMapArrow[];
 }
 
@@ -59,14 +61,18 @@ export function buildSiteMapPanels(imageUri: string | null, sketch: SiteMapSketc
       const rankDiff = getSiteMapLevelRank(a.name) - getSiteMapLevelRank(b.name);
       return rankDiff !== 0 ? rankDiff : a.sortOrder - b.sortOrder;
     })
-    .map((level) => ({
-      title: `Site Map — ${level.name}`,
-      imageUri: null,
-      lines: level.lines,
-      labels: level.labels,
-      annotations: level.annotations,
-      grid: level.grid,
-      arrows: placed.filter((f) => f.siteMapLevel === level.id).map(toArrow),
-    }))
+    .map((level) => {
+      const arrows = placed.filter((f) => f.siteMapLevel === level.id).map(toArrow);
+      return {
+        title: `Site Map — ${level.name}`,
+        imageUri: null,
+        lines: level.lines,
+        labels: level.labels,
+        annotations: level.annotations,
+        grid: level.grid,
+        view: fitView([...levelPoints(level), ...arrows.flatMap((a) => [{ x: a.startX, y: a.startY }, { x: a.endX, y: a.endY }])]),
+        arrows,
+      };
+    })
     .filter((panel) => panel.lines.length > 0 || panel.labels.length > 0 || panel.annotations.length > 0 || panel.arrows.length > 0);
 }

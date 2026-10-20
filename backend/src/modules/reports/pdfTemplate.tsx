@@ -155,15 +155,21 @@ const GRID_MAJOR_EVERY = 5; // every 5th minor line is a major line (40/5 = 8 ma
 function gridLines(grid = resolveGrid(null)): { minor: { x1: number; y1: number; x2: number; y2: number }[]; major: { x1: number; y1: number; x2: number; y2: number }[] } {
   const minor: { x1: number; y1: number; x2: number; y2: number }[] = [];
   const major: { x1: number; y1: number; x2: number; y2: number }[] = [];
-  for (let i = 0; grid.ox + i * grid.cell < 1 - 1e-6; i++) {
+  // The grid has no edge: lines are laid out across the whole page whatever
+  // the grid's origin, and thinned out when the squares get tiny.
+  const isMajor = (i: number) => ((i % GRID_MAJOR_EVERY) + GRID_MAJOR_EVERY) % GRID_MAJOR_EVERY === 0;
+  const cellPt = grid.cell * 540;
+  const drawMinor = cellPt >= 3;
+  const drawMajor = cellPt * GRID_MAJOR_EVERY >= 4;
+  for (let i = Math.ceil(-grid.ox / grid.cell - 1e-9), n = 0; grid.ox + i * grid.cell < 1 - 1e-6 && n < 400; i++, n++) {
     const t = grid.ox + i * grid.cell;
     if (t <= 1e-6) continue;
-    (i % GRID_MAJOR_EVERY === 0 ? major : minor).push({ x1: t, y1: 0, x2: t, y2: 1 });
+    if (isMajor(i) ? drawMajor : drawMinor) (isMajor(i) ? major : minor).push({ x1: t, y1: 0, x2: t, y2: 1 });
   }
-  for (let i = 0; grid.oy + i * grid.cell < 1 - 1e-6; i++) {
+  for (let i = Math.ceil(-grid.oy / grid.cell - 1e-9), n = 0; grid.oy + i * grid.cell < 1 - 1e-6 && n < 400; i++, n++) {
     const t = grid.oy + i * grid.cell;
     if (t <= 1e-6) continue;
-    (i % GRID_MAJOR_EVERY === 0 ? major : minor).push({ x1: 0, y1: t, x2: 1, y2: t });
+    if (isMajor(i) ? drawMajor : drawMinor) (isMajor(i) ? major : minor).push({ x1: 0, y1: t, x2: 1, y2: t });
   }
   return { minor, major };
 }
@@ -257,6 +263,36 @@ export interface ReportSiteMapPanel {
   arrows: ReportSiteMapArrow[];
   // The level's layout grid / ruler (see SiteMapGrid in shared/types).
   grid?: import("@pest-app/shared").SiteMapGrid;
+  // Which part of the (endless) sheet this page shows - everything drawn.
+  view?: import("@pest-app/shared").SiteMapView;
+}
+
+// The sheet has no edge, so a drawing can run past the original square. The
+// page shows a window onto it: everything is shifted and scaled into the
+// page's own 0-1 square here, so the drawing code below never needs to know.
+// With the default view this returns the panel unchanged in effect.
+function transformPanel(panel: ReportSiteMapPanel): ReportSiteMapPanel {
+  const v = panel.view ?? { x: 0, y: 0, zoom: 1 };
+  const k = v.zoom;
+  const tx = (n: number) => (n - v.x) * k;
+  const ty = (n: number) => (n - v.y) * k;
+  const g = resolveGrid(panel.grid);
+  return {
+    ...panel,
+    grid: { ...g, cell: g.cell * k, ox: (g.ox - v.x) * k, oy: (g.oy - v.y) * k },
+    lines: panel.lines.map((l) => ({ ...l, x1: tx(l.x1), y1: ty(l.y1), x2: tx(l.x2), y2: ty(l.y2) })),
+    labels: panel.labels.map((l) => ({ ...l, x: tx(l.x), y: ty(l.y) })),
+    annotations: panel.annotations.map((a) => ({
+      ...a,
+      x1: tx(a.x1),
+      y1: ty(a.y1),
+      ...(a.x2 !== undefined ? { x2: tx(a.x2) } : {}),
+      ...(a.y2 !== undefined ? { y2: ty(a.y2) } : {}),
+      ...(a.labelDx !== undefined ? { labelDx: a.labelDx * k } : {}),
+      ...(a.labelDy !== undefined ? { labelDy: a.labelDy * k } : {}),
+    })),
+    arrows: panel.arrows.map((a) => ({ ...a, startX: tx(a.startX), startY: ty(a.startY), endX: tx(a.endX), endY: ty(a.endY) })),
+  };
 }
 
 export interface ReportFinding {
@@ -358,8 +394,10 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
           ) : null}
         </View>
 
-        {data.siteMapPanels.map((panel, pi) => {
-          const gridDef = resolveGrid(panel.grid);
+        {data.siteMapPanels.map((rawPanel, pi) => {
+          const panel = transformPanel(rawPanel);
+          // Already in the page's own units (see transformPanel).
+          const gridDef = panel.grid;
           const grid = gridLines(gridDef);
           const lengthTags = [
             ...(gridDef.showLengths ? panel.lines.map((l) => ({ x1: l.x1, y1: l.y1, x2: l.x2, y2: l.y2, color: "#1A2421" })) : []),

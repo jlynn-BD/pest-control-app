@@ -41,17 +41,29 @@ export function gridLines(
 ): { minor: Line[]; major: Line[] } {
   const minor: Line[] = [];
   const major: Line[] = [];
-  // Every 5th line is heavier, counted from the grid's own origin so the
-  // heavy lines move with the grid.
-  for (let i = 0; ox + i * cell < 1 - 1e-6; i++) {
+  // The grid has no edge: lines are laid out across whatever is visible,
+  // however far the origin is from it (ox/oy may be negative or larger than a
+  // square). Every 5th line is heavier, counted from the grid's own origin so
+  // the heavy lines move with the grid.
+  const isMajor = (i: number) => ((i % GRID_MAJOR_EVERY) + GRID_MAJOR_EVERY) % GRID_MAJOR_EVERY === 0;
+  // Zoomed far out the squares get too small to draw: thin out the lines.
+  const cellPx = cell * width;
+  const drawMinor = cellPx >= 6;
+  const drawMajor = cellPx * GRID_MAJOR_EVERY >= 8;
+  const maxLines = 400;
+  const iStartX = Math.ceil((0 - ox) / cell - 1e-9);
+  for (let i = iStartX, n = 0; ox + i * cell < 1 - 1e-6 && n < maxLines; i++, n++) {
     const t = ox + i * cell;
     if (t <= 1e-6) continue;
-    (i % GRID_MAJOR_EVERY === 0 ? major : minor).push({ x1: t * width, y1: 0, x2: t * width, y2: height });
+    const bucket = isMajor(i) ? (drawMajor ? major : null) : drawMinor ? minor : null;
+    bucket?.push({ x1: t * width, y1: 0, x2: t * width, y2: height });
   }
-  for (let i = 0; oy + i * cell < 1 - 1e-6; i++) {
+  const iStartY = Math.ceil((0 - oy) / cell - 1e-9);
+  for (let i = iStartY, n = 0; oy + i * cell < 1 - 1e-6 && n < maxLines; i++, n++) {
     const t = oy + i * cell;
     if (t <= 1e-6) continue;
-    (i % GRID_MAJOR_EVERY === 0 ? major : minor).push({ x1: 0, y1: t * height, x2: width, y2: t * height });
+    const bucket = isMajor(i) ? (drawMajor ? major : null) : drawMinor ? minor : null;
+    bucket?.push({ x1: 0, y1: t * height, x2: width, y2: t * height });
   }
   return { minor, major };
 }

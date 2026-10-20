@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { renderToBuffer } from "@react-pdf/renderer";
 import React from "react";
-import { CHECKLIST_CATEGORY_DISPLAY_ORDER, getSiteMapLevelRank, parseRawSketch, resolveGrid, visibleSketch } from "@pest-app/shared";
+import { CHECKLIST_CATEGORY_DISPLAY_ORDER, fitView, getSiteMapLevelRank, levelPoints, parseRawSketch, resolveGrid, visibleSketch } from "@pest-app/shared";
 import { generateId } from "../../lib/id";
 import { prisma } from "../../lib/prisma";
 import { storage } from "../../lib/storage";
@@ -104,16 +104,21 @@ async function buildReportData(inspectionId: string): Promise<ReportData> {
         const rankDiff = getSiteMapLevelRank(a.name) - getSiteMapLevelRank(b.name);
         return rankDiff !== 0 ? rankDiff : a.sortOrder - b.sortOrder;
       })
-      .map((level) => ({
-        title: `Site Map — ${level.name}`,
-        imagePath: null,
-        lines: level.lines as ReportSiteMapLine[],
-        labels: level.labels as ReportSiteMapLabel[],
-        // Sketches saved before annotations existed just have none.
-        annotations: (level.annotations ?? []) as ReportSiteMapAnnotation[],
-        grid: resolveGrid(level.grid),
-        arrows: placedFindings.filter((f) => f.siteMapLevel === level.id).map(toArrow),
-      }))
+      .map((level) => {
+        const arrows = placedFindings.filter((f) => f.siteMapLevel === level.id).map(toArrow);
+        return {
+          title: `Site Map — ${level.name}`,
+          imagePath: null,
+          lines: level.lines as ReportSiteMapLine[],
+          labels: level.labels as ReportSiteMapLabel[],
+          // Sketches saved before annotations existed just have none.
+          annotations: (level.annotations ?? []) as ReportSiteMapAnnotation[],
+          grid: resolveGrid(level.grid),
+          // The sheet has no edge: show everything drawn, even past the original square.
+          view: fitView([...levelPoints(level), ...arrows.flatMap((a) => [{ x: a.startX, y: a.startY }, { x: a.endX, y: a.endY }])]),
+          arrows,
+        };
+      })
       .filter((panel) => panel.lines.length > 0 || panel.labels.length > 0 || panel.annotations.length > 0 || panel.arrows.length > 0);
   }
 

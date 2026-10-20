@@ -1,6 +1,6 @@
-import { formatFeet, gridFeet, resolveGrid } from "@pest-app/shared";
-import type { SiteMapAnnotation, SiteMapAnnotationType, SiteMapGrid } from "@pest-app/shared";
-import React, { useMemo, useRef, useState } from "react";
+import { DEFAULT_SITE_MAP_VIEW, formatFeet, gridFeet, resolveGrid } from "@pest-app/shared";
+import type { SiteMapAnnotation, SiteMapAnnotationType, SiteMapGrid, SiteMapView } from "@pest-app/shared";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { LayoutChangeEvent, PanResponder, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, Line as SvgLine, Polygon, Rect, Text as SvgText } from "react-native-svg";
 import { arrowHeadPoints, gridLines, Line, Point } from "../lib/arrowGeometry";
@@ -8,7 +8,7 @@ import { API_BASE_URL } from "../api/config";
 import { AuthImage } from "./AuthImage";
 import { colors } from "./ui";
 
-export type SiteMapMode = "view" | "arrow" | "wall" | "label" | "annotate" | "measure" | "grid";
+export type SiteMapMode = "view" | "arrow" | "wall" | "label" | "annotate" | "measure" | "grid" | "pan";
 
 // Was previously rendered as an absolutely-positioned overlay INSIDE the
 // canvas (bottom edge, full width) - a technician found that box sitting
@@ -29,6 +29,8 @@ export function siteMapHintText(mode: SiteMapMode, annotationType?: SiteMapAnnot
       return "Drag from one point to another to measure it - the distance stays on the map";
     case "grid":
       return "Drag the map to move the grid, and use the size buttons to scale it";
+    case "pan":
+      return "Drag the map to move around it - the sheet has no edge";
     case "annotate":
       if (annotationType === "x") return "Tap to place an X mark";
       if (annotationType === "rect") return "Drag to draw a shape";
@@ -230,7 +232,9 @@ const NO_PAGE_SCROLL = Platform.OS === "web" ? ({ touchAction: "none" } as objec
 export type Geometry = { x1: number; y1: number; x2?: number; y2?: number };
 type HandleKind = "move" | "p1" | "p2" | "tl" | "tr" | "bl" | "br";
 
-const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
+// The sheet has no edge, so nothing is held to the 0-1 square any more; this
+// only stops a runaway value (in view units, where 0-1 is what is on screen).
+const clamp01 = (n: number) => Math.min(8, Math.max(-7, n));
 
 // ---- Snapping & picking -----------------------------------------------
 // Grid cells match the faint background grid (40 minor divisions).
@@ -333,8 +337,8 @@ function applyDrag(base: Geometry, kind: HandleKind, dxn: number, dyn: number): 
   const minY = Math.min(base.y1, by2);
   const maxY = Math.max(base.y1, by2);
   if (kind === "move") {
-    const sx = Math.min(1 - maxX, Math.max(-minX, dxn));
-    const sy = Math.min(1 - maxY, Math.max(-minY, dyn));
+    const sx = dxn;
+    const sy = dyn;
     return base.x2 === undefined
       ? { x1: base.x1 + sx, y1: base.y1 + sy }
       : { x1: base.x1 + sx, y1: base.y1 + sy, x2: base.x2 + sx, y2: (base.y2 ?? base.y1) + sy };
@@ -373,7 +377,7 @@ export const MEASURE_COLOR = "#2E6DA4";
 // Mouse users see an open hand over anything draggable.
 // Crosshair cursor over the map while a drawing tool is active.
 function drawCursor(mode: SiteMapMode): object | null {
-  return Platform.OS === "web" ? ({ cursor: mode === "view" ? "default" : mode === "grid" ? "move" : "crosshair" } as object) : null;
+  return Platform.OS === "web" ? ({ cursor: mode === "view" ? "default" : mode === "grid" ? "move" : mode === "pan" ? "grab" : "crosshair" } as object) : null;
 }
 
 const GRAB_CURSOR = Platform.OS === "web" ? ({ cursor: "grab" } as object) : null;
@@ -438,7 +442,7 @@ function DragSurface({
   );
 }
 
-export function SiteMapCanvas({
+function SiteMapCanvasInner({
   imageUri,
   arrows,
   savedLines = [],
@@ -463,6 +467,8 @@ export function SiteMapCanvas({
   onCaptionChange,
   onMeasureDrawn,
   onGridChange,
+  onPanLive,
+  onPanEnd,
   grid: gridProp,
   snap = true,
   selectedLabelId = null,
@@ -502,6 +508,10 @@ export function SiteMapCanvas({
   onMeasureDrawn?: (start: Point, end: Point) => void;
   // "grid" mode: the grid was dragged to a new position.
   onGridChange?: (grid: SiteMapGrid) => void;
+  // "pan" mode: how far the finger has dragged the map so far (fractions of the
+  // view; null when it lets go), and where the drag ended.
+  onPanLive?: (delta: { dx: number; dy: number } | null) => void;
+  onPanEnd?: (dx: number, dy: number) => void;
   // Called once, when a finger lifts after dragging the selected label to a
   // new spot - same "commit on drop" shape as onAnnotationChange/onWallChange.
   onLabelChange?: (labelId: string, point: Point) => Promise<unknown> | void;
@@ -512,7 +522,7 @@ export function SiteMapCanvas({
   selectedAnnotationId?: string | null;
 }) {
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const grid = resolveGrid(gridProp);
+  const grid = gridProp ?? resolveGrid(null);
   // Shape being dragged right now: shown at its in-progress position, and
   // only saved when the finger lifts.
   const [draft, setDraft] = useState<{
@@ -625,6 +635,7 @@ export function SiteMapCanvas({
       if (mode === "arrow") onArrowDrawn?.(norm.start, norm.end);
       else if (mode === "wall") onWallDrawn?.(norm.start, norm.end);
       else if (mode === "measure") onMeasureDrawn?.(norm.start, norm.end);
+      else if (mode === "pan") onPanEnd?.(norm.end.x - norm.start.x, norm.end.y - norm.start.y);
       else if (mode === "grid") {
         // Dragging the map slides the grid by the same distance.
         const wrap = (v: number) => ((v % grid.cell) + grid.cell) % grid.cell;
@@ -650,6 +661,15 @@ export function SiteMapCanvas({
     const wrap = (v: number) => ((v % grid.cell) + grid.cell) % grid.cell;
     return { ...grid, ox: wrap(grid.ox + (live.end.x - live.start.x) / size.width), oy: wrap(grid.oy + (live.end.y - live.start.y) / size.height) };
   })();
+
+  // While the map is being dragged around, tell whoever owns the view so
+  // everything follows the finger.
+  useEffect(() => {
+    if (mode !== "pan") return;
+    onPanLive?.(live && size.width > 0 ? { dx: (live.end.x - live.start.x) / size.width, dy: (live.end.y - live.start.y) / size.height } : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live, mode]);
+
 
   // Handles + a move surface for whichever wall/annotation is selected, so a
   // shape can be dragged to a new spot, or an end/corner dragged to resize it,
@@ -997,7 +1017,7 @@ export function SiteMapCanvas({
               />
             );
           })}
-          {live ? (
+          {live && mode !== "pan" && mode !== "grid" ? (
             mode === "annotate" && annotationType === "rect" ? (
               <Rect
                 x={Math.min(live.start.x, live.end.x)}
@@ -1035,7 +1055,7 @@ export function SiteMapCanvas({
               the exact spot with guide lines running the full width and height
               of the map. A fingertip hides the spot it touches, but the guide
               lines stick out on every side so the aim point stays readable. */}
-          {mode !== "view" && mode !== "grid" && pointer ? (
+          {mode !== "view" && mode !== "grid" && mode !== "pan" && pointer ? (
             <>
               <SvgLine x1={0} y1={pointer.y} x2={size.width} y2={pointer.y} stroke={AIM_COLOR} strokeWidth={1} strokeDasharray="5,4" opacity={0.7} />
               <SvgLine x1={pointer.x} y1={0} x2={pointer.x} y2={size.height} stroke={AIM_COLOR} strokeWidth={1} strokeDasharray="5,4" opacity={0.7} />
@@ -1044,7 +1064,7 @@ export function SiteMapCanvas({
             </>
           ) : null}
           {/* Where the line/shape/arrow started. */}
-          {mode !== "view" && mode !== "grid" && live && (Math.abs(live.end.x - live.start.x) > 1 || Math.abs(live.end.y - live.start.y) > 1) ? (
+          {mode !== "view" && mode !== "grid" && mode !== "pan" && live && (Math.abs(live.end.x - live.start.x) > 1 || Math.abs(live.end.y - live.start.y) > 1) ? (
             <>
               <Circle cx={live.start.x} cy={live.start.y} r={7} stroke={AIM_COLOR} strokeWidth={2} fill="#ffffff" fillOpacity={0.9} />
               <Circle cx={live.start.x} cy={live.start.y} r={2} fill={AIM_COLOR} />
@@ -1243,6 +1263,82 @@ export function SiteMapCanvas({
           })
         : null}
     </View>
+  );
+}
+
+// The map is an endless sheet. SiteMapCanvasInner draws and edits a fixed
+// square window (0-1 = what is on screen); this wrapper owns the mapping
+// between that window and the sheet: everything is shifted/scaled by the
+// current view on the way in, and what the person draws or drags is mapped
+// back to sheet coordinates on the way out. A sketch that never leaves the
+// original square with the default view passes through unchanged.
+export function SiteMapCanvas(props: React.ComponentProps<typeof SiteMapCanvasInner> & { view?: SiteMapView; onViewChange?: (view: SiteMapView) => void }) {
+  const { view: viewProp, onViewChange, ...rest } = props;
+  const [panLive, setPanLive] = useState<{ dx: number; dy: number } | null>(null);
+  const base = viewProp ?? DEFAULT_SITE_MAP_VIEW;
+  const k = base.zoom;
+  // While a drag is moving the map, the view follows the finger.
+  const v: SiteMapView = panLive ? { x: base.x - panLive.dx / k, y: base.y - panLive.dy / k, zoom: k } : base;
+
+  const tx = (n: number) => (n - v.x) * k;
+  const ty = (n: number) => (n - v.y) * k;
+  const ux = (n: number) => n / k + v.x;
+  const uy = (n: number) => n / k + v.y;
+  const toWorld = (p: Point): Point => ({ x: ux(p.x), y: uy(p.y) });
+  const near = (x: number, y: number) => x > -0.1 && x < 1.1 && y > -0.1 && y < 1.1;
+  const worldGeometry = (g: Geometry): Geometry => ({
+    x1: ux(g.x1),
+    y1: uy(g.y1),
+    ...(g.x2 !== undefined ? { x2: ux(g.x2) } : {}),
+    ...(g.y2 !== undefined ? { y2: uy(g.y2) } : {}),
+  });
+  const viewLine = <T extends { x1: number; y1: number; x2: number; y2: number }>(l: T): T => ({ ...l, x1: tx(l.x1), y1: ty(l.y1), x2: tx(l.x2), y2: ty(l.y2) });
+
+  const worldGrid = resolveGrid(rest.grid);
+  const viewGrid: SiteMapGrid = { ...worldGrid, cell: worldGrid.cell * k, ox: (worldGrid.ox - v.x) * k, oy: (worldGrid.oy - v.y) * k };
+
+  return (
+    <SiteMapCanvasInner
+      {...rest}
+      arrows={(rest.arrows ?? [])
+        .map((a) => ({ ...a, startX: tx(a.startX), startY: ty(a.startY), endX: tx(a.endX), endY: ty(a.endY) }))
+        .filter((a) => near(a.startX, a.startY) || near(a.endX, a.endY))}
+      savedLines={(rest.savedLines ?? []).map(viewLine)}
+      pendingLines={(rest.pendingLines ?? []).map(viewLine)}
+      labels={(rest.labels ?? []).map((l) => ({ ...l, x: tx(l.x), y: ty(l.y) })).filter((l) => near(l.x, l.y))}
+      annotations={(rest.annotations ?? []).map((a) => ({
+        ...a,
+        x1: tx(a.x1),
+        y1: ty(a.y1),
+        ...(a.x2 !== undefined ? { x2: tx(a.x2) } : {}),
+        ...(a.y2 !== undefined ? { y2: ty(a.y2) } : {}),
+        ...(a.labelDx !== undefined ? { labelDx: a.labelDx * k } : {}),
+        ...(a.labelDy !== undefined ? { labelDy: a.labelDy * k } : {}),
+      }))}
+      grid={viewGrid}
+      onGridChange={(ng) =>
+        rest.onGridChange?.(resolveGrid({ ...worldGrid, cell: ng.cell / k, ox: ng.ox / k + v.x, oy: ng.oy / k + v.y }))
+      }
+      onPanLive={setPanLive}
+      onPanEnd={(dx, dy) => {
+        setPanLive(null);
+        onViewChange?.({ x: base.x - dx / k, y: base.y - dy / k, zoom: k });
+      }}
+      onArrowDrawn={rest.onArrowDrawn ? (s, e) => rest.onArrowDrawn!(toWorld(s), toWorld(e)) : undefined}
+      onWallDrawn={rest.onWallDrawn ? (s, e) => rest.onWallDrawn!(toWorld(s), toWorld(e)) : undefined}
+      onMeasureDrawn={rest.onMeasureDrawn ? (s, e) => rest.onMeasureDrawn!(toWorld(s), toWorld(e)) : undefined}
+      onAnnotationDrawn={rest.onAnnotationDrawn ? (t, c, s, e) => rest.onAnnotationDrawn!(t, c, toWorld(s), toWorld(e)) : undefined}
+      onLabelTap={rest.onLabelTap ? (p) => rest.onLabelTap!(toWorld(p)) : undefined}
+      onAnnotationChange={rest.onAnnotationChange ? (id, g) => rest.onAnnotationChange!(id, worldGeometry(g)) : undefined}
+      onWallChange={rest.onWallChange ? (id, g) => rest.onWallChange!(id, worldGeometry(g) as Required<Geometry>) : undefined}
+      onWallsChange={
+        rest.onWallsChange
+          ? (changes) => rest.onWallsChange!(changes.map((c) => ({ id: c.id, geometry: worldGeometry(c.geometry) as Required<Geometry> })))
+          : undefined
+      }
+      onLabelChange={rest.onLabelChange ? (id, p) => rest.onLabelChange!(id, toWorld(p)) : undefined}
+      onCaptionChange={rest.onCaptionChange ? (id, o) => rest.onCaptionChange!(id, { dx: o.dx / k, dy: o.dy / k }) : undefined}
+    />
   );
 }
 
