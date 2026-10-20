@@ -1,5 +1,5 @@
 import { getSiteMapLevelRank, parseRawSketch, visibleSketch } from "@pest-app/shared";
-import type { SiteMapSketch } from "@pest-app/shared";
+import type { SiteMapGrid, SiteMapSketch } from "@pest-app/shared";
 import type { SiteMapArrow } from "../components/ArrowCanvas";
 
 // What the app draws: the stored sketch (which also carries per-element
@@ -27,6 +27,7 @@ export interface SiteMapPanel {
   lines: SiteMapSketch["levels"][number]["lines"];
   labels: SiteMapSketch["levels"][number]["labels"];
   annotations: SiteMapSketch["levels"][number]["annotations"];
+  grid?: SiteMapGrid;
   arrows: SiteMapArrow[];
 }
 
@@ -64,6 +65,7 @@ export function buildSiteMapPanels(imageUri: string | null, sketch: SiteMapSketc
       lines: level.lines,
       labels: level.labels,
       annotations: level.annotations,
+      grid: level.grid,
       arrows: placed.filter((f) => f.siteMapLevel === level.id).map(toArrow),
     }))
     .filter((panel) => panel.lines.length > 0 || panel.labels.length > 0 || panel.annotations.length > 0 || panel.arrows.length > 0);

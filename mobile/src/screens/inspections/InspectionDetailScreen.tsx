@@ -51,6 +51,7 @@ export default function InspectionDetailScreen({ route }: Props) {
             savedLines={panel.lines}
             labels={panel.labels}
             annotations={panel.annotations}
+            grid={panel.grid}
             mode="view"
           />
         </View>

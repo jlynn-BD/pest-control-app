@@ -1,4 +1,4 @@
-import type { SiteMapAnnotation, SiteMapLevel, SiteMapSketch, SiteMapSketchLabel, SiteMapSketchLine } from "../types";
+import type { SiteMapAnnotation, SiteMapGrid, SiteMapLevel, SiteMapSketch, SiteMapSketchLabel, SiteMapSketchLine } from "../types";
 
 // Site map sketches are merged element-by-element instead of the whole sketch
 // being replaced on every save. Replacing meant two devices editing the same
@@ -23,6 +23,9 @@ export interface RawLevel {
   lines: RawLine[];
   labels: RawLabel[];
   annotations: RawAnnotation[];
+  // The level's layout grid / ruler scale (see SiteMapGrid). One value per
+  // level, merged as a whole: the most recently changed copy wins.
+  grid?: SiteMapGrid;
 }
 export interface RawSketch {
   levels: RawLevel[];
@@ -48,6 +51,7 @@ export function parseRawSketch(json: string | null | undefined): RawSketch {
         lines: Array.isArray(l.lines) ? l.lines.map((x: RawLine, i: number) => ({ ...x, id: x.id ?? `${l.id}:line:${i}` })) : [],
         labels: Array.isArray(l.labels) ? l.labels.map((x: RawLabel, i: number) => ({ ...x, id: x.id ?? `${l.id}:label:${i}` })) : [],
         annotations: Array.isArray(l.annotations) ? l.annotations : [],
+        ...(l.grid && typeof l.grid === "object" && typeof l.grid.cell === "number" ? { grid: l.grid as SiteMapGrid } : {}),
       });
     }
     return { levels };
@@ -71,6 +75,7 @@ export function visibleSketch(raw: RawSketch): SiteMapSketch {
         lines: live(l.lines) as SiteMapSketchLine[],
         labels: live(l.labels) as SiteMapSketchLabel[],
         annotations: live(l.annotations) as SiteMapAnnotation[],
+        ...(l.grid ? { grid: l.grid } : {}),
       })
     ),
   };
@@ -107,6 +112,13 @@ function mergeElements<T extends { id: string } & Stamp>(a: T[], b: T[]): T[] {
   return [...byId.values()];
 }
 
+function mergedGrid(a?: SiteMapGrid, b?: SiteMapGrid): { grid?: SiteMapGrid } {
+  if (!a && !b) return {};
+  if (!a) return { grid: b };
+  if (!b) return { grid: a };
+  return { grid: (b.updatedAt ?? 0) > (a.updatedAt ?? 0) ? b : a };
+}
+
 export function mergeSketches(a: RawSketch, b: RawSketch): RawSketch {
   const byId = new Map<string, RawLevel>();
   for (const l of a.levels) byId.set(l.id, l);
@@ -123,6 +135,7 @@ export function mergeSketches(a: RawSketch, b: RawSketch): RawSketch {
       lines: mergeElements(cur.lines, l.lines),
       labels: mergeElements(cur.labels, l.labels),
       annotations: mergeElements(cur.annotations, l.annotations),
+      ...mergedGrid(cur.grid, l.grid),
     });
   }
   return { levels: [...byId.values()] };
@@ -145,6 +158,14 @@ function diffElements<T extends { id: string } & Stamp>(oldRaw: T[], nextVisible
   return out;
 }
 
+// The grid is re-stamped only when its content really changed.
+function editedGrid(old: SiteMapGrid | undefined, next: SiteMapGrid | undefined, now: number): { grid?: SiteMapGrid } {
+  if (!next) return old ? { grid: old } : {};
+  const { updatedAt: _n, ...nextBare } = next;
+  const { updatedAt: _o, ...oldBare } = old ?? ({} as SiteMapGrid);
+  return { grid: old && sameContent(nextBare, oldBare) ? old : { ...nextBare, updatedAt: now } };
+}
+
 // Turns "the level the technician just edited" (as the UI sees it, with
 // deletions simply missing) into the stored form: changed elements get a new
 // timestamp, removed ones become tombstones, untouched ones are left exactly
@@ -157,5 +178,6 @@ export function applyLevelEdit(oldRaw: RawLevel, nextVisible: SiteMapLevel, now:
     lines: diffElements(oldRaw.lines, nextVisible.lines as RawLine[], now),
     labels: diffElements(oldRaw.labels, nextVisible.labels as RawLabel[], now),
     annotations: diffElements(oldRaw.annotations, nextVisible.annotations as RawAnnotation[], now),
+    ...editedGrid(oldRaw.grid, nextVisible.grid, now),
   };
 }

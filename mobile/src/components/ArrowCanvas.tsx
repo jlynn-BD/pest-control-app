@@ -1,13 +1,14 @@
-import type { SiteMapAnnotation, SiteMapAnnotationType } from "@pest-app/shared";
+import { formatFeet, gridFeet, resolveGrid } from "@pest-app/shared";
+import type { SiteMapAnnotation, SiteMapAnnotationType, SiteMapGrid } from "@pest-app/shared";
 import React, { useMemo, useRef, useState } from "react";
 import { LayoutChangeEvent, PanResponder, Platform, Pressable, StyleSheet, Text, View } from "react-native";
-import Svg, { Circle, Line as SvgLine, Polygon, Rect } from "react-native-svg";
+import Svg, { Circle, Line as SvgLine, Polygon, Rect, Text as SvgText } from "react-native-svg";
 import { arrowHeadPoints, gridLines, Line, Point } from "../lib/arrowGeometry";
 import { API_BASE_URL } from "../api/config";
 import { AuthImage } from "./AuthImage";
 import { colors } from "./ui";
 
-export type SiteMapMode = "view" | "arrow" | "wall" | "label" | "annotate";
+export type SiteMapMode = "view" | "arrow" | "wall" | "label" | "annotate" | "measure" | "grid";
 
 // Was previously rendered as an absolutely-positioned overlay INSIDE the
 // canvas (bottom edge, full width) - a technician found that box sitting
@@ -24,6 +25,10 @@ export function siteMapHintText(mode: SiteMapMode, annotationType?: SiteMapAnnot
       return "Drag to draw a wall segment";
     case "label":
       return "Tap to place a label (tap inside a shape to name it)";
+    case "measure":
+      return "Drag from one point to another to measure it - the distance stays on the map";
+    case "grid":
+      return "Drag the map to move the grid, and use the size buttons to scale it";
     case "annotate":
       if (annotationType === "x") return "Tap to place an X mark";
       if (annotationType === "rect") return "Drag to draw a shape";
@@ -229,7 +234,6 @@ const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
 // ---- Snapping & picking -----------------------------------------------
 // Grid cells match the faint background grid (40 minor divisions).
-const GRID_STEP = 1 / 40;
 // Pixel distance within which a point is pulled onto a nearby wall end / the
 // grid, and the angle (radians) within which a wall is locked level/plumb.
 const MAGNET_PX = 14;
@@ -243,7 +247,10 @@ type Pt = { x: number; y: number };
 // otherwise onto the grid. `from` is the fixed other end of the line being
 // drawn/edited: when the result is within a few degrees of level or plumb it
 // is locked exactly level/plumb.
-function snapNormalized(p: Pt, ends: Pt[], width: number, height: number, from?: Pt): Pt {
+function snapNormalized(p: Pt, ends: Pt[], width: number, height: number, from?: Pt, grid?: SiteMapGrid): Pt {
+  const cell = grid?.cell ?? 1 / 40;
+  const ox = grid?.ox ?? 0;
+  const oy = grid?.oy ?? 0;
   let best: Pt | null = null;
   let bestD = MAGNET_PX;
   for (const e of ends) {
@@ -254,7 +261,7 @@ function snapNormalized(p: Pt, ends: Pt[], width: number, height: number, from?:
     }
   }
   if (best) return { x: best.x, y: best.y };
-  let out = { x: Math.round(p.x / GRID_STEP) * GRID_STEP, y: Math.round(p.y / GRID_STEP) * GRID_STEP };
+  let out = { x: Math.round((p.x - ox) / cell) * cell + ox, y: Math.round((p.y - oy) / cell) * cell + oy };
   if (from) {
     const dx = (p.x - from.x) * width;
     const dy = (p.y - from.y) * height;
@@ -278,6 +285,12 @@ function distToSegment(px: number, py: number, x1: number, y1: number, x2: numbe
 
 // How far (px) a tap is from a wall / annotation - the real shape, not its
 // padded bounding box, so the nearest thing to the finger wins.
+// How an annotation counts when working out what a tap is nearest to: a saved
+// measurement is a line, like an arrow.
+function elementKind(a: { type: SiteMapAnnotationType }): "x" | "arrow" | "rect" {
+  return a.type === "measure" ? "arrow" : a.type;
+}
+
 function distToElement(
   tapX: number,
   tapY: number,
@@ -354,11 +367,13 @@ function applyDrag(base: Geometry, kind: HandleKind, dxn: number, dyn: number): 
 // shape itself to move it" surface. It refuses to give the gesture up, so a
 // drag that drifts vertically can't be stolen by the page scroll.
 const AIM_COLOR = "#1F7A5C";
+// Distance lines and their readouts.
+export const MEASURE_COLOR = "#2E6DA4";
 
 // Mouse users see an open hand over anything draggable.
 // Crosshair cursor over the map while a drawing tool is active.
 function drawCursor(mode: SiteMapMode): object | null {
-  return Platform.OS === "web" ? ({ cursor: mode === "view" ? "default" : "crosshair" } as object) : null;
+  return Platform.OS === "web" ? ({ cursor: mode === "view" ? "default" : mode === "grid" ? "move" : "crosshair" } as object) : null;
 }
 
 const GRAB_CURSOR = Platform.OS === "web" ? ({ cursor: "grab" } as object) : null;
@@ -446,6 +461,9 @@ export function SiteMapCanvas({
   onWallsChange,
   onLabelChange,
   onCaptionChange,
+  onMeasureDrawn,
+  onGridChange,
+  grid: gridProp,
   snap = true,
   selectedLabelId = null,
   selectedWallId = null,
@@ -478,6 +496,12 @@ export function SiteMapCanvas({
   // Pull drawn/dragged points onto the grid and onto nearby wall ends, and
   // lock near-level/plumb walls exactly level/plumb.
   snap?: boolean;
+  // The level's layout grid / ruler (see SiteMapGrid). Unset = the default grid.
+  grid?: SiteMapGrid;
+  // "measure" mode: a distance was dragged out between two points.
+  onMeasureDrawn?: (start: Point, end: Point) => void;
+  // "grid" mode: the grid was dragged to a new position.
+  onGridChange?: (grid: SiteMapGrid) => void;
   // Called once, when a finger lifts after dragging the selected label to a
   // new spot - same "commit on drop" shape as onAnnotationChange/onWallChange.
   onLabelChange?: (labelId: string, point: Point) => Promise<unknown> | void;
@@ -488,6 +512,7 @@ export function SiteMapCanvas({
   selectedAnnotationId?: string | null;
 }) {
   const [size, setSize] = useState({ width: 0, height: 0 });
+  const grid = resolveGrid(gridProp);
   // Shape being dragged right now: shown at its in-progress position, and
   // only saved when the finger lifts.
   const [draft, setDraft] = useState<{
@@ -513,6 +538,10 @@ export function SiteMapCanvas({
     return joined ? { ...l, ...joined.g } : l;
   });
 
+  // A length on the map, as feet and inches.
+  const lengthText = (x1: number, y1: number, x2: number, y2: number) =>
+    size.width === 0 ? "" : formatFeet(gridFeet(grid, x2 - x1, ((y2 - y1) * size.height) / size.width));
+
   // Every wall end on the map (other than the given wall): what a dragged end
   // can snap to.
   function wallEnds(excludeId?: string): Pt[] {
@@ -523,16 +552,17 @@ export function SiteMapCanvas({
     }
     return out;
   }
-  const snapsNow = snap && (mode === "wall" || (mode === "annotate" && annotationType === "rect"));
+  const snapsNow = snap && (mode === "wall" || mode === "measure" || (mode === "annotate" && annotationType === "rect"));
   // Pixel-space wrapper for the drawing gesture.
   function snapPixels(p: Point, from?: Point): Point {
     if (!snapsNow || size.width === 0 || size.height === 0) return p;
     const n = snapNormalized(
       { x: p.x / size.width, y: p.y / size.height },
-      mode === "wall" ? wallEnds() : [],
+      mode === "wall" || mode === "measure" ? wallEnds() : [],
       size.width,
       size.height,
-      from && mode === "wall" ? { x: from.x / size.width, y: from.y / size.height } : undefined
+      from && (mode === "wall" || mode === "measure") ? { x: from.x / size.width, y: from.y / size.height } : undefined,
+      grid
     );
     return { x: n.x * size.width, y: n.y * size.height };
   }
@@ -566,7 +596,7 @@ export function SiteMapCanvas({
     }
     for (const a of shownAnnotations) {
       if (mode === "view" && a.id === selectedAnnotationId) continue;
-      const d = distToElement(tapX, tapY, a, a.type, W, H);
+      const d = distToElement(tapX, tapY, a, elementKind(a), W, H);
       if (d < bestD) {
         bestD = d;
         best = { kind: "annotation", id: a.id };
@@ -594,6 +624,12 @@ export function SiteMapCanvas({
       const norm = { start: { x: start.x / size.width, y: start.y / size.height }, end: { x: end.x / size.width, y: end.y / size.height } };
       if (mode === "arrow") onArrowDrawn?.(norm.start, norm.end);
       else if (mode === "wall") onWallDrawn?.(norm.start, norm.end);
+      else if (mode === "measure") onMeasureDrawn?.(norm.start, norm.end);
+      else if (mode === "grid") {
+        // Dragging the map slides the grid by the same distance.
+        const wrap = (v: number) => ((v % grid.cell) + grid.cell) % grid.cell;
+        onGridChange?.({ ...grid, ox: wrap(grid.ox + norm.end.x - norm.start.x), oy: wrap(grid.oy + norm.end.y - norm.start.y) });
+      }
       else if (mode === "annotate" && annotationType && annotationType !== "x" && annotationColor) {
         onAnnotationDrawn?.(annotationType, annotationColor, norm.start, norm.end);
       }
@@ -606,6 +642,14 @@ export function SiteMapCanvas({
     },
     snapPixels
   );
+
+  // While the grid is being dragged it follows the finger; the new position
+  // is only saved on release.
+  const shownGrid = (() => {
+    if (mode !== "grid" || !live || size.width === 0) return grid;
+    const wrap = (v: number) => ((v % grid.cell) + grid.cell) % grid.cell;
+    return { ...grid, ox: wrap(grid.ox + (live.end.x - live.start.x) / size.width), oy: wrap(grid.oy + (live.end.y - live.start.y) / size.height) };
+  })();
 
   // Handles + a move surface for whichever wall/annotation is selected, so a
   // shape can be dragged to a new spot, or an end/corner dragged to resize it,
@@ -628,7 +672,7 @@ export function SiteMapCanvas({
     // on). A wall end dragged also takes along every wall joined to it.
     const compute = (handle: HandleKind, dx: number, dy: number) => {
       const raw = applyDrag(base, handle, dx / W, dy / H);
-      const isLine = selAnn ? selAnn.type === "arrow" : true;
+      const isLine = selAnn ? selAnn.type === "arrow" || selAnn.type === "measure" : true;
       const isWall = !selAnn;
       const origEnd = handle === "p1" ? { x: base.x1, y: base.y1 } : handle === "p2" ? { x: base.x2 ?? base.x1, y: base.y2 ?? base.y1 } : null;
       // Wall ends other than the one being dragged (and anything joined to it).
@@ -639,10 +683,10 @@ export function SiteMapCanvas({
       if (snap && (handle === "p1" || handle === "p2") && isLine) {
         const moved = handle === "p1" ? { x: raw.x1, y: raw.y1 } : { x: raw.x2 ?? raw.x1, y: raw.y2 ?? raw.y1 };
         const fixed = handle === "p1" ? { x: base.x2 ?? base.x1, y: base.y2 ?? base.y1 } : { x: base.x1, y: base.y1 };
-        const p = snapNormalized(moved, ends, W, H, fixed);
+        const p = snapNormalized(moved, ends, W, H, fixed, grid);
         g = handle === "p1" ? { ...raw, x1: p.x, y1: p.y } : { ...raw, x2: p.x, y2: p.y };
       } else if (snap && (handle === "tl" || handle === "tr" || handle === "bl" || handle === "br")) {
-        const p = snapNormalized({ x: raw.x1, y: raw.y1 }, [], W, H);
+        const p = snapNormalized({ x: raw.x1, y: raw.y1 }, [], W, H, undefined, grid);
         const x2 = raw.x2 ?? raw.x1;
         const y2 = raw.y2 ?? raw.y1;
         // Skip the snap if it would squash the shape below its minimum size.
@@ -650,7 +694,7 @@ export function SiteMapCanvas({
       } else if (snap && handle === "move") {
         // Slide so the shape's first corner / wall end lands on the grid or a wall end.
         const first = { x: raw.x1, y: raw.y1 };
-        const p = snapNormalized(first, isWall ? wallEnds(target.id) : [], W, H);
+        const p = snapNormalized(first, isWall ? wallEnds(target.id) : [], W, H, undefined, grid);
         g = applyDrag(base, "move", dx / W + (p.x - first.x), dy / H + (p.y - first.y));
       }
       let also: { id: string; g: Required<Geometry> }[] = [];
@@ -723,12 +767,12 @@ export function SiteMapCanvas({
           onTap={(x, y) => {
             const tapX = moveRect.left + x;
             const tapY = moveRect.top + y;
-            const own = distToElement(tapX, tapY, shown, selAnn ? selAnn.type : "wall", W, H);
+            const own = distToElement(tapX, tapY, shown, selAnn ? elementKind(selAnn) : "wall", W, H);
             const pick = pickAt(tapX, tapY, { kind: kind === "annotation" ? "annotation" : "wall", id: target.id }, true);
             if (pick.id === target.id) return;
             const other = pick.kind === "wall" ? shownWalls.find((l) => l.id === pick.id) : shownAnnotations.find((a) => a.id === pick.id);
             if (!other) return;
-            const od = distToElement(tapX, tapY, other, pick.kind === "wall" ? "wall" : (other as SiteMapAnnotation).type, W, H);
+            const od = distToElement(tapX, tapY, other, pick.kind === "wall" ? "wall" : elementKind(other as SiteMapAnnotation), W, H);
             if (od < own) selectPicked(pick);
           }}
         />
@@ -790,6 +834,39 @@ export function SiteMapCanvas({
     );
   }
 
+  // A small length tag sitting beside a line, nudged to the side of it and
+  // kept inside the map.
+  const lengthTag = (key: string, x1: number, y1: number, x2: number, y2: number, color: string, text = lengthText(x1, y1, x2, y2)) => {
+    const W = size.width;
+    const H = size.height;
+    const px1 = x1 * W;
+    const py1 = y1 * H;
+    const px2 = x2 * W;
+    const py2 = y2 * H;
+    const len = Math.hypot(px2 - px1, py2 - py1);
+    if (len < 24) return null; // too short to label legibly
+    const w = text.length * 6.6 + 12;
+    // Perpendicular, always towards the top of the screen.
+    let nx = -(py2 - py1) / len;
+    let ny = (px2 - px1) / len;
+    if (ny > 0 || (ny === 0 && nx < 0)) {
+      nx = -nx;
+      ny = -ny;
+    }
+    // Far enough to the side that the tag clears the line, whichever way it runs.
+    const d = 6 + (w / 2) * Math.abs(nx) + 9 * Math.abs(ny);
+    const cx = Math.min(Math.max((px1 + px2) / 2 + nx * d, w / 2 + 2), W - w / 2 - 2);
+    const cy = Math.min(Math.max((py1 + py2) / 2 + ny * d, 11), H - 11);
+    return (
+      <React.Fragment key={key}>
+        <Rect x={cx - w / 2} y={cy - 9} width={w} height={18} rx={9} fill="#ffffff" fillOpacity={0.93} stroke={color} strokeWidth={1} />
+        <SvgText x={cx} y={cy + 4} fontSize={11} fontWeight="700" fontFamily={Platform.OS === "web" ? "-apple-system, system-ui, Helvetica, Arial, sans-serif" : undefined} fill={color} textAnchor="middle">
+          {text}
+        </SvgText>
+      </React.Fragment>
+    );
+  };
+
   return (
     <View
       style={[styles.container, NO_SELECT, mode !== "view" ? NO_PAGE_SCROLL : null, drawCursor(mode)]}
@@ -807,13 +884,13 @@ export function SiteMapCanvas({
         <Svg width={size.width} height={size.height} style={StyleSheet.absoluteFill} pointerEvents="none">
           {!imageUri
             ? (() => {
-                const grid = gridLines(size.width, size.height);
+                const lines = gridLines(size.width, size.height, shownGrid.cell, shownGrid.ox, shownGrid.oy);
                 return (
                   <>
-                    {grid.minor.map((g, i) => (
+                    {lines.minor.map((g, i) => (
                       <SvgLine key={`grid-minor-${i}`} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke="#E1E6E3" strokeWidth={0.75} />
                     ))}
-                    {grid.major.map((g, i) => (
+                    {lines.major.map((g, i) => (
                       <SvgLine key={`grid-major-${i}`} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke="#B9C2BD" strokeWidth={1.25} />
                     ))}
                   </>
@@ -842,6 +919,9 @@ export function SiteMapCanvas({
               strokeWidth={l.id === selectedWallId ? 5 : 3}
             />
           ))}
+          {[...shownWalls, ...pendingLines]
+            .filter((l) => grid.showLengths || (draft?.kind === "wall" && (draft.id === l.id || draft.also?.some((o) => o.id === l.id))))
+            .map((l) => lengthTag(`wall-len-${l.id}`, l.x1, l.y1, l.x2, l.y2, colors.text))}
           {arrows.map((a) => {
             const start = { x: a.startX * size.width, y: a.startY * size.height };
             const end = { x: a.endX * size.width, y: a.endY * size.height };
@@ -866,6 +946,25 @@ export function SiteMapCanvas({
                 <React.Fragment key={`ann-${a.id}`}>
                   <SvgLine x1={cx - r} y1={cy - r} x2={cx + r} y2={cy + r} stroke={a.color} strokeWidth={selected ? 4 : 3} strokeLinecap="round" />
                   <SvgLine x1={cx - r} y1={cy + r} x2={cx + r} y2={cy - r} stroke={a.color} strokeWidth={selected ? 4 : 3} strokeLinecap="round" />
+                </React.Fragment>
+              );
+            }
+            if (a.type === "measure") {
+              const x1 = a.x1 * size.width;
+              const y1 = a.y1 * size.height;
+              const x2 = (a.x2 ?? a.x1) * size.width;
+              const y2 = (a.y2 ?? a.y1) * size.height;
+              const len = Math.hypot(x2 - x1, y2 - y1) || 1;
+              // End ticks, square to the line, like a dimension line.
+              const tx = (-(y2 - y1) / len) * 6;
+              const ty = ((x2 - x1) / len) * 6;
+              const sw = selected ? 3 : 2;
+              return (
+                <React.Fragment key={`ann-${a.id}`}>
+                  <SvgLine x1={x1} y1={y1} x2={x2} y2={y2} stroke={a.color} strokeWidth={sw} />
+                  <SvgLine x1={x1 - tx} y1={y1 - ty} x2={x1 + tx} y2={y1 + ty} stroke={a.color} strokeWidth={sw} />
+                  <SvgLine x1={x2 - tx} y1={y2 - ty} x2={x2 + tx} y2={y2 + ty} stroke={a.color} strokeWidth={sw} />
+                  {lengthTag(`ann-len-${a.id}`, a.x1, a.y1, a.x2 ?? a.x1, a.y2 ?? a.y1, a.color)}
                 </React.Fragment>
               );
             }
@@ -919,10 +1018,13 @@ export function SiteMapCanvas({
                   y1={live.start.y}
                   x2={live.end.x}
                   y2={live.end.y}
-                  stroke={mode === "wall" ? colors.primary : mode === "annotate" ? annotationColor ?? colors.text : colors.text}
+                  stroke={mode === "wall" ? colors.primary : mode === "measure" ? MEASURE_COLOR : mode === "annotate" ? annotationColor ?? colors.text : colors.text}
                   strokeWidth={2.5}
                   strokeDasharray={mode === "wall" ? undefined : "4,3"}
                 />
+                {mode === "wall" || mode === "measure"
+                  ? lengthTag("live-len", live.start.x / size.width, live.start.y / size.height, live.end.x / size.width, live.end.y / size.height, mode === "measure" ? MEASURE_COLOR : colors.primary)
+                  : null}
                 {mode === "arrow" || (mode === "annotate" && annotationType === "arrow") ? (
                   <Polygon points={arrowHeadPoints(live.start, live.end)} fill={mode === "annotate" ? annotationColor ?? colors.text : colors.text} />
                 ) : null}
@@ -933,7 +1035,7 @@ export function SiteMapCanvas({
               the exact spot with guide lines running the full width and height
               of the map. A fingertip hides the spot it touches, but the guide
               lines stick out on every side so the aim point stays readable. */}
-          {mode !== "view" && pointer ? (
+          {mode !== "view" && mode !== "grid" && pointer ? (
             <>
               <SvgLine x1={0} y1={pointer.y} x2={size.width} y2={pointer.y} stroke={AIM_COLOR} strokeWidth={1} strokeDasharray="5,4" opacity={0.7} />
               <SvgLine x1={pointer.x} y1={0} x2={pointer.x} y2={size.height} stroke={AIM_COLOR} strokeWidth={1} strokeDasharray="5,4" opacity={0.7} />
@@ -942,7 +1044,7 @@ export function SiteMapCanvas({
             </>
           ) : null}
           {/* Where the line/shape/arrow started. */}
-          {mode !== "view" && live && (Math.abs(live.end.x - live.start.x) > 1 || Math.abs(live.end.y - live.start.y) > 1) ? (
+          {mode !== "view" && mode !== "grid" && live && (Math.abs(live.end.x - live.start.x) > 1 || Math.abs(live.end.y - live.start.y) > 1) ? (
             <>
               <Circle cx={live.start.x} cy={live.start.y} r={7} stroke={AIM_COLOR} strokeWidth={2} fill="#ffffff" fillOpacity={0.9} />
               <Circle cx={live.start.x} cy={live.start.y} r={2} fill={AIM_COLOR} />

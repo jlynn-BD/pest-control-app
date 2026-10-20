@@ -204,7 +204,7 @@ const siteMapSketchSchema = z.object({
           z
             .object({
               id: z.string().min(1),
-              type: z.enum(["x", "arrow", "rect"]).optional(),
+              type: z.enum(["x", "arrow", "rect", "measure"]).optional(),
               color: z.string().optional(),
               x1: z.number().optional(),
               y1: z.number().optional(),
@@ -222,6 +222,17 @@ const siteMapSketchSchema = z.object({
         )
         .optional()
         .default([]),
+      // The level's layout grid / ruler scale (see SiteMapGrid in shared/types).
+      grid: z
+        .object({
+          cell: z.number().positive(),
+          ox: z.number(),
+          oy: z.number(),
+          feetPerCell: z.number().positive(),
+          showLengths: z.boolean().optional(),
+          updatedAt: z.number().optional(),
+        })
+        .optional(),
     })
   ),
 });

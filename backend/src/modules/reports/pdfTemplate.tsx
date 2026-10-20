@@ -6,7 +6,7 @@
 // checking); ReportData below stays fully typed and is what callers rely on.
 import { Document, Image, Line, Page, Polygon, Rect, StyleSheet, Svg, Text, View } from "@react-pdf/renderer";
 import React from "react";
-import { CHECKLIST_CATEGORY_LABEL } from "@pest-app/shared";
+import { CHECKLIST_CATEGORY_LABEL, formatFeet, gridFeet, resolveGrid } from "@pest-app/shared";
 
 const styles = StyleSheet.create({
   page: { padding: 32, fontSize: 10, fontFamily: "Helvetica", color: "#1A2421" },
@@ -61,6 +61,17 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     borderWidth: 1,
     padding: 2,
+  },
+  // A length (wall or dimension line) printed beside its line.
+  siteMapLength: {
+    position: "absolute",
+    fontSize: 7.5,
+    fontWeight: 700,
+    backgroundColor: "rgba(255,255,255,0.93)",
+    borderRadius: 6,
+    paddingVertical: 1,
+    paddingHorizontal: 4,
+    borderWidth: 0.75,
   },
   siteMapShapeCaption: {
     position: "absolute",
@@ -138,16 +149,48 @@ function arrowHeadPoints(start: { x: number; y: number }, end: { x: number; y: n
 const GRID_MINOR_DIVISIONS = 40;
 const GRID_MAJOR_EVERY = 5; // every 5th minor line is a major line (40/5 = 8 major squares/side)
 
-function gridLines(): { minor: { x1: number; y1: number; x2: number; y2: number }[]; major: { x1: number; y1: number; x2: number; y2: number }[] } {
+// `grid` is the level's own grid (square size and shift) - the standard one
+// when it never changed it. Every 5th line is heavier, counted from the grid's
+// own origin.
+function gridLines(grid = resolveGrid(null)): { minor: { x1: number; y1: number; x2: number; y2: number }[]; major: { x1: number; y1: number; x2: number; y2: number }[] } {
   const minor: { x1: number; y1: number; x2: number; y2: number }[] = [];
   const major: { x1: number; y1: number; x2: number; y2: number }[] = [];
-  for (let i = 1; i < GRID_MINOR_DIVISIONS; i++) {
-    const t = i / GRID_MINOR_DIVISIONS;
-    const bucket = i % GRID_MAJOR_EVERY === 0 ? major : minor;
-    bucket.push({ x1: t, y1: 0, x2: t, y2: 1 });
-    bucket.push({ x1: 0, y1: t, x2: 1, y2: t });
+  for (let i = 0; grid.ox + i * grid.cell < 1 - 1e-6; i++) {
+    const t = grid.ox + i * grid.cell;
+    if (t <= 1e-6) continue;
+    (i % GRID_MAJOR_EVERY === 0 ? major : minor).push({ x1: t, y1: 0, x2: t, y2: 1 });
+  }
+  for (let i = 0; grid.oy + i * grid.cell < 1 - 1e-6; i++) {
+    const t = grid.oy + i * grid.cell;
+    if (t <= 1e-6) continue;
+    (i % GRID_MAJOR_EVERY === 0 ? major : minor).push({ x1: 0, y1: t, x2: 1, y2: t });
   }
   return { minor, major };
+}
+
+// Where a length tag goes (box is a fixed 540pt square): beside the middle of
+// the line, on its upper side, kept on the page. Returns null for lines too
+// short to label.
+function lengthTagPosition(x1: number, y1: number, x2: number, y2: number, text: string): { left: number; top: number } | null {
+  const BOX = 540;
+  const px1 = x1 * BOX;
+  const py1 = y1 * BOX;
+  const px2 = x2 * BOX;
+  const py2 = y2 * BOX;
+  const len = Math.hypot(px2 - px1, py2 - py1);
+  if (len < 28) return null;
+  let nx = -(py2 - py1) / len;
+  let ny = (px2 - px1) / len;
+  if (ny > 0 || (ny === 0 && nx < 0)) {
+    nx = -nx;
+    ny = -ny;
+  }
+  const w = text.length * 4.6 + 10;
+  // Far enough to the side that the tag clears the line, whichever way it runs.
+  const d = 4 + (w / 2) * Math.abs(nx) + 7 * Math.abs(ny);
+  const cx = (px1 + px2) / 2 + nx * d;
+  const cy = (py1 + py2) / 2 + ny * d;
+  return { left: Math.min(Math.max(cx - w / 2, 2), BOX - w - 2), top: Math.min(Math.max(cy - 6, 2), BOX - 16) };
 }
 
 export interface ReportChecklistItem {
@@ -184,7 +227,7 @@ export interface ReportSiteMapLabel {
 }
 
 export interface ReportSiteMapAnnotation {
-  type: "x" | "arrow" | "rect";
+  type: "x" | "arrow" | "rect" | "measure";
   color: string;
   x1: number;
   y1: number;
@@ -212,6 +255,8 @@ export interface ReportSiteMapPanel {
   labels: ReportSiteMapLabel[];
   annotations: ReportSiteMapAnnotation[];
   arrows: ReportSiteMapArrow[];
+  // The level's layout grid / ruler (see SiteMapGrid in shared/types).
+  grid?: import("@pest-app/shared").SiteMapGrid;
 }
 
 export interface ReportFinding {
@@ -314,7 +359,20 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
         </View>
 
         {data.siteMapPanels.map((panel, pi) => {
-          const grid = gridLines();
+          const gridDef = resolveGrid(panel.grid);
+          const grid = gridLines(gridDef);
+          const lengthTags = [
+            ...(gridDef.showLengths ? panel.lines.map((l) => ({ x1: l.x1, y1: l.y1, x2: l.x2, y2: l.y2, color: "#1A2421" })) : []),
+            ...panel.annotations
+              .filter((a) => a.type === "measure")
+              .map((a) => ({ x1: a.x1, y1: a.y1, x2: a.x2 ?? a.x1, y2: a.y2 ?? a.y1, color: a.color })),
+          ]
+            .map((t) => {
+              // The PDF's built-in font has no prime marks, so plain ' and " are used.
+              const text = formatFeet(gridFeet(gridDef, t.x2 - t.x1, t.y2 - t.y1)).replace(/\u2032/g, "'").replace(/\u2033/g, '"');
+              return { ...t, text, pos: lengthTagPosition(t.x1, t.y1, t.x2, t.y2, text) };
+            })
+            .filter((t) => t.pos);
           return (
             <View style={styles.section} key={`site-map-${pi}`} wrap={false}>
               <Text style={styles.sectionTitle}>{panel.title}</Text>
@@ -359,6 +417,21 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
                         </React.Fragment>
                       );
                     }
+                    if (a.type === "measure") {
+                      // A dimension line: the line with a short tick at each end.
+                      const x2 = a.x2 ?? a.x1;
+                      const y2 = a.y2 ?? a.y1;
+                      const len = Math.hypot(x2 - a.x1, y2 - a.y1) || 1;
+                      const tx = (-(y2 - a.y1) / len) * 0.012;
+                      const ty = ((x2 - a.x1) / len) * 0.012;
+                      return (
+                        <React.Fragment key={`annotation-${i}`}>
+                          <Line x1={a.x1} y1={a.y1} x2={x2} y2={y2} stroke={a.color} strokeWidth={0.004} />
+                          <Line x1={a.x1 - tx} y1={a.y1 - ty} x2={a.x1 + tx} y2={a.y1 + ty} stroke={a.color} strokeWidth={0.004} />
+                          <Line x1={x2 - tx} y1={y2 - ty} x2={x2 + tx} y2={y2 + ty} stroke={a.color} strokeWidth={0.004} />
+                        </React.Fragment>
+                      );
+                    }
                     if (a.type === "arrow") {
                       const start = { x: a.x1, y: a.y1 };
                       const end = { x: a.x2 ?? a.x1, y: a.y2 ?? a.y1 };
@@ -386,6 +459,12 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
                     );
                   })}
                 </Svg>
+                {/* Distances: dimension lines always, walls when the level shows lengths. */}
+                {lengthTags.map((t, i) => (
+                  <Text key={`length-${i}`} style={[styles.siteMapLength, { left: t.pos.left, top: t.pos.top, color: t.color, borderColor: t.color }]}>
+                    {t.text}
+                  </Text>
+                ))}
                 {/* The names given to shapes, in the shape's top-left corner like on screen. */}
                 {panel.annotations
                   .filter((a) => a.type === "rect" && a.label)

@@ -114,7 +114,9 @@ export interface SiteMapSketchLabel {
 // termite activity, an arrow or highlighted rectangle showing where
 // treatment needs to occur). x2/y2 are only used by "arrow" and "rect" (the
 // two opposite corners for rect); "x" is a single point at x1/y1.
-export type SiteMapAnnotationType = "x" | "arrow" | "rect";
+// "measure" is a saved distance line: drawn like an arrow (x1/y1 to x2/y2), but
+// shown with its real-world length, worked out from the level's grid scale.
+export type SiteMapAnnotationType = "x" | "arrow" | "rect" | "measure";
 
 export interface SiteMapAnnotation {
   id: string;
@@ -143,6 +145,21 @@ export interface SiteMapAnnotation {
 // technician adds only the ones that apply rather than filling out a fixed
 // set. Only meaningful in grid/sketch mode; a property using an uploaded
 // photo as its site map instead has no levels.
+// The layout grid of a level, which doubles as its ruler: one grid square is
+// `feetPerCell` feet, so any distance on the map can be read off in feet.
+// Everything is a fraction of the map's width, like the rest of the sketch.
+// Moving the grid (ox/oy) and resizing its squares (cell) lets it be lined up
+// with a plan or with what is actually being drawn; an unset grid is the
+// default 40-squares-across grid at 2 feet a square (see siteMapGrid.ts).
+export interface SiteMapGrid {
+  cell: number; // width of one grid square, as a fraction of the map width
+  ox: number; // how far the grid is shifted right (0 up to one square)
+  oy: number; // how far the grid is shifted down (0 up to one square)
+  feetPerCell: number; // what one square stands for, in feet
+  showLengths?: boolean; // label every wall with its length
+  updatedAt?: number; // when it was last changed (ms) - for merging devices' edits
+}
+
 export interface SiteMapLevel {
   id: string;
   name: string;
@@ -150,6 +167,7 @@ export interface SiteMapLevel {
   lines: SiteMapSketchLine[];
   labels: SiteMapSketchLabel[];
   annotations: SiteMapAnnotation[];
+  grid?: SiteMapGrid;
 }
 
 export interface SiteMapSketch {

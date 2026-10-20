@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { renderToBuffer } from "@react-pdf/renderer";
 import React from "react";
-import { CHECKLIST_CATEGORY_DISPLAY_ORDER, getSiteMapLevelRank, parseRawSketch, visibleSketch } from "@pest-app/shared";
+import { CHECKLIST_CATEGORY_DISPLAY_ORDER, getSiteMapLevelRank, parseRawSketch, resolveGrid, visibleSketch } from "@pest-app/shared";
 import { generateId } from "../../lib/id";
 import { prisma } from "../../lib/prisma";
 import { storage } from "../../lib/storage";
@@ -111,6 +111,7 @@ async function buildReportData(inspectionId: string): Promise<ReportData> {
         labels: level.labels as ReportSiteMapLabel[],
         // Sketches saved before annotations existed just have none.
         annotations: (level.annotations ?? []) as ReportSiteMapAnnotation[],
+        grid: resolveGrid(level.grid),
         arrows: placedFindings.filter((f) => f.siteMapLevel === level.id).map(toArrow),
       }))
       .filter((panel) => panel.lines.length > 0 || panel.labels.length > 0 || panel.annotations.length > 0 || panel.arrows.length > 0);

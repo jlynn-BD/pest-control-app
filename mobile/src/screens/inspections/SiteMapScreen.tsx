@@ -3,12 +3,19 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import {
   applyLevelEdit,
   getSiteMapLevelRank,
+  formatFeet,
   getWizardStepStatus,
+  gridFeet,
+  MAX_GRID_CELL,
+  MIN_GRID_CELL,
+  DEFAULT_SITE_MAP_GRID,
   parseRawSketch,
+  resolveGrid,
   RawLevel,
   RawSketch,
   SITE_MAP_LEVEL_SUGGESTIONS,
   SiteMapAnnotationType,
+  SiteMapGrid,
   SiteMapLevel,
   visibleSketch,
 } from "@pest-app/shared";
@@ -25,7 +32,7 @@ import { choosePhoto } from "../../lib/photo";
 import { ApiError } from "../../api/client";
 import { useCompletedLock } from "../../lib/useCompletedLock";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
-import { Geometry, siteMapHintText, SiteMapArrow, SiteMapCanvas, SiteMapMode } from "../../components/ArrowCanvas";
+import { Geometry, MEASURE_COLOR, siteMapHintText, SiteMapArrow, SiteMapCanvas, SiteMapMode } from "../../components/ArrowCanvas";
 import { ChecklistPanel } from "../../components/ChecklistPanel";
 import { FindingEditorForm } from "../../components/FindingEditorForm";
 import { Badge, Card, Field, PrimaryButton, colors } from "../../components/ui";
@@ -107,6 +114,10 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // through. `undoCount` is just so the button re-renders when it changes.
   const undoStack = useRef<{ levelId: string; level: SiteMapLevel }[]>([]);
   const [undoCount, setUndoCount] = useState(0);
+  // Grid tools: the "each square is N feet" box, and the real length typed in
+  // to turn a measured line into the map's scale.
+  const [feetText, setFeetText] = useState("");
+  const [knownLengthText, setKnownLengthText] = useState("");
   const [saving, setSaving] = useState(false);
   // This device holds map edits the server hasn't confirmed yet.
   const [sketchPending, setSketchPending] = useState(false);
@@ -181,6 +192,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // Photo mode is one flat canvas (no levels); sketch mode needs a level
   // selected before anything can be drawn on it.
   const canDraw = isPhotoMode || Boolean(selectedLevel);
+  // The level's layout grid, which is also its ruler (a square = feetPerCell feet).
+  const grid = resolveGrid(selectedLevel?.grid);
   // The finding editor is open (drafting a new marker or editing an
   // existing one) - every other map-editing affordance (drawing walls,
   // placing labels, switching levels) is hidden while it's open, so the
@@ -233,6 +246,12 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     setSelectedWallId(null);
     setSelectedAnnotationId(null);
     setShapeLabelText("");
+  }
+
+  // Opens the grid tools: drag the map to move the grid, buttons to scale it.
+  function toggleGridMode() {
+    toggleMode("grid");
+    setFeetText(String(Number(grid.feetPerCell.toFixed(3))));
   }
 
   // Each annotation type gets its own one-tap button (mirroring +Marker/
@@ -359,7 +378,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     const raw = currentRawSketch();
     const rawLevel = raw.levels.find((l) => l.id === selectedLevel.id);
     if (!rawLevel) return;
-    const edited = applyLevelEdit(rawLevel, level, Date.now());
+    // A level that had no grid of its own goes back to the default one.
+    const edited = applyLevelEdit(rawLevel, { ...level, grid: level.grid ?? resolveGrid(null) }, Date.now());
     commitSketch({ levels: raw.levels.map((l) => (l.id === edited.id ? edited : l)) });
     // Whatever was selected may no longer exist.
     if (selectedWallId && !level.lines.some((l) => l.id === selectedWallId)) setSelectedWallId(null);
@@ -520,7 +540,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // Arrow-button nudge of whatever wall / shape is selected: one grid square
   // at a time, for an exact placement a finger can't give.
   function handleNudgeSelected(dx: number, dy: number) {
-    const STEP = 1 / 40;
+    const STEP = grid.cell;
     const shift = (g: { x1: number; y1: number; x2?: number; y2?: number }) => {
       const xs = [g.x1, g.x2 ?? g.x1];
       const ys = [g.y1, g.y2 ?? g.y1];
@@ -564,6 +584,69 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         }),
       };
     });
+  }
+
+  // --- Grid & measurements ---------------------------------------------
+  function handleGridChange(next: SiteMapGrid) {
+    return persistSelectedLevel((l) => ({ ...l, grid: next }));
+  }
+
+  // Bigger / smaller squares, scaled around the middle of the map so the part
+  // being looked at stays where it is. What a square is worth in feet is left
+  // alone: resizing the squares is how the grid is lined up with the drawing.
+  function handleResizeGrid(factor: number) {
+    const cell = Math.min(MAX_GRID_CELL, Math.max(MIN_GRID_CELL, grid.cell * factor));
+    const k = (0.5 - grid.ox) / grid.cell;
+    const wrap = (v: number) => ((v % cell) + cell) % cell;
+    const ox = wrap(0.5 - k * cell);
+    const ky = (0.5 - grid.oy) / grid.cell;
+    handleGridChange({ ...grid, cell, ox, oy: wrap(0.5 - ky * cell) });
+  }
+
+  function handleNudgeGrid(dx: number, dy: number) {
+    const wrap = (v: number) => ((v % grid.cell) + grid.cell) % grid.cell;
+    handleGridChange({ ...grid, ox: wrap(grid.ox + (dx * grid.cell) / 4), oy: wrap(grid.oy + (dy * grid.cell) / 4) });
+  }
+
+  function handleSaveFeetPerSquare() {
+    const n = parseFloat(feetText);
+    if (!Number.isFinite(n) || n <= 0) {
+      setFeetText(String(Number(grid.feetPerCell.toFixed(3))));
+      return;
+    }
+    // The box shows a rounded value, so leaving it untouched is not an edit.
+    if (Math.abs(n - grid.feetPerCell) > 0.001) handleGridChange({ ...grid, feetPerCell: n });
+  }
+
+  function handleResetGrid() {
+    handleGridChange({ ...DEFAULT_SITE_MAP_GRID, showLengths: grid.showLengths });
+    setFeetText(String(DEFAULT_SITE_MAP_GRID.feetPerCell));
+  }
+
+  function handleToggleLengths() {
+    handleGridChange({ ...grid, showLengths: !grid.showLengths });
+  }
+
+  // A distance dragged out in Measure mode is kept on the map as a dimension
+  // line (it can be selected, moved, adjusted or deleted like a shape).
+  async function handleMeasureDrawn(start: Point, end: Point) {
+    const id = generateId();
+    await persistSelectedLevel((l) => ({
+      ...l,
+      annotations: [...l.annotations, { id, type: "measure", color: MEASURE_COLOR, x1: start.x, y1: start.y, x2: end.x, y2: end.y }],
+    }));
+  }
+
+  // "This line is really 12 feet": works out what one grid square must be
+  // worth for it to be, and uses that for the whole level.
+  function handleCalibrateFromMeasure() {
+    const a = selectedLevel?.annotations.find((x) => x.id === selectedAnnotationId);
+    const actual = parseFloat(knownLengthText);
+    if (!a || a.type !== "measure" || !Number.isFinite(actual) || actual <= 0) return;
+    const cells = Math.hypot((a.x2 ?? a.x1) - a.x1, (a.y2 ?? a.y1) - a.y1) / grid.cell;
+    if (cells <= 0) return;
+    handleGridChange({ ...grid, feetPerCell: Number((actual / cells).toFixed(4)) });
+    setKnownLengthText("");
   }
 
   function handleRecolorSelectedAnnotation(color: string) {
@@ -739,6 +822,11 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           >
             <Text style={styles.toolChipText}>↶ Undo</Text>
           </Pressable>
+          {isPhotoMode ? null : (
+            <Pressable onPress={handleToggleLengths} style={[styles.toolChip, grid.showLengths && styles.toolChipOn]}>
+              <Text style={[styles.toolChipText, grid.showLengths && styles.toolChipTextOn]}>Wall lengths: {grid.showLengths ? "On" : "Off"}</Text>
+            </Pressable>
+          )}
           <Pressable onPress={() => setSnap((v) => !v)} style={[styles.toolChip, snap && styles.toolChipOn]}>
             <Text style={[styles.toolChipText, snap && styles.toolChipTextOn]}>Snap to grid &amp; corners: {snap ? "On" : "Off"}</Text>
           </Pressable>
@@ -773,6 +861,9 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         onWallChange={handleUpdateWall}
         onWallsChange={handleUpdateWalls}
         snap={snap}
+        grid={grid}
+        onGridChange={handleGridChange}
+        onMeasureDrawn={handleMeasureDrawn}
         onLabelChange={handleUpdateLabelPosition}
         onCaptionChange={handleUpdateCaption}
         selectedLabelId={editingLabel?.id ?? null}
@@ -880,6 +971,49 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         </Card>
       ) : null}
 
+      {mode === "grid" && !editorOpen ? (
+        <Card style={styles.labelPromptCard}>
+          <Text style={styles.editorTitle}>Grid</Text>
+          <Text style={styles.editHint}>
+            Drag the map to slide the grid, and use the buttons to make its squares bigger or smaller. Line it up with what you are drawing, then say what a square is worth so distances come out right. The map is about {formatFeet((1 / grid.cell) * grid.feetPerCell)} across.
+          </Text>
+          <View style={styles.nudgeRow}>
+            <Text style={styles.nudgeLabel}>Size</Text>
+            <Pressable onPress={() => handleResizeGrid(1 / 1.15)} accessibilityLabel="Smaller squares" style={[styles.nudgeBtn, styles.nudgeWide]}>
+              <Text style={styles.nudgeBtnText}>− Smaller</Text>
+            </Pressable>
+            <Pressable onPress={() => handleResizeGrid(1.15)} accessibilityLabel="Larger squares" style={[styles.nudgeBtn, styles.nudgeWide]}>
+              <Text style={styles.nudgeBtnText}>+ Larger</Text>
+            </Pressable>
+          </View>
+          <View style={styles.nudgeRow}>
+            <Text style={styles.nudgeLabel}>Move</Text>
+            {([["←", -1, 0], ["↑", 0, -1], ["↓", 0, 1], ["→", 1, 0]] as const).map(([arrow, dx, dy]) => (
+              <Pressable key={arrow} onPress={() => handleNudgeGrid(dx, dy)} accessibilityLabel={`Move grid ${arrow}`} style={styles.nudgeBtn}>
+                <Text style={styles.nudgeBtnText}>{arrow}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Field
+            label="Each square is (feet)"
+            value={feetText}
+            onChangeText={setFeetText}
+            keyboardType="decimal-pad"
+            returnKeyType="done"
+            onSubmitEditing={handleSaveFeetPerSquare}
+            onBlur={handleSaveFeetPerSquare}
+          />
+          <View style={styles.buttonRow}>
+            <View style={styles.buttonHalf}>
+              <PrimaryButton title="Reset grid" onPress={handleResetGrid} />
+            </View>
+            <View style={styles.buttonHalf}>
+              <PrimaryButton title="Done" onPress={() => { handleSaveFeetPerSquare(); setMode("view"); }} />
+            </View>
+          </View>
+        </Card>
+      ) : null}
+
       {selectedWallId ? (
         <Card style={styles.labelPromptCard}>
           <Text style={styles.editorTitle}>Wall segment</Text>
@@ -908,12 +1042,43 @@ export default function SiteMapScreen({ route, navigation }: Props) {
 
       {selectedAnnotationId ? (
         <Card style={styles.labelPromptCard}>
-          <Text style={styles.editorTitle}>Shape</Text>
+          <Text style={styles.editorTitle}>
+            {selectedLevel?.annotations.find((a) => a.id === selectedAnnotationId)?.type === "measure" ? "Measurement" : "Shape"}
+          </Text>
           <Text style={styles.editHint}>
             {selectedLevel?.annotations.find((a) => a.id === selectedAnnotationId)?.type === "x"
               ? "Drag the mark to move it."
-              : "Drag the shape to move it, or drag a dot to resize it."}
+              : selectedLevel?.annotations.find((a) => a.id === selectedAnnotationId)?.type === "measure"
+                ? "Drag the line to move it, or drag a dot to measure something else."
+                : "Drag the shape to move it, or drag a dot to resize it."}
           </Text>
+          {(() => {
+            const m = selectedLevel?.annotations.find((a) => a.id === selectedAnnotationId);
+            if (!m || m.type !== "measure") return null;
+            const feet = gridFeet(grid, (m.x2 ?? m.x1) - m.x1, (m.y2 ?? m.y1) - m.y1);
+            return (
+              <View>
+                <Text style={styles.measureReadout}>{formatFeet(feet)}</Text>
+                <Text style={styles.editHint}>Know what this really measures? Type it in to set the scale for this whole level.</Text>
+                <View style={styles.shapeLabelRow}>
+                  <View style={styles.shapeLabelField}>
+                    <Field
+                      label="Actual length (feet)"
+                      value={knownLengthText}
+                      onChangeText={setKnownLengthText}
+                      keyboardType="decimal-pad"
+                      placeholder="e.g. 12.5"
+                      returnKeyType="done"
+                      onSubmitEditing={handleCalibrateFromMeasure}
+                    />
+                  </View>
+                  <Text style={styles.dismissLink} onPress={handleCalibrateFromMeasure}>
+                    Set scale
+                  </Text>
+                </View>
+              </View>
+            );
+          })()}
           <View style={styles.nudgeRow}>
             <Text style={styles.nudgeLabel}>Nudge</Text>
             {([["←", -1, 0], ["↑", 0, -1], ["↓", 0, 1], ["→", 1, 0]] as const).map(([arrow, dx, dy]) => (
@@ -1016,6 +1181,17 @@ export default function SiteMapScreen({ route, navigation }: Props) {
               />
             </View>
           ))}
+        </View>
+      ) : null}
+
+      {canDraw && !editorOpen && !isPhotoMode ? (
+        <View style={styles.toggleRow}>
+          <View style={styles.buttonHalf}>
+            <PrimaryButton title={mode === "measure" ? "Cancel" : "📏 Measure"} onPress={() => toggleMode("measure")} />
+          </View>
+          <View style={styles.buttonHalf}>
+            <PrimaryButton title={mode === "grid" ? "Cancel" : "▦ Grid"} onPress={toggleGridMode} />
+          </View>
         </View>
       ) : null}
 
@@ -1186,6 +1362,7 @@ const styles = StyleSheet.create({
   toolChipOff: { opacity: 0.4 },
   toolChipText: { fontSize: 14, fontWeight: "600", color: colors.text },
   toolChipTextOn: { color: "#fff" },
+  measureReadout: { fontSize: 26, fontWeight: "800", color: colors.text, marginTop: 6, marginBottom: 4 },
   nudgeRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" },
   nudgeLabel: { fontSize: 13, fontWeight: "600", color: colors.textMuted },
   nudgeBtn: { minWidth: 48, height: 44, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", backgroundColor: colors.card },
