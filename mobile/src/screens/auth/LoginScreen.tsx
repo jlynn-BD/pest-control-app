@@ -28,6 +28,21 @@ export default function LoginScreen() {
   const [notice, setNotice] = useState<string | null>(null);
   const [faceBusy, setFaceBusy] = useState(false);
   const faceIdOffered = passkeysSupported();
+  // Whether the server can send sign-in codes at all. Until it can (email not set
+  // up yet), the screen goes straight to the password form instead of promising a code.
+  const [codesAvailable, setCodesAvailable] = useState<boolean | null>(null);
+  useEffect(() => {
+    authApi
+      .signInOptions()
+      .then((o) => {
+        const ok = o.emailCodes || o.textCodes;
+        setCodesAvailable(ok);
+        if (!ok) setUsePassword(true);
+      })
+      .catch(() => {
+        /* unknown - keep the normal screen; Continue handles it */
+      });
+  }, []);
   // Set after two-step setup: the finished sign-in is held back until the
   // person has seen their one-time recovery codes.
   const [pendingSignIn, setPendingSignIn] = useState<SignedIn | null>(null);
@@ -106,7 +121,7 @@ export default function LoginScreen() {
       if (res.status === "challenge") setChallenge(res);
       else {
         setUsePassword(true);
-        setNotice("Enter your password to sign in.");
+        setNotice(res.codesAvailable === false ? "Emailed sign-in codes aren't switched on yet. Enter your password to sign in." : "Enter your password to sign in.");
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to reach the server");
@@ -137,6 +152,23 @@ export default function LoginScreen() {
       setFaceBusy(false);
     }
   }
+
+  // Face ID / fingerprint sign-in, offered on both the code and password views.
+  const faceBlock = (
+    <>
+      {faceIdOffered && hasPasskeyHint() ? (
+        <View style={styles.faceRow}>
+          <PrimaryButton title={`Sign in with ${biometricName()}`} onPress={handleFaceId} loading={faceBusy} />
+        </View>
+      ) : null}
+      {usePassword ? null : notice ? <Text style={styles.notice}>{notice}</Text> : null}
+      {faceIdOffered && !hasPasskeyHint() ? (
+        <Text style={styles.linkText} onPress={handleFaceId}>
+          Already turned on {biometricName()}? Sign in with it
+        </Text>
+      ) : null}
+    </>
+  );
 
   let body: React.ReactNode;
   if (pendingSignIn) {
@@ -180,17 +212,7 @@ export default function LoginScreen() {
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <PrimaryButton title="Continue" onPress={handleContinue} loading={submitting} />
           <Text style={styles.hintText}>We'll email you a sign-in code. No password to remember.</Text>
-          {faceIdOffered && hasPasskeyHint() ? (
-            <View style={styles.faceRow}>
-              <PrimaryButton title={`Sign in with ${biometricName()}`} onPress={handleFaceId} loading={faceBusy} />
-            </View>
-          ) : null}
-          {notice ? <Text style={styles.notice}>{notice}</Text> : null}
-          {faceIdOffered && !hasPasskeyHint() ? (
-            <Text style={styles.linkText} onPress={handleFaceId}>
-              Already turned on {biometricName()}? Sign in with it
-            </Text>
-          ) : null}
+          {faceBlock}
           <Text style={styles.linkText} onPress={() => { setUsePassword(true); setError(null); }}>
             Use my password instead
           </Text>
@@ -228,9 +250,12 @@ export default function LoginScreen() {
           {notice ? <Text style={styles.notice}>{notice}</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <PrimaryButton title="Log in" onPress={handleSubmit} loading={submitting} />
-          <Text style={styles.linkText} onPress={() => { setUsePassword(false); setError(null); setNotice(null); setPassword(""); }}>
-            Text me a code instead
-          </Text>
+          {codesAvailable === false ? null : (
+            <Text style={styles.linkText} onPress={() => { setUsePassword(false); setError(null); setNotice(null); setPassword(""); }}>
+              Email me a code instead
+            </Text>
+          )}
+          {faceBlock}
           {slow ? <Text style={styles.slow}>Waking up the server - the first sign-in can take up to a minute. Please keep this open.</Text> : null}
         </View>
       </>

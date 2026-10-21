@@ -488,6 +488,12 @@ authRouter.post(
 
 const MAX_TEXT_REQUESTS_PER_10_MIN = 5;
 
+// What this server can do before anyone signs in, so the screen only offers
+// "email me a code" when a code can really be sent. Says nothing about any account.
+authRouter.get("/options", (_req, res) => {
+  res.json({ emailCodes: emailAvailable(), textCodes: smsAvailable() });
+});
+
 authRouter.post(
   "/otp/request",
   ipLimiter,
@@ -500,7 +506,9 @@ authRouter.post(
     const byEmail = emailAvailable();
     const bySms = Boolean(user?.phoneVerifiedAt && phone && smsAvailable());
     if (!user || !user.active || user.mustChangePassword || (!byEmail && !bySms)) {
-      res.json({ status: "password_required" as const });
+      // codesAvailable: whether the server can send codes at all (the same for
+      // every email), so the app can say "not switched on yet" accurately.
+      res.json({ status: "password_required" as const, codesAvailable: byEmail || smsAvailable() });
       return;
     }
     if (user.lockedUntil && user.lockedUntil > new Date()) throw lockedError(user.lockedUntil);

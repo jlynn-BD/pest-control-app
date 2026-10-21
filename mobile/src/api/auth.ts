@@ -31,7 +31,11 @@ export type LoginResult = SignedIn | Challenge;
 
 // First step of "email -> text code": a code was texted (challenge), or this
 // account can't use texts and needs its password.
-export type OtpRequestResult = Challenge | { status: "password_required" };
+export type OtpRequestResult = Challenge | { status: "password_required"; codesAvailable?: boolean };
+
+export function signInOptions(): Promise<{ emailCodes: boolean; textCodes: boolean }> {
+  return apiRequest("/api/auth/options", { skipAuth: true });
+}
 
 export function requestTextCode(email: string): Promise<OtpRequestResult> {
   return apiRequest<OtpRequestResult>("/api/auth/otp/request", { ...open, body: { email } });
