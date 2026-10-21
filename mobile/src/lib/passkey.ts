@@ -100,6 +100,9 @@ function asFriendly(err: unknown): never {
 export async function createPasskey(options: any): Promise<unknown> {
   const publicKey = {
     ...options,
+    // Ask for this device's own Face ID / fingerprint rather than a USB key or a
+    // phone-scan prompt (browsers that don't know the hint ignore it).
+    hints: ["client-device"],
     challenge: toBytes(options.challenge),
     user: { ...options.user, id: toBytes(options.user.id) },
     excludeCredentials: (options.excludeCredentials ?? []).map((c: any) => ({ ...c, id: toBytes(c.id) })),
@@ -129,6 +132,7 @@ export async function createPasskey(options: any): Promise<unknown> {
 export async function getPasskey(options: any): Promise<unknown> {
   const publicKey = {
     ...options,
+    hints: ["client-device"],
     challenge: toBytes(options.challenge),
     allowCredentials: (options.allowCredentials ?? []).map((c: any) => ({ ...c, id: toBytes(c.id) })),
   };

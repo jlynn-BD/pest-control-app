@@ -127,7 +127,11 @@ export default function LoginScreen() {
       rememberPasskeyOnThisDevice(true);
       await handleSignedIn(signedIn);
     } catch (err) {
-      if (err instanceof PasskeyCancelled) return;
+      if (err instanceof PasskeyCancelled) {
+        // Closing the prompt, or having nothing saved on this device yet, both end here.
+        setNotice(`If ${biometricName()} isn't turned on yet, sign in another way first, then turn it on in Settings.`);
+        return;
+      }
       setError(err instanceof ApiError || err instanceof Error ? err.message : `${biometricName()} didn't work. Use your email instead.`);
     } finally {
       setFaceBusy(false);
@@ -176,10 +180,16 @@ export default function LoginScreen() {
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <PrimaryButton title="Continue" onPress={handleContinue} loading={submitting} />
           <Text style={styles.hintText}>We'll email you a sign-in code. No password to remember.</Text>
-          {faceIdOffered ? (
+          {faceIdOffered && hasPasskeyHint() ? (
             <View style={styles.faceRow}>
               <PrimaryButton title={`Sign in with ${biometricName()}`} onPress={handleFaceId} loading={faceBusy} />
             </View>
+          ) : null}
+          {notice ? <Text style={styles.notice}>{notice}</Text> : null}
+          {faceIdOffered && !hasPasskeyHint() ? (
+            <Text style={styles.linkText} onPress={handleFaceId}>
+              Already turned on {biometricName()}? Sign in with it
+            </Text>
           ) : null}
           <Text style={styles.linkText} onPress={() => { setUsePassword(true); setError(null); }}>
             Use my password instead
