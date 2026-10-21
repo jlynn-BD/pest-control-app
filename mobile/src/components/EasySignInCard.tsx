@@ -4,6 +4,7 @@ import { StyleSheet, Text, View } from "react-native";
 import * as authApi from "../api/auth";
 import { ApiError } from "../api/client";
 import {
+  biometricName,
   createPasskey,
   deviceLabel,
   dismissEasySignIn,
@@ -27,7 +28,7 @@ function message(err: unknown): string {
 export function EasySignInCard({ compact = false, onDismiss }: { compact?: boolean; onDismiss?: () => void }) {
   const [me, setMe] = useState<Me | null>(null);
   const [passkeys, setPasskeys] = useState<authApi.PasskeyInfo[]>([]);
-  const [faceOk, setFaceOk] = useState(false);
+  const [faceOk, setFaceOk] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -55,7 +56,7 @@ export function EasySignInCard({ compact = false, onDismiss }: { compact?: boole
     platformAuthenticatorAvailable().then(setFaceOk);
   }, [load]);
 
-  const showFace = passkeysSupported() && faceOk;
+  const showFace = passkeysSupported() && faceOk === true;
   const faceOnHere = hasPasskeyHint() && passkeys.length > 0;
   const textAvailable = Boolean(me?.smsAvailable);
   const textOn = Boolean(me?.phoneVerified);
@@ -73,7 +74,7 @@ export function EasySignInCard({ compact = false, onDismiss }: { compact?: boole
       const response = await createPasskey(options);
       await authApi.passkeyRegisterVerify(challengeId, response, deviceLabel());
       rememberPasskeyOnThisDevice(true);
-      setInfo("Face ID is on. Next time, tap \"Sign in with Face ID\" on the sign-in screen.");
+      setInfo(`${biometricName()} is on. Next time, tap the sign-in button on the sign-in screen and unlock with it.`);
       await load();
     } catch (err) {
       if (!(err instanceof PasskeyCancelled)) setError(message(err));
@@ -137,11 +138,11 @@ export function EasySignInCard({ compact = false, onDismiss }: { compact?: boole
   return (
     <Card style={styles.card}>
       <Text style={styles.title}>{compact ? "Skip the password" : "Easier sign-in"}</Text>
-      <Text style={styles.body}>No more passwords to remember: sign in with Face ID, or with your email and a code we send you.</Text>
+      <Text style={styles.body}>No more passwords to remember: sign in with your fingerprint, face or Face ID, or with your email and a code we send you.</Text>
 
       {showFace ? (
         <View style={styles.block}>
-          <Text style={styles.label}>Face ID on this device</Text>
+          <Text style={styles.label}>{biometricName()} on this device</Text>
           {passkeys.map((p) => (
             <View key={p.id} style={styles.deviceRow}>
               <Text style={styles.deviceText}>
@@ -155,8 +156,12 @@ export function EasySignInCard({ compact = false, onDismiss }: { compact?: boole
               ) : null}
             </View>
           ))}
-          {!faceOnHere ? <PrimaryButton title="Turn on Face ID" onPress={turnOnFaceId} loading={busy} /> : null}
+          {!faceOnHere ? <PrimaryButton title={`Turn on ${biometricName()}`} onPress={turnOnFaceId} loading={busy} /> : null}
         </View>
+      ) : null}
+
+      {!showFace && !compact && passkeysSupported() && faceOk === false ? (
+        <Text style={styles.muted}>To sign in with your fingerprint or face, set a screen lock (PIN, pattern, fingerprint or face) in this device's settings, then come back here.</Text>
       ) : null}
 
       {textAvailable ? (

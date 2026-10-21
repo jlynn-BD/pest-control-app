@@ -88,8 +88,11 @@ export class PasskeyCancelled extends Error {
 function asFriendly(err: unknown): never {
   const name = (err as { name?: string })?.name;
   if (name === "NotAllowedError" || name === "AbortError") throw new PasskeyCancelled();
-  if (name === "InvalidStateError") throw new Error("Face ID is already turned on for this device.");
-  throw new Error("Face ID isn't available here. Use your email instead.");
+  if (name === "InvalidStateError") throw new Error(`${biometricName()} is already turned on for this device.`);
+  if (name === "NotSupportedError" || name === "SecurityError") {
+    throw new Error(`${biometricName()} isn't available here. Open the app in Chrome or Safari, and make sure this device has a screen lock set.`);
+  }
+  throw new Error(`${biometricName()} isn't available here. Use your email instead.`);
 }
 
 // Turns the server's options into a real passkey on this device. Returns the
@@ -151,13 +154,30 @@ export async function getPasskey(options: any): Promise<unknown> {
   };
 }
 
+// What this device calls its biometric unlock, so the screens say the right
+// thing: Face ID on an iPhone, fingerprint / face unlock on Android.
+export function biometricName(): string {
+  if (typeof navigator === "undefined") return "Biometric sign-in";
+  const ua = navigator.userAgent;
+  if (/iPhone/.test(ua)) return "Face ID";
+  if (/iPad/.test(ua)) return "Face ID / Touch ID";
+  if (/Android/.test(ua)) return "Fingerprint / Face Unlock";
+  if (/Mac/.test(ua)) return "Touch ID";
+  if (/Windows/.test(ua)) return "Windows Hello";
+  return "Biometric sign-in";
+}
+
 // A readable name for "which device", e.g. "iPhone" or "Mac".
 export function deviceLabel(): string {
   if (typeof navigator === "undefined") return "This device";
   const ua = navigator.userAgent;
   if (/iPhone/.test(ua)) return "iPhone";
   if (/iPad/.test(ua)) return "iPad";
-  if (/Android/.test(ua)) return /Mobile/.test(ua) ? "Android phone" : "Android tablet";
+  if (/Android/.test(ua)) {
+    const model = ua.match(/;\s*([^;)]+?)\s+Build\//)?.[1];
+    const kind = /Mobile/.test(ua) ? "Android phone" : "Android tablet";
+    return model && model.length < 30 && !/^Android/.test(model) ? `${kind} (${model})` : kind;
+  }
   if (/Mac/.test(ua)) return "Mac";
   if (/Windows/.test(ua)) return "Windows PC";
   return "This device";

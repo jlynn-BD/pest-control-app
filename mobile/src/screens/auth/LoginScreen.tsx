@@ -5,7 +5,7 @@ import { ApiError } from "../../api/client";
 import type { Challenge, LoginResult, SignedIn } from "../../api/auth";
 import * as authApi from "../../api/auth";
 import { InstallHint } from "../../components/InstallHint";
-import { getPasskey, hasPasskeyHint, PasskeyCancelled, passkeysSupported, rememberPasskeyOnThisDevice } from "../../lib/passkey";
+import { biometricName, getPasskey, hasPasskeyHint, PasskeyCancelled, passkeysSupported, rememberPasskeyOnThisDevice } from "../../lib/passkey";
 import { Field, PrimaryButton, colors } from "../../components/ui";
 import { EnrollStep, PasswordChangeStep, RecoveryCodesStep, TextCodeStep, VerifyStep } from "./AuthSteps";
 
@@ -128,7 +128,7 @@ export default function LoginScreen() {
       await handleSignedIn(signedIn);
     } catch (err) {
       if (err instanceof PasskeyCancelled) return;
-      setError(err instanceof ApiError || err instanceof Error ? err.message : "Face ID sign-in didn't work. Use your email instead.");
+      setError(err instanceof ApiError || err instanceof Error ? err.message : `${biometricName()} didn't work. Use your email instead.`);
     } finally {
       setFaceBusy(false);
     }
@@ -178,7 +178,7 @@ export default function LoginScreen() {
           <Text style={styles.hintText}>We'll email you a sign-in code. No password to remember.</Text>
           {faceIdOffered ? (
             <View style={styles.faceRow}>
-              <PrimaryButton title={hasPasskeyHint() ? "Sign in with Face ID" : "Sign in with Face ID / fingerprint"} onPress={handleFaceId} loading={faceBusy} />
+              <PrimaryButton title={`Sign in with ${biometricName()}`} onPress={handleFaceId} loading={faceBusy} />
             </View>
           ) : null}
           <Text style={styles.linkText} onPress={() => { setUsePassword(true); setError(null); }}>
