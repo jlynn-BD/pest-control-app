@@ -12,6 +12,7 @@ import {
   resolveSyncConflictUseServer,
 } from "../../db/inspectionStore";
 import { getPendingSyncCount, runSync, SyncResult } from "../../sync/syncEngine";
+import { EasySignInCard } from "../../components/EasySignInCard";
 import { Badge, Card, Field, PrimaryButton, colors } from "../../components/ui";
 
 export default function SettingsScreen() {
@@ -100,6 +101,8 @@ export default function SettingsScreen() {
         <Text style={styles.meta}>{user?.email}</Text>
         <Text style={styles.meta}>{user?.role}</Text>
       </Card>
+
+      <EasySignInCard />
 
       <Text style={styles.sectionTitle}>Sync</Text>
       <Card style={styles.syncCard}>

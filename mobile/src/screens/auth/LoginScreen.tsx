@@ -3,9 +3,11 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput
 import { useAuth } from "../../context/AuthContext";
 import { ApiError } from "../../api/client";
 import type { Challenge, LoginResult, SignedIn } from "../../api/auth";
+import * as authApi from "../../api/auth";
 import { InstallHint } from "../../components/InstallHint";
+import { getPasskey, hasPasskeyHint, PasskeyCancelled, passkeysSupported, rememberPasskeyOnThisDevice } from "../../lib/passkey";
 import { Field, PrimaryButton, colors } from "../../components/ui";
-import { EnrollStep, PasswordChangeStep, RecoveryCodesStep, VerifyStep } from "./AuthSteps";
+import { EnrollStep, PasswordChangeStep, RecoveryCodesStep, TextCodeStep, VerifyStep } from "./AuthSteps";
 
 export default function LoginScreen() {
   const { login, completeSignIn } = useAuth();
@@ -20,6 +22,12 @@ export default function LoginScreen() {
   const [slow, setSlow] = useState(false);
   // What the server asked for after the password. null = still on the first form.
   const [challenge, setChallenge] = useState<Challenge | null>(null);
+  // The normal way in is email -> a texted code (or Face ID). The password form
+  // is still there for anyone who can't use those: "Use my password instead".
+  const [usePassword, setUsePassword] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [faceBusy, setFaceBusy] = useState(false);
+  const faceIdOffered = passkeysSupported();
   // Set after two-step setup: the finished sign-in is held back until the
   // person has seen their one-time recovery codes.
   const [pendingSignIn, setPendingSignIn] = useState<SignedIn | null>(null);
@@ -37,6 +45,7 @@ export default function LoginScreen() {
 
   function startOver() {
     setChallenge(null);
+    setNotice(null);
     setPendingSignIn(null);
     setPassword("");
     setError(null);
@@ -79,6 +88,52 @@ export default function LoginScreen() {
     }
   }
 
+  // Email, then Continue: texts a code to the phone on the account. Accounts
+  // that can't use texts fall back to the password form (the server answers the
+  // same for an unknown email, so this reveals nothing about who has an account).
+  async function handleContinue() {
+    const typedEmail = currentValue(email, emailRef).trim();
+    if (!typedEmail) {
+      setError("Enter your email.");
+      return;
+    }
+    setEmail(typedEmail);
+    setError(null);
+    setNotice(null);
+    setSubmitting(true);
+    try {
+      const res = await authApi.requestTextCode(typedEmail);
+      if (res.status === "challenge") setChallenge(res);
+      else {
+        setUsePassword(true);
+        setNotice("Enter your password to sign in. (Text-message sign-in isn't turned on for this account yet - you can set it up in Settings after signing in.)");
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Unable to reach the server");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // Face ID / Touch ID / screen lock: no email, no password, no code.
+  async function handleFaceId() {
+    setError(null);
+    setNotice(null);
+    setFaceBusy(true);
+    try {
+      const { options, challengeId } = await authApi.passkeyLoginOptions();
+      const response = await getPasskey(options);
+      const signedIn = await authApi.passkeyLoginVerify(challengeId, response);
+      rememberPasskeyOnThisDevice(true);
+      await handleSignedIn(signedIn);
+    } catch (err) {
+      if (err instanceof PasskeyCancelled) return;
+      setError(err instanceof ApiError || err instanceof Error ? err.message : "Face ID sign-in didn't work. Use your email instead.");
+    } finally {
+      setFaceBusy(false);
+    }
+  }
+
   let body: React.ReactNode;
   if (pendingSignIn) {
     body = <RecoveryCodesStep codes={pendingSignIn.recoveryCodes ?? []} onDone={() => completeSignIn(pendingSignIn)} />;
@@ -88,6 +143,51 @@ export default function LoginScreen() {
     body = <EnrollStep challenge={challenge} onSignedIn={handleSignedIn} onCancel={startOver} />;
   } else if (challenge?.next === "mfa_verify") {
     body = <VerifyStep challenge={challenge} onSignedIn={handleSignedIn} onCancel={startOver} />;
+  } else if (challenge?.next === "otp_verify") {
+    body = (
+      <TextCodeStep
+        challenge={challenge}
+        onSignedIn={handleSignedIn}
+        onUsePassword={() => {
+          setChallenge(null);
+          setUsePassword(true);
+        }}
+        onCancel={startOver}
+      />
+    );
+  } else if (!usePassword) {
+    body = (
+      <>
+        <Text style={styles.subtitle}>Sign in to view your schedule and inspections</Text>
+        <View style={styles.form}>
+          <Field
+            label="Email"
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            autoCorrect={false}
+            inputRef={emailRef}
+            keyboardType="email-address"
+            autoComplete="username"
+            textContentType="username"
+            returnKeyType="go"
+            onSubmitEditing={handleContinue}
+          />
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <PrimaryButton title="Continue" onPress={handleContinue} loading={submitting} />
+          <Text style={styles.hintText}>We'll text a code to your phone. No password to remember.</Text>
+          {faceIdOffered ? (
+            <View style={styles.faceRow}>
+              <PrimaryButton title={hasPasskeyHint() ? "Sign in with Face ID" : "Sign in with Face ID / fingerprint"} onPress={handleFaceId} loading={faceBusy} />
+            </View>
+          ) : null}
+          <Text style={styles.linkText} onPress={() => { setUsePassword(true); setError(null); }}>
+            Use my password instead
+          </Text>
+          {slow ? <Text style={styles.slow}>Waking up the server - the first sign-in can take up to a minute. Please keep this open.</Text> : null}
+        </View>
+      </>
+    );
   } else {
     body = (
       <>
@@ -115,8 +215,12 @@ export default function LoginScreen() {
             returnKeyType="go"
             onSubmitEditing={handleSubmit}
           />
+          {notice ? <Text style={styles.notice}>{notice}</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <PrimaryButton title="Log in" onPress={handleSubmit} loading={submitting} />
+          <Text style={styles.linkText} onPress={() => { setUsePassword(false); setError(null); setNotice(null); setPassword(""); }}>
+            Text me a code instead
+          </Text>
           {slow ? <Text style={styles.slow}>Waking up the server - the first sign-in can take up to a minute. Please keep this open.</Text> : null}
         </View>
       </>
@@ -141,5 +245,9 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 14, color: colors.textMuted, textAlign: "center", marginBottom: 32 },
   form: {},
   error: { color: colors.danger, marginBottom: 14, textAlign: "center" },
+  hintText: { color: colors.textMuted, fontSize: 12, textAlign: "center", marginTop: 8 },
+  faceRow: { marginTop: 18 },
+  linkText: { color: colors.primary, fontSize: 14, fontWeight: "600", textAlign: "center", paddingVertical: 14 },
+  notice: { color: colors.textMuted, fontSize: 13, textAlign: "center", marginBottom: 12, lineHeight: 18 },
   slow: { color: colors.textMuted, fontSize: 13, textAlign: "center", marginTop: 12 },
 });

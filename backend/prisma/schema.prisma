@@ -51,6 +51,7 @@ model User {
   sessionsValidAfter DateTime?
 
   refreshTokens        RefreshToken[]
+  passkeys             Passkey[]
   technicianAppointments Appointment[]      @relation("AppointmentTechnician")
   createdAppointments  Appointment[]      @relation("AppointmentCreatedBy")
   technicianInspections Inspection[]
@@ -625,4 +626,34 @@ model ActivityLog {
   @@index([customerId, createdAt])
   @@index([propertyId, createdAt])
   @@index([entityType, entityId])
+}
+
+// A device's Face ID / Touch ID / screen-lock sign-in (a WebAuthn passkey).
+// Only the public half of the key is stored; the private half never leaves the
+// person's device.
+model Passkey {
+  id           String    @id
+  userId       String
+  credentialId String    @unique
+  publicKey    String // base64url of the COSE public key
+  counter      Int       @default(0)
+  transports   String? // JSON array
+  deviceName   String?
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// One-time challenge for a passkey registration or sign-in: single use, short
+// lived, so a captured response can't be replayed.
+model PasskeyChallenge {
+  id         String    @id
+  challenge  String
+  purpose    String // REGISTER | LOGIN
+  userId     String?
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
 }

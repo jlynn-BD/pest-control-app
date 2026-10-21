@@ -133,11 +133,16 @@ usersRouter.patch(
     if (body.role !== undefined) data.role = body.role;
     if (body.active !== undefined) data.active = body.active;
     if (body.phone !== undefined) {
-      if (body.phone === null || !body.phone.trim()) data.phone = null;
-      else {
+      if (body.phone === null || !body.phone.trim()) {
+        data.phone = null;
+        data.phoneVerifiedAt = null; // text sign-in needs a verified number
+      } else {
         const phone = normalizePhone(body.phone);
         if (!phone) throw new HttpError(400, "That phone number doesn't look right. Use a mobile number like 555-123-4567.");
         data.phone = phone;
+        // A different number is no longer verified - nothing is texted to it
+        // for sign-in until its owner confirms it.
+        if (phone !== target.phone) data.phoneVerifiedAt = null;
         // A changed number must be re-verified before codes go to it.
         if (target.mfaMethod === "SMS" && phone !== target.phone) {
           data.mfaMethod = null;
@@ -236,6 +241,8 @@ usersRouter.post(
       data: { passwordHash: await hashPassword(password), mustChangePassword: true, failedLoginCount: 0, lockedUntil: null },
     });
     await revokeUserSessions(target.id);
+    // A reset is usually "something may be wrong": Face ID sign-ins must be set up again too.
+    await prisma.passkey.deleteMany({ where: { userId: target.id } });
     recordAuthEvent(req, "ADMIN_PASSWORD_RESET", { userId: target.id, email: target.email, detail: `by ${req.user!.id}` });
     res.json({ temporaryPassword: password });
   })
@@ -254,6 +261,7 @@ usersRouter.post(
       data: { mfaMethod: null, totpSecretEnc: null, totpLastStep: null, phoneVerifiedAt: null, mfaEnrolledAt: null, recoveryCodeHashes: "[]", failedLoginCount: 0, lockedUntil: null },
     });
     await revokeUserSessions(target.id);
+    await prisma.passkey.deleteMany({ where: { userId: target.id } });
     recordAuthEvent(req, "ADMIN_MFA_RESET", { userId: target.id, email: target.email, detail: `by ${req.user!.id}` });
     res.status(204).send();
   })

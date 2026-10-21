@@ -315,6 +315,88 @@ export function VerifyStep({ challenge, onSignedIn, onCancel }: { challenge: aut
   );
 }
 
+// ---- sign in with just a texted code (no password) ------------------------------
+
+export function TextCodeStep({
+  challenge,
+  onSignedIn,
+  onUsePassword,
+  onCancel,
+}: {
+  challenge: authApi.Challenge;
+  onSignedIn: (r: authApi.SignedIn) => void;
+  onUsePassword: () => void;
+  onCancel: () => void;
+}) {
+  const [code, setCode] = useState("");
+  const codeRef = useRef<TextInput>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [info, setInfo] = useState<string | null>(null);
+  const [cooldown, setCooldown] = useState(30);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
+
+  async function submit() {
+    const typed = readValue(code, codeRef).replace(/\s/g, "");
+    if (typed.length !== 6) {
+      setError("Enter the 6-digit code.");
+      return;
+    }
+    setError(null);
+    setBusy(true);
+    try {
+      onSignedIn(await authApi.verifyTextCode(challenge.challengeToken, typed));
+    } catch (err) {
+      setError(messageFor(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resend() {
+    setError(null);
+    setInfo(null);
+    try {
+      await authApi.resendMfaCode(challenge.challengeToken);
+      setInfo("We sent a new code.");
+      setCooldown(30);
+    } catch (err) {
+      setError(messageFor(err));
+    }
+  }
+
+  return (
+    <View>
+      <Text style={styles.heading}>Check your texts</Text>
+      <Text style={styles.body}>We texted a 6-digit code to {challenge.maskedPhone ?? "your phone"}. Enter it to sign in - no password needed.</Text>
+      <Field
+        label="6-digit code"
+        inputRef={codeRef}
+        value={code}
+        onChangeText={(t) => setCode(t.replace(/[^0-9 ]/g, ""))}
+        keyboardType="number-pad"
+        inputMode="numeric"
+        maxLength={7}
+        autoComplete="one-time-code"
+        textContentType="oneTimeCode"
+        autoFocus
+        onSubmitEditing={submit}
+      />
+      {info ? <Text style={styles.info}>{info}</Text> : null}
+      <StepError message={error} />
+      <PrimaryButton title="Sign in" onPress={submit} loading={busy} />
+      <LinkButton title={cooldown > 0 ? `Send a new code (${cooldown}s)` : "Send a new code"} onPress={resend} disabled={cooldown > 0} />
+      <LinkButton title="Use my password instead" onPress={onUsePassword} />
+      <LinkButton title="Back" onPress={onCancel} />
+    </View>
+  );
+}
+
 // ---- recovery codes, shown once -----------------------------------------------
 
 export function RecoveryCodesStep({ codes, onDone }: { codes: string[]; onDone: () => void }) {

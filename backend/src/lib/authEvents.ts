@@ -21,7 +21,11 @@ export type AuthEventType =
   | "ADMIN_PASSWORD_RESET"
   | "ADMIN_MFA_RESET"
   | "ADMIN_UNLOCKED"
-  | "ROLE_CHANGED";
+  | "ROLE_CHANGED"
+  | "PHONE_VERIFIED"
+  | "PASSKEY_ADDED"
+  | "PASSKEY_REMOVED"
+  | "PASSKEY_FAILED";
 
 // Fire-and-forget by design: a failure to write the audit row must never
 // block (or break) the sign-in it describes.

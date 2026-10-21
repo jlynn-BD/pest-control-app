@@ -34,6 +34,8 @@ export interface User extends BaseEntity {
   active: boolean;
   // Second sign-in factor: null until the person has set one up.
   mfaMethod?: "SMS" | "TOTP" | null;
+  // The phone number has been confirmed with a texted code - text-message sign-in is available.
+  phoneVerified?: boolean;
   mustChangePassword?: boolean;
   lastLoginAt?: string | null;
   lockedUntil?: string | null;

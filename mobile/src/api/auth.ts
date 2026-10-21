@@ -18,7 +18,7 @@ export interface SignedIn {
 export interface Challenge {
   status: "challenge";
   challengeToken: string;
-  next: "password_change" | "mfa_enroll" | "mfa_verify";
+  next: "password_change" | "mfa_enroll" | "mfa_verify" | "otp_verify";
   method: MfaMethod | null;
   maskedPhone: string | null;
   smsAvailable: boolean;
@@ -26,6 +26,58 @@ export interface Challenge {
 }
 
 export type LoginResult = SignedIn | Challenge;
+
+// First step of "email -> text code": a code was texted (challenge), or this
+// account can't use texts and needs its password.
+export type OtpRequestResult = Challenge | { status: "password_required" };
+
+export function requestTextCode(email: string): Promise<OtpRequestResult> {
+  return apiRequest<OtpRequestResult>("/api/auth/otp/request", { ...open, body: { email } });
+}
+
+export function verifyTextCode(challengeToken: string, code: string): Promise<SignedIn> {
+  return apiRequest<SignedIn>("/api/auth/otp/verify", { ...open, body: { challengeToken, code } });
+}
+
+// Verifying the phone used for text sign-in (signed in).
+export function startPhoneVerification(phone: string): Promise<{ challengeToken: string; maskedPhone: string }> {
+  return apiRequest("/api/auth/phone/start", { method: "POST", body: { phone } });
+}
+
+export function confirmPhoneVerification(challengeToken: string, code: string): Promise<{ ok: true; user: User }> {
+  return apiRequest("/api/auth/phone/confirm", { method: "POST", body: { challengeToken, code } });
+}
+
+export interface PasskeyInfo {
+  id: string;
+  deviceName: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+export function listPasskeys(): Promise<PasskeyInfo[]> {
+  return apiRequest<PasskeyInfo[]>("/api/auth/passkeys");
+}
+
+export function deletePasskey(id: string): Promise<void> {
+  return apiRequest<void>(`/api/auth/passkeys/${id}`, { method: "DELETE" });
+}
+
+export function passkeyRegisterOptions(): Promise<{ options: unknown; challengeId: string }> {
+  return apiRequest("/api/auth/passkey/register/options", { method: "POST" });
+}
+
+export function passkeyRegisterVerify(challengeId: string, response: unknown, deviceName?: string): Promise<{ ok: true }> {
+  return apiRequest("/api/auth/passkey/register/verify", { method: "POST", body: { challengeId, response, deviceName } });
+}
+
+export function passkeyLoginOptions(): Promise<{ options: unknown; challengeId: string }> {
+  return apiRequest("/api/auth/passkey/login/options", { ...open, body: {} });
+}
+
+export function passkeyLoginVerify(challengeId: string, response: unknown): Promise<SignedIn> {
+  return apiRequest<SignedIn>("/api/auth/passkey/login/verify", { ...open, body: { challengeId, response } });
+}
 
 export interface TotpEnrollment {
   method: "TOTP";

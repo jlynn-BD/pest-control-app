@@ -1,6 +1,12 @@
 import type { LoginChallenge, User } from "@prisma/client";
 import type { Request } from "express";
 import { Router } from "express";
+import {
+  generateAuthenticationOptions,
+  generateRegistrationOptions,
+  verifyAuthenticationResponse,
+  verifyRegistrationResponse,
+} from "@simplewebauthn/server";
 import QRCode from "qrcode";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma";
@@ -61,6 +67,7 @@ function toPublicUser(user: User) {
     phone: user.phone,
     active: user.active,
     mfaMethod: user.mfaMethod,
+    phoneVerified: Boolean(user.phoneVerifiedAt),
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
@@ -204,14 +211,14 @@ async function advance(req: Request, user: User, challenge: LoginChallenge) {
   return completeSignIn(req, user, challenge, false);
 }
 
-async function completeSignIn(req: Request, user: User, challenge: LoginChallenge, mfaVerified: boolean, extra: Record<string, unknown> = {}) {
-  await consumeChallenge(challenge.id);
+async function completeSignIn(req: Request, user: User, challenge: LoginChallenge | null, mfaVerified: boolean, extra: Record<string, unknown> = {}, how?: string) {
+  if (challenge) await consumeChallenge(challenge.id);
   const fresh = await prisma.user.update({
     where: { id: user.id },
     data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: new Date() },
   });
   const tokens = await issueTokens(req, fresh, { mfaVerifiedAt: mfaVerified ? new Date() : null });
-  recordAuthEvent(req, "LOGIN_SUCCESS", { userId: user.id, email: user.email, detail: mfaVerified ? "mfa" : "no-mfa" });
+  recordAuthEvent(req, "LOGIN_SUCCESS", { userId: user.id, email: user.email, detail: how ?? (mfaVerified ? "mfa" : "no-mfa") });
   return { status: "ok" as const, ...tokens, user: toPublicUser(fresh), ...extra };
 }
 
@@ -424,10 +431,290 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const { challengeToken } = challengeSchema.parse(req.body);
     const { challenge, user } = await loadChallenge(challengeToken);
-    const phone = user.mfaMethod === "SMS" ? (user.phone ? normalizePhone(user.phone) : null) : challenge.pendingMethod === "SMS" ? challenge.pendingPhone : null;
+    const phone =
+      user.mfaMethod === "SMS"
+        ? user.phone
+          ? normalizePhone(user.phone)
+          : null
+        : challenge.pendingMethod === "SMS"
+          ? challenge.pendingPhone
+          : user.phoneVerifiedAt && user.phone
+            ? normalizePhone(user.phone)
+            : null;
     if (!phone) throw new HttpError(400, "Text messages aren't used for this sign-in.");
     await sendSmsCode(user, challenge, phone);
     res.json({ ok: true, maskedPhone: maskPhone(phone) });
+  })
+);
+
+// ---- sign in with a text-message code (no password) --------------------------
+//
+// Email -> Continue -> a code is texted to the phone on the account -> enter it.
+// Only for accounts whose phone has been verified (see /phone/*). Anything that
+// can't use it (unknown email, no verified phone, texts not set up, a temporary
+// password still to be replaced) gets the same "password_required" answer, so
+// this can't be used to find out which emails have accounts.
+
+const MAX_TEXT_REQUESTS_PER_10_MIN = 5;
+
+authRouter.post(
+  "/otp/request",
+  ipLimiter,
+  asyncHandler(async (req, res) => {
+    const { email } = z.object({ email: z.string().email() }).parse(req.body);
+    const user = await prisma.user.findFirst({ where: { email: { equals: email.trim(), mode: "insensitive" } } });
+    const phone = user?.phone ? normalizePhone(user.phone) : null;
+    if (!user || !user.active || !user.phoneVerifiedAt || !phone || user.mustChangePassword || !smsAvailable()) {
+      res.json({ status: "password_required" as const });
+      return;
+    }
+    if (user.lockedUntil && user.lockedUntil > new Date()) throw lockedError(user.lockedUntil);
+    // Stops anyone from flooding a person's phone with codes.
+    const recent = await prisma.loginChallenge.count({ where: { userId: user.id, sends: { gt: 0 }, createdAt: { gt: new Date(Date.now() - 10 * 60 * 1000) } } });
+    if (recent >= MAX_TEXT_REQUESTS_PER_10_MIN) throw new HttpError(429, "Too many texts requested. Please wait a few minutes and try again.");
+    const challenge = await sendSmsCode(user, await createChallenge(req, user), phone);
+    res.json({
+      status: "challenge" as const,
+      challengeToken: signChallengeToken({ cid: challenge.id, sub: user.id }),
+      next: "otp_verify" as const,
+      method: "SMS",
+      maskedPhone: maskPhone(phone),
+      smsAvailable: true,
+      expiresAt: challenge.expiresAt,
+    });
+  })
+);
+
+authRouter.post(
+  "/otp/verify",
+  ipLimiter,
+  asyncHandler(async (req, res) => {
+    const { challengeToken, code } = challengeSchema.extend({ code: z.string().min(1).max(40) }).parse(req.body);
+    const { challenge, user } = await loadChallenge(challengeToken);
+    if (!user.phoneVerifiedAt || user.mustChangePassword) throw new HttpError(400, "Text-message sign-in isn't available for this account.");
+    if (!smsCodeMatches(challenge, code.replace(/\s+/g, ""))) {
+      await registerFailure(req, user, challenge, "MFA_FAILED");
+      throw new HttpError(401, "That code isn't right. Check it and try again.");
+    }
+    // The text to the person's own verified phone is the proof of who they are.
+    res.json(await completeSignIn(req, user, challenge, true, {}, "text code"));
+  })
+);
+
+// ---- verify the phone number used for text sign-in (signed in) ---------------
+
+authRouter.post(
+  "/phone/start",
+  requireAuth,
+  ipLimiter,
+  asyncHandler(async (req, res) => {
+    const { phone: rawPhone } = z.object({ phone: z.string().min(1) }).parse(req.body);
+    if (!smsAvailable()) throw new HttpError(400, "Text messages aren't set up yet. Ask your admin.");
+    const phone = normalizePhone(rawPhone);
+    if (!phone) throw new HttpError(400, "Enter a valid mobile number, for example 555-123-4567.");
+    const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    if (!user || !user.active) throw new HttpError(401, "Please sign in again.");
+    const recent = await prisma.loginChallenge.count({ where: { userId: user.id, sends: { gt: 0 }, createdAt: { gt: new Date(Date.now() - 10 * 60 * 1000) } } });
+    if (recent >= MAX_TEXT_REQUESTS_PER_10_MIN) throw new HttpError(429, "Too many texts requested. Please wait a few minutes and try again.");
+    const base = await createChallenge(req, user);
+    const withPhone = await prisma.loginChallenge.update({ where: { id: base.id }, data: { pendingMethod: "SMS", pendingPhone: phone } });
+    const sent = await sendSmsCode(user, withPhone, phone);
+    res.json({ challengeToken: signChallengeToken({ cid: sent.id, sub: user.id }), maskedPhone: maskPhone(phone) });
+  })
+);
+
+authRouter.post(
+  "/phone/confirm",
+  requireAuth,
+  ipLimiter,
+  asyncHandler(async (req, res) => {
+    const { challengeToken, code } = challengeSchema.extend({ code: z.string().min(1).max(40) }).parse(req.body);
+    const { challenge, user } = await loadChallenge(challengeToken);
+    if (user.id !== req.user!.id || challenge.pendingMethod !== "SMS" || !challenge.pendingPhone) throw new HttpError(400, "Start again.");
+    if (!smsCodeMatches(challenge, code.replace(/\s+/g, ""))) {
+      await registerFailure(req, user, challenge, "MFA_FAILED");
+      throw new HttpError(401, "That code isn't right. Check it and try again.");
+    }
+    await consumeChallenge(challenge.id);
+    const updated = await prisma.user.update({ where: { id: user.id }, data: { phone: challenge.pendingPhone, phoneVerifiedAt: new Date() } });
+    recordAuthEvent(req, "PHONE_VERIFIED", { userId: user.id, email: user.email });
+    res.json({ ok: true, user: toPublicUser(updated), phoneVerified: true });
+  })
+);
+
+// ---- Face ID / Touch ID sign-in (passkeys) -----------------------------------
+//
+// A passkey is a key pair made on the person's own device and unlocked by Face
+// ID, Touch ID or the screen lock. The server keeps only the public half, so
+// there is no password or code to steal, and it only works from this app's own
+// address. Needs the web app (installed to the home screen or open in Safari /
+// Chrome); the browser decides whether Face ID or a fingerprint is used.
+
+const allowedOrigins = (process.env.CORS_ORIGINS || "https://pestapp-web.onrender.com").split(",").map((o) => o.trim()).filter(Boolean);
+
+function webauthnContext(req: Request): { rpID: string; origin: string } {
+  const origin = typeof req.headers.origin === "string" ? req.headers.origin : "";
+  const local = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+  if (!origin || !(allowedOrigins.includes(origin) || local)) throw new HttpError(400, "Face ID sign-in isn't available from this address.");
+  return { rpID: new URL(origin).hostname, origin };
+}
+
+const PASSKEY_CHALLENGE_TTL_MS = 5 * 60 * 1000;
+const RP_NAME = "Blue Duck PestApp";
+
+async function storeChallenge(challenge: string, purpose: "REGISTER" | "LOGIN", userId: string | null) {
+  const row = await prisma.passkeyChallenge.create({
+    data: { id: generateId(), challenge, purpose, userId, expiresAt: new Date(Date.now() + PASSKEY_CHALLENGE_TTL_MS) },
+  });
+  return row.id;
+}
+
+// Single use: the first request to claim it wins.
+async function claimChallenge(id: string, purpose: "REGISTER" | "LOGIN", userId: string | null): Promise<string> {
+  const row = await prisma.passkeyChallenge.findUnique({ where: { id } });
+  if (!row || row.purpose !== purpose || row.consumedAt || row.expiresAt < new Date() || (userId && row.userId !== userId)) {
+    throw new HttpError(400, "That took too long. Please try again.");
+  }
+  const claimed = await prisma.passkeyChallenge.updateMany({ where: { id, consumedAt: null }, data: { consumedAt: new Date() } });
+  if (claimed.count !== 1) throw new HttpError(400, "That took too long. Please try again.");
+  return row.challenge;
+}
+
+authRouter.get(
+  "/passkeys",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const list = await prisma.passkey.findMany({ where: { userId: req.user!.id }, orderBy: { createdAt: "asc" } });
+    res.json(list.map((p) => ({ id: p.id, deviceName: p.deviceName, createdAt: p.createdAt, lastUsedAt: p.lastUsedAt })));
+  })
+);
+
+authRouter.delete(
+  "/passkeys/:id",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const removed = await prisma.passkey.deleteMany({ where: { id: req.params.id, userId: req.user!.id } });
+    if (removed.count > 0) recordAuthEvent(req, "PASSKEY_REMOVED", { userId: req.user!.id });
+    res.status(204).send();
+  })
+);
+
+authRouter.post(
+  "/passkey/register/options",
+  requireAuth,
+  ipLimiter,
+  asyncHandler(async (req, res) => {
+    const { rpID } = webauthnContext(req);
+    const user = await prisma.user.findUnique({ where: { id: req.user!.id }, include: { passkeys: true } });
+    if (!user || !user.active) throw new HttpError(401, "Please sign in again.");
+    const options = await generateRegistrationOptions({
+      rpName: RP_NAME,
+      rpID,
+      userName: user.email,
+      userID: new TextEncoder().encode(user.id),
+      userDisplayName: `${user.firstName} ${user.lastName}`.trim() || user.email,
+      attestationType: "none",
+      excludeCredentials: user.passkeys.map((p) => ({ id: p.credentialId, transports: p.transports ? JSON.parse(p.transports) : undefined })),
+      // This device's own Face ID / fingerprint / screen lock, and the sign-in
+      // must be unlocked by it (not just "tap to approve").
+      authenticatorSelection: { authenticatorAttachment: "platform", residentKey: "required", userVerification: "required" },
+    });
+    res.json({ options, challengeId: await storeChallenge(options.challenge, "REGISTER", user.id) });
+  })
+);
+
+authRouter.post(
+  "/passkey/register/verify",
+  requireAuth,
+  ipLimiter,
+  asyncHandler(async (req, res) => {
+    const body = z.object({ challengeId: z.string(), response: z.any(), deviceName: z.string().max(80).optional() }).parse(req.body);
+    const { rpID, origin } = webauthnContext(req);
+    const expectedChallenge = await claimChallenge(body.challengeId, "REGISTER", req.user!.id);
+    let verification;
+    try {
+      verification = await verifyRegistrationResponse({
+        response: body.response,
+        expectedChallenge,
+        expectedOrigin: origin,
+        expectedRPID: rpID,
+        requireUserVerification: true,
+      });
+    } catch {
+      throw new HttpError(400, "Face ID couldn't be turned on. Please try again.");
+    }
+    if (!verification.verified || !verification.registrationInfo) throw new HttpError(400, "Face ID couldn't be turned on. Please try again.");
+    const info = verification.registrationInfo;
+    const exists = await prisma.passkey.findUnique({ where: { credentialId: info.credentialID } });
+    if (exists) throw new HttpError(409, "Face ID is already turned on for this device.");
+    const transports = body.response?.response?.transports;
+    await prisma.passkey.create({
+      data: {
+        id: generateId(),
+        userId: req.user!.id,
+        credentialId: info.credentialID,
+        publicKey: Buffer.from(info.credentialPublicKey).toString("base64url"),
+        counter: info.counter,
+        transports: Array.isArray(transports) ? JSON.stringify(transports) : null,
+        deviceName: body.deviceName?.trim() || null,
+      },
+    });
+    recordAuthEvent(req, "PASSKEY_ADDED", { userId: req.user!.id, detail: body.deviceName?.trim() });
+    res.json({ ok: true });
+  })
+);
+
+authRouter.post(
+  "/passkey/login/options",
+  ipLimiter,
+  asyncHandler(async (req, res) => {
+    const { rpID } = webauthnContext(req);
+    // No email asked for: the device offers the passkey it holds for this app.
+    const options = await generateAuthenticationOptions({ rpID, userVerification: "required", allowCredentials: [] });
+    res.json({ options, challengeId: await storeChallenge(options.challenge, "LOGIN", null) });
+  })
+);
+
+authRouter.post(
+  "/passkey/login/verify",
+  ipLimiter,
+  asyncHandler(async (req, res) => {
+    const body = z.object({ challengeId: z.string(), response: z.any() }).parse(req.body);
+    const { rpID, origin } = webauthnContext(req);
+    const expectedChallenge = await claimChallenge(body.challengeId, "LOGIN", null);
+    const FAIL = "Face ID sign-in didn't work. Use your email instead.";
+    const credentialId = typeof body.response?.id === "string" ? body.response.id : "";
+    const passkey = credentialId ? await prisma.passkey.findUnique({ where: { credentialId }, include: { user: true } }) : null;
+    if (!passkey || !passkey.user.active) {
+      recordAuthEvent(req, "PASSKEY_FAILED", { detail: passkey ? "inactive" : "unknown credential" });
+      throw new HttpError(401, FAIL);
+    }
+    const user = passkey.user;
+    if (user.lockedUntil && user.lockedUntil > new Date()) throw lockedError(user.lockedUntil);
+    let verification;
+    try {
+      verification = await verifyAuthenticationResponse({
+        response: body.response,
+        expectedChallenge,
+        expectedOrigin: origin,
+        expectedRPID: rpID,
+        requireUserVerification: true,
+        authenticator: {
+          credentialID: passkey.credentialId,
+          credentialPublicKey: new Uint8Array(Buffer.from(passkey.publicKey, "base64url")),
+          counter: passkey.counter,
+          transports: passkey.transports ? JSON.parse(passkey.transports) : undefined,
+        },
+      });
+    } catch {
+      recordAuthEvent(req, "PASSKEY_FAILED", { userId: user.id, email: user.email, detail: "verification failed" });
+      throw new HttpError(401, FAIL);
+    }
+    if (!verification.verified) throw new HttpError(401, FAIL);
+    await prisma.passkey.update({ where: { id: passkey.id }, data: { counter: verification.authenticationInfo.newCounter, lastUsedAt: new Date() } });
+    // A passkey needs the device AND Face ID / fingerprint / screen lock, so it
+    // counts as the second step of sign-in on its own.
+    res.json(await completeSignIn(req, user, null, true, {}, "face id"));
   })
 );
 
@@ -514,7 +801,9 @@ authRouter.get(
   asyncHandler(async (req, res) => {
     const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
     if (!user) throw new HttpError(404, "User not found");
-    res.json(toPublicUser(user));
+    // smsAvailable: whether texts can be sent at all (so the app knows whether
+    // to offer text-message sign-in).
+    res.json({ ...toPublicUser(user), smsAvailable: smsAvailable() });
   })
 );
 

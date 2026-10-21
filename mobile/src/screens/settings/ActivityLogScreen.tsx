@@ -31,6 +31,10 @@ const SIGN_IN_LABEL: Record<string, string> = {
   PASSWORD_CHANGED: "Changed password",
   LOGOUT_ALL: "Signed out of all devices",
   SESSION_REUSE_DETECTED: "Reused session ended (possible copied login)",
+  PHONE_VERIFIED: "Verified phone for text sign-in",
+  PASSKEY_ADDED: "Turned on Face ID",
+  PASSKEY_REMOVED: "Turned off Face ID on a device",
+  PASSKEY_FAILED: "Face ID sign-in failed",
 };
 
 function messageFor(err: unknown): string {
@@ -256,7 +260,7 @@ export default function ActivityLogScreen({ route, navigation }: Props) {
             <Card key={s.id} style={styles.entry}>
               <View style={styles.entryTop}>
                 <Text style={styles.time}>{new Date(s.createdAt).toLocaleString()}</Text>
-                <Badge label={s.type === "LOGIN_SUCCESS" ? "OK" : "Check"} tone={s.type === "LOGIN_SUCCESS" || s.type === "MFA_ENROLLED" || s.type === "PASSWORD_CHANGED" ? "success" : "warning"} />
+                <Badge label={s.type === "LOGIN_SUCCESS" ? "OK" : "Check"} tone={s.type === "LOGIN_SUCCESS" || s.type === "MFA_ENROLLED" || s.type === "PASSWORD_CHANGED" || s.type === "PHONE_VERIFIED" || s.type === "PASSKEY_ADDED" ? "success" : "warning"} />
               </View>
               <Text style={styles.sentence}>
                 <Text style={styles.actor}>{s.email ?? "Unknown person"} </Text>
