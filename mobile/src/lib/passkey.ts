@@ -46,6 +46,26 @@ export function hasPasskeyHint(): boolean {
   }
 }
 
+// The email last signed in with on this device. Used to tell the browser which
+// saved login to look for when it can't find one on its own.
+const LAST_EMAIL_KEY = "pestapp.lastEmail";
+
+export function rememberLastEmail(email: string) {
+  try {
+    localStorage.setItem(LAST_EMAIL_KEY, email);
+  } catch {
+    /* optional */
+  }
+}
+
+export function lastEmail(): string {
+  try {
+    return localStorage.getItem(LAST_EMAIL_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export function easySignInDismissed(): boolean {
   try {
     return localStorage.getItem(DISMISSED_KEY) === "1";
@@ -85,10 +105,17 @@ export class PasskeyCancelled extends Error {
   }
 }
 
+// This device already holds a login for the app (the browser refuses to make a second).
+export class PasskeyAlreadyExists extends Error {
+  constructor() {
+    super("Already turned on for this device.");
+  }
+}
+
 function asFriendly(err: unknown): never {
   const name = (err as { name?: string })?.name;
   if (name === "NotAllowedError" || name === "AbortError") throw new PasskeyCancelled();
-  if (name === "InvalidStateError") throw new Error(`${biometricName()} is already turned on for this device.`);
+  if (name === "InvalidStateError") throw new PasskeyAlreadyExists();
   if (name === "NotSupportedError" || name === "SecurityError") {
     throw new Error(`${biometricName()} isn't available here. Open the app in Chrome or Safari, and make sure this device has a screen lock set.`);
   }

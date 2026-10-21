@@ -5,7 +5,7 @@ import { ApiError } from "../../api/client";
 import type { Challenge, LoginResult, SignedIn } from "../../api/auth";
 import * as authApi from "../../api/auth";
 import { InstallHint } from "../../components/InstallHint";
-import { biometricName, getPasskey, hasPasskeyHint, PasskeyCancelled, passkeysSupported, rememberPasskeyOnThisDevice } from "../../lib/passkey";
+import { biometricName, getPasskey, hasPasskeyHint, lastEmail, PasskeyCancelled, passkeysSupported, rememberLastEmail, rememberPasskeyOnThisDevice } from "../../lib/passkey";
 import { Field, PrimaryButton, colors } from "../../components/ui";
 import { EnrollStep, PasswordChangeStep, RecoveryCodesStep, TextCodeStep, VerifyStep } from "./AuthSteps";
 
@@ -72,6 +72,7 @@ export default function LoginScreen() {
   }
 
   async function handleSignedIn(res: SignedIn) {
+    rememberLastEmail(res.user.email);
     if (res.recoveryCodes?.length) setPendingSignIn(res);
     else await completeSignIn(res);
   }
@@ -136,7 +137,11 @@ export default function LoginScreen() {
     setNotice(null);
     setFaceBusy(true);
     try {
-      const { options, challengeId } = await authApi.passkeyLoginOptions();
+      // The email typed (or last used here) tells the browser which saved login
+      // to look for, which also covers phones that keep it in a way it can't
+      // find on its own.
+      const typedEmail = currentValue(email, emailRef).trim() || lastEmail();
+      const { options, challengeId } = await authApi.passkeyLoginOptions(typedEmail || undefined);
       const response = await getPasskey(options);
       const signedIn = await authApi.passkeyLoginVerify(challengeId, response);
       rememberPasskeyOnThisDevice(true);

@@ -7,6 +7,7 @@ import {
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
 } from "@simplewebauthn/server";
+import crypto from "crypto";
 import QRCode from "qrcode";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma";
@@ -615,15 +616,16 @@ async function storeChallenge(challenge: string, purpose: "REGISTER" | "LOGIN", 
   return row.id;
 }
 
-// Single use: the first request to claim it wins.
-async function claimChallenge(id: string, purpose: "REGISTER" | "LOGIN", userId: string | null): Promise<string> {
+// Single use: the first request to claim it wins. Returns the challenge and,
+// for a sign-in that named an account, which account it was for.
+async function claimChallenge(id: string, purpose: "REGISTER" | "LOGIN", userId: string | null): Promise<{ challenge: string; userId: string | null }> {
   const row = await prisma.passkeyChallenge.findUnique({ where: { id } });
   if (!row || row.purpose !== purpose || row.consumedAt || row.expiresAt < new Date() || (userId && row.userId !== userId)) {
     throw new HttpError(400, "That took too long. Please try again.");
   }
   const claimed = await prisma.passkeyChallenge.updateMany({ where: { id, consumedAt: null }, data: { consumedAt: new Date() } });
   if (claimed.count !== 1) throw new HttpError(400, "That took too long. Please try again.");
-  return row.challenge;
+  return { challenge: row.challenge, userId: row.userId };
 }
 
 authRouter.get(
@@ -663,7 +665,10 @@ authRouter.post(
       excludeCredentials: user.passkeys.map((p) => ({ id: p.credentialId, transports: p.transports ? JSON.parse(p.transports) : undefined })),
       // This device's own Face ID / fingerprint / screen lock, and the sign-in
       // must be unlocked by it (not just "tap to approve").
-      authenticatorSelection: { authenticatorAttachment: "platform", residentKey: "required", userVerification: "required" },
+      // "preferred": a phone that can store a discoverable login does, and one that
+      // can't (some Android setups) still registers - sign-in then goes by the
+      // email typed on the sign-in screen (see /passkey/login/options).
+      authenticatorSelection: { authenticatorAttachment: "platform", residentKey: "preferred", userVerification: "required" },
     });
     res.json({ options, challengeId: await storeChallenge(options.challenge, "REGISTER", user.id) });
   })
@@ -676,7 +681,7 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const body = z.object({ challengeId: z.string(), response: z.any(), deviceName: z.string().max(80).optional() }).parse(req.body);
     const { rpID, origin } = webauthnContext(req);
-    const expectedChallenge = await claimChallenge(body.challengeId, "REGISTER", req.user!.id);
+    const { challenge: expectedChallenge } = await claimChallenge(body.challengeId, "REGISTER", req.user!.id);
     let verification;
     try {
       verification = await verifyRegistrationResponse({
@@ -715,9 +720,25 @@ authRouter.post(
   ipLimiter,
   asyncHandler(async (req, res) => {
     const { rpID } = webauthnContext(req);
-    // No email asked for: the device offers the passkey it holds for this app.
-    const options = await generateAuthenticationOptions({ rpID, userVerification: "required", allowCredentials: [] });
-    res.json({ options, challengeId: await storeChallenge(options.challenge, "LOGIN", null) });
+    const { email } = z.object({ email: z.string().email().optional() }).parse(req.body ?? {});
+    // With an email, the device is told which saved logins to look for - this
+    // also works for phones that couldn't store a "discoverable" one. Without
+    // one, the device offers whatever it holds for this app. An email with no
+    // Face ID set up gets a stand-in id, so the answer looks the same either way.
+    let allowCredentials: { id: string; transports?: any[] }[] = [];
+    let forUser: string | null = null;
+    if (email) {
+      const user = await prisma.user.findFirst({ where: { email: { equals: email.trim(), mode: "insensitive" } }, include: { passkeys: true } });
+      if (user && user.active && user.passkeys.length > 0) {
+        forUser = user.id;
+        allowCredentials = user.passkeys.map((p) => ({ id: p.credentialId, transports: p.transports ? JSON.parse(p.transports) : undefined }));
+      } else {
+        const decoy = crypto.createHash("sha256").update(`${process.env.JWT_ACCESS_SECRET || "dev"}:decoy:${email.toLowerCase().trim()}`).digest("base64url");
+        allowCredentials = [{ id: decoy }];
+      }
+    }
+    const options = await generateAuthenticationOptions({ rpID, userVerification: "required", allowCredentials });
+    res.json({ options, challengeId: await storeChallenge(options.challenge, "LOGIN", forUser) });
   })
 );
 
@@ -727,7 +748,7 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const body = z.object({ challengeId: z.string(), response: z.any() }).parse(req.body);
     const { rpID, origin } = webauthnContext(req);
-    const expectedChallenge = await claimChallenge(body.challengeId, "LOGIN", null);
+    const { challenge: expectedChallenge, userId: challengeUserId } = await claimChallenge(body.challengeId, "LOGIN", null);
     const FAIL = "Face ID sign-in didn't work. Use your email instead.";
     const credentialId = typeof body.response?.id === "string" ? body.response.id : "";
     const passkey = credentialId ? await prisma.passkey.findUnique({ where: { credentialId }, include: { user: true } }) : null;
@@ -736,6 +757,11 @@ authRouter.post(
       throw new HttpError(401, FAIL);
     }
     const user = passkey.user;
+    // A sign-in that named an account can only be completed by that account's login.
+    if (challengeUserId && challengeUserId !== user.id) {
+      recordAuthEvent(req, "PASSKEY_FAILED", { userId: user.id, email: user.email, detail: "wrong account for this attempt" });
+      throw new HttpError(401, FAIL);
+    }
     if (user.lockedUntil && user.lockedUntil > new Date()) throw lockedError(user.lockedUntil);
     let verification;
     try {

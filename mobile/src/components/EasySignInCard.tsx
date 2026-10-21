@@ -9,6 +9,7 @@ import {
   deviceLabel,
   dismissEasySignIn,
   hasPasskeyHint,
+  PasskeyAlreadyExists,
   PasskeyCancelled,
   passkeysSupported,
   platformAuthenticatorAvailable,
@@ -46,6 +47,7 @@ export function EasySignInCard({ compact = false, onDismiss }: { compact?: boole
       // The "this device has Face ID" hint is only a convenience for the sign-in
       // screen; keep it in step with the truth.
       if (list.length === 0) rememberPasskeyOnThisDevice(false);
+      else if (list.some((p) => p.deviceName === deviceLabel())) rememberPasskeyOnThisDevice(true);
     } catch {
       /* offline: the card just doesn't show */
     }
@@ -57,7 +59,10 @@ export function EasySignInCard({ compact = false, onDismiss }: { compact?: boole
   }, [load]);
 
   const showFace = passkeysSupported() && faceOk === true;
-  const faceOnHere = hasPasskeyHint() && passkeys.length > 0;
+  // "On for this device": remembered here, or a saved device on the account that
+  // carries this device's name (the remembered flag can be lost, e.g. when the
+  // browser's data is cleared, while the login itself is still saved).
+  const faceOnHere = passkeys.length > 0 && (hasPasskeyHint() || passkeys.some((p) => p.deviceName === deviceLabel()));
   const textAvailable = Boolean(me?.smsAvailable);
   const textOn = Boolean(me?.phoneVerified);
 
@@ -77,7 +82,12 @@ export function EasySignInCard({ compact = false, onDismiss }: { compact?: boole
       setInfo(`${biometricName()} is on. Next time, tap the sign-in button on the sign-in screen and unlock with it.`);
       await load();
     } catch (err) {
-      if (!(err instanceof PasskeyCancelled)) setError(message(err));
+      if (err instanceof PasskeyAlreadyExists) {
+        // The device already has its login: nothing to do but say so.
+        rememberPasskeyOnThisDevice(true);
+        setInfo(`${biometricName()} is already on for this device. Next time, use the sign-in button on the sign-in screen.`);
+        await load();
+      } else if (!(err instanceof PasskeyCancelled)) setError(message(err));
     } finally {
       setBusy(false);
     }
@@ -156,7 +166,13 @@ export function EasySignInCard({ compact = false, onDismiss }: { compact?: boole
               ) : null}
             </View>
           ))}
-          {!faceOnHere ? <PrimaryButton title={`Turn on ${biometricName()}`} onPress={turnOnFaceId} loading={busy} /> : null}
+          {faceOnHere ? (
+            <Text style={styles.deviceText}>
+              ✓ {biometricName()} is on for this device. To use it, sign out and tap the {biometricName()} button on the sign-in screen.
+            </Text>
+          ) : (
+            <PrimaryButton title={`Turn on ${biometricName()}`} onPress={turnOnFaceId} loading={busy} />
+          )}
         </View>
       ) : null}
 

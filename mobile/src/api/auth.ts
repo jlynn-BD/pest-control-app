@@ -77,8 +77,8 @@ export function passkeyRegisterVerify(challengeId: string, response: unknown, de
   return apiRequest("/api/auth/passkey/register/verify", { method: "POST", body: { challengeId, response, deviceName } });
 }
 
-export function passkeyLoginOptions(): Promise<{ options: unknown; challengeId: string }> {
-  return apiRequest("/api/auth/passkey/login/options", { ...open, body: {} });
+export function passkeyLoginOptions(email?: string): Promise<{ options: unknown; challengeId: string }> {
+  return apiRequest("/api/auth/passkey/login/options", { ...open, body: email ? { email } : {} });
 }
 
 export function passkeyLoginVerify(challengeId: string, response: unknown): Promise<SignedIn> {
