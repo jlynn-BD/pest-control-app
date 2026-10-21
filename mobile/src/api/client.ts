@@ -57,11 +57,27 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}, 
   }
   if (body && !isFormData) headers["Content-Type"] = "application/json";
 
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    method,
-    headers,
-    body: isFormData ? (body as FormData) : body ? JSON.stringify(body) : undefined,
-  });
+  // The server sleeps when idle and restarts when a new version goes live; for
+  // a short while requests then fail outright (the browser just says "Failed to
+  // fetch"). Sign-in requests and reads are safe to repeat, so they are tried
+  // again a couple of times, and anything that still fails says so plainly.
+  const safeToRepeat = Boolean(skipAuth) || method === "GET";
+  let res: Response | undefined;
+  for (let attempt = 0; attempt < 3 && !res; attempt++) {
+    try {
+      res = await fetch(`${API_BASE_URL}${path}`, {
+        method,
+        headers,
+        body: isFormData ? (body as FormData) : body ? JSON.stringify(body) : undefined,
+      });
+    } catch {
+      // Truly offline (the device says so): fail at once rather than keep a screen waiting.
+      const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+      if (!safeToRepeat || offline || attempt === 2) throw new ApiError(0, "Can't reach the server right now. Check your connection, wait a moment and try again.");
+      await new Promise((resolve) => setTimeout(resolve, 2000 * (attempt + 1)));
+    }
+  }
+  if (!res) throw new ApiError(0, "Can't reach the server right now. Check your connection, wait a moment and try again.");
 
   if (res.status === 401 && !skipAuth && !isRetry) {
     if (!refreshPromise) refreshPromise = refreshTokens().finally(() => (refreshPromise = null));
