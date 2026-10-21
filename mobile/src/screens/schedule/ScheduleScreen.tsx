@@ -9,8 +9,6 @@ import { primeCache } from "../../db/cache";
 import { listLocalInspections, LocalInspectionListItem } from "../../db/inspectionStore";
 import { ensureLocalInspection } from "../../lib/resumeInspection";
 import { inspectionForAppointment, startInspectionFromAppointment } from "../../lib/startInspection";
-import { EasySignInCard } from "../../components/EasySignInCard";
-import { easySignInDismissed } from "../../lib/passkey";
 import { ScheduleClientForm } from "../../components/ScheduleClientForm";
 import { Badge, Card, PrimaryButton, colors } from "../../components/ui";
 
@@ -52,8 +50,6 @@ function inspectionDate(i: DateFields): Date {
 export default function ScheduleScreen() {
   const { user } = useAuth();
   const wide = useWindowDimensions().width >= 900;
-  // A one-time offer to turn on Face ID / text sign-in (hides itself when there is nothing to offer).
-  const [offerDismissed, setOfferDismissed] = useState(easySignInDismissed());
   const navigation = useNavigation<NavigationProp<ParamListBase>>();
   const today = new Date();
   const [month, setMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
@@ -279,7 +275,6 @@ export default function ScheduleScreen() {
     >
       {/* On a wide screen (tablet / landscape) the calendar and the selected
           day's list sit side by side; on a phone they stack. */}
-      {offerDismissed ? null : <EasySignInCard compact onDismiss={() => setOfferDismissed(true)} />}
       <View style={wide ? styles.wideRow : styles.stackCol}>
       <View style={wide ? styles.wideCol : styles.stackCol}>
       <View style={styles.monthRow}>
