@@ -125,7 +125,7 @@ export function EasySignInCard({ compact = false, onDismiss }: { compact?: boole
       await authApi.confirmPhoneVerification(challengeToken, code);
       setChallengeToken(null);
       setCode("");
-      setInfo("Text-message sign-in is on. From now on you can sign in with just your email and a texted code.");
+      setInfo("Texted codes are on for your phone.");
       await load();
     } catch (err) {
       setError(message(err));
@@ -137,7 +137,7 @@ export function EasySignInCard({ compact = false, onDismiss }: { compact?: boole
   return (
     <Card style={styles.card}>
       <Text style={styles.title}>{compact ? "Skip the password" : "Easier sign-in"}</Text>
-      <Text style={styles.body}>No more passwords to remember: sign in with Face ID, or with your email and a code texted to your phone.</Text>
+      <Text style={styles.body}>No more passwords to remember: sign in with Face ID, or with your email and a code we send you.</Text>
 
       {showFace ? (
         <View style={styles.block}>
@@ -161,7 +161,7 @@ export function EasySignInCard({ compact = false, onDismiss }: { compact?: boole
 
       {textAvailable ? (
         <View style={styles.block}>
-          <Text style={styles.label}>Text-message sign-in</Text>
+          <Text style={styles.label}>Texted codes (optional)</Text>
           {textOn ? (
             <Text style={styles.deviceText}>✓ On{me.phone ? ` · ${me.phone}` : ""}</Text>
           ) : challengeToken ? (
@@ -187,7 +187,7 @@ export function EasySignInCard({ compact = false, onDismiss }: { compact?: boole
           )}
         </View>
       ) : !compact ? (
-        <Text style={styles.muted}>Text-message sign-in isn't switched on for this app yet - ask an admin.</Text>
+        <Text style={styles.muted}>Texted codes aren't switched on yet. Signing in with a code emailed to you already works.</Text>
       ) : null}
 
       {info ? <Text style={styles.info}>{info}</Text> : null}

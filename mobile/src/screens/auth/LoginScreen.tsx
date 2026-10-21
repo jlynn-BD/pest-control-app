@@ -106,7 +106,7 @@ export default function LoginScreen() {
       if (res.status === "challenge") setChallenge(res);
       else {
         setUsePassword(true);
-        setNotice("Enter your password to sign in. (Text-message sign-in isn't turned on for this account yet - you can set it up in Settings after signing in.)");
+        setNotice("Enter your password to sign in.");
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to reach the server");
@@ -175,7 +175,7 @@ export default function LoginScreen() {
           />
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <PrimaryButton title="Continue" onPress={handleContinue} loading={submitting} />
-          <Text style={styles.hintText}>We'll text a code to your phone. No password to remember.</Text>
+          <Text style={styles.hintText}>We'll email you a sign-in code. No password to remember.</Text>
           {faceIdOffered ? (
             <View style={styles.faceRow}>
               <PrimaryButton title={hasPasskeyHint() ? "Sign in with Face ID" : "Sign in with Face ID / fingerprint"} onPress={handleFaceId} loading={faceBusy} />

@@ -372,8 +372,12 @@ export function TextCodeStep({
 
   return (
     <View>
-      <Text style={styles.heading}>Check your texts</Text>
-      <Text style={styles.body}>We texted a 6-digit code to {challenge.maskedPhone ?? "your phone"}. Enter it to sign in - no password needed.</Text>
+      <Text style={styles.heading}>{challenge.method === "EMAIL" ? "Check your email" : "Check your texts"}</Text>
+      <Text style={styles.body}>
+        {challenge.method === "EMAIL"
+          ? `We emailed a 6-digit code to ${challenge.maskedEmail ?? "your email"}. It can take a minute - check your spam folder too. Enter it to sign in - no password needed.`
+          : `We texted a 6-digit code to ${challenge.maskedPhone ?? "your phone"}. Enter it to sign in - no password needed.`}
+      </Text>
       <Field
         label="6-digit code"
         inputRef={codeRef}

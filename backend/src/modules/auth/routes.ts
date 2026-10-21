@@ -26,6 +26,7 @@ import {
 } from "../../lib/jwt";
 import { decryptSecret, encryptSecret, hashCode, randomDigits, randomReadable, safeEqual } from "../../lib/crypto";
 import { generateTotpSecret, otpauthUrl, verifyTotp } from "../../lib/totp";
+import { emailAvailable, maskEmail, sendEmail } from "../../lib/email";
 import { maskPhone, normalizePhone, sendSms, smsAvailable } from "../../lib/sms";
 import { clientInfo, recordAuthEvent } from "../../lib/authEvents";
 import { rateLimit } from "../../lib/rateLimit";
@@ -41,6 +42,7 @@ const MAX_CODE_ATTEMPTS = 5; // wrong codes allowed per half-finished sign-in
 const MAX_FAILED_BEFORE_LOCK = 5; // wrong passwords/codes before the account locks
 const LOCK_MS = 15 * 60 * 1000;
 const SMS_CODE_TTL_MS = 5 * 60 * 1000;
+const EMAIL_CODE_TTL_MS = 10 * 60 * 1000;
 const SMS_RESEND_COOLDOWN_MS = 30 * 1000;
 const MAX_SMS_SENDS = 5; // per half-finished sign-in
 const RECOVERY_CODE_COUNT = 10;
@@ -192,6 +194,29 @@ async function sendSmsCode(user: { id: string }, challenge: LoginChallenge, phon
   return prisma.loginChallenge.update({
     where: { id: challenge.id },
     data: { codeHash: hashCode(code), lastSentAt: new Date(), sends: { increment: 1 } },
+  });
+}
+
+// The same 6-digit code, emailed to the account's own address.
+async function sendEmailCode(user: User, challenge: LoginChallenge) {
+  if (challenge.lastSentAt && Date.now() - challenge.lastSentAt.getTime() < SMS_RESEND_COOLDOWN_MS) {
+    throw new HttpError(429, "Please wait a few seconds before asking for another email.");
+  }
+  if (challenge.sends >= MAX_SMS_SENDS) throw new HttpError(429, "Too many emails requested. Please start again.");
+  const code = randomDigits(6);
+  try {
+    await sendEmail(
+      user.email,
+      "Your Blue Duck PestApp sign-in code",
+      `Your sign-in code is ${code}\n\nIt expires in 10 minutes and works once. If you didn't try to sign in, you can ignore this email - nobody can get in without the code. Never share it.`,
+      `<p style="font-family:sans-serif;font-size:15px">Your Blue Duck PestApp sign-in code is</p><p style="font-family:monospace;font-size:28px;letter-spacing:4px;font-weight:700">${code}</p><p style="font-family:sans-serif;font-size:13px;color:#555">It expires in 10 minutes and works once. If you didn't try to sign in, you can ignore this email. Never share this code.</p>`
+    );
+  } catch {
+    throw new HttpError(502, "We couldn't send the email. Please try again in a moment, or use your password.");
+  }
+  return prisma.loginChallenge.update({
+    where: { id: challenge.id },
+    data: { pendingMethod: "EMAIL", codeHash: hashCode(code), lastSentAt: new Date(), sends: { increment: 1 } },
   });
 }
 
@@ -365,7 +390,8 @@ authRouter.post(
 
 function smsCodeMatches(challenge: LoginChallenge, code: string): boolean {
   if (!challenge.codeHash || !challenge.lastSentAt) return false;
-  if (Date.now() - challenge.lastSentAt.getTime() > SMS_CODE_TTL_MS) return false;
+  const ttl = challenge.pendingMethod === "EMAIL" ? EMAIL_CODE_TTL_MS : SMS_CODE_TTL_MS;
+  if (Date.now() - challenge.lastSentAt.getTime() > ttl) return false;
   return safeEqual(challenge.codeHash, hashCode(code.replace(/\s+/g, "")));
 }
 
@@ -431,6 +457,11 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const { challengeToken } = challengeSchema.parse(req.body);
     const { challenge, user } = await loadChallenge(challengeToken);
+    if (challenge.pendingMethod === "EMAIL") {
+      await sendEmailCode(user, challenge);
+      res.json({ ok: true, maskedEmail: maskEmail(user.email) });
+      return;
+    }
     const phone =
       user.mfaMethod === "SMS"
         ? user.phone
@@ -463,23 +494,29 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const { email } = z.object({ email: z.string().email() }).parse(req.body);
     const user = await prisma.user.findFirst({ where: { email: { equals: email.trim(), mode: "insensitive" } } });
+    // The code goes to the account's own email address when email is set up
+    // (no setup needed per person), otherwise to a verified phone by text.
     const phone = user?.phone ? normalizePhone(user.phone) : null;
-    if (!user || !user.active || !user.phoneVerifiedAt || !phone || user.mustChangePassword || !smsAvailable()) {
+    const byEmail = emailAvailable();
+    const bySms = Boolean(user?.phoneVerifiedAt && phone && smsAvailable());
+    if (!user || !user.active || user.mustChangePassword || (!byEmail && !bySms)) {
       res.json({ status: "password_required" as const });
       return;
     }
     if (user.lockedUntil && user.lockedUntil > new Date()) throw lockedError(user.lockedUntil);
-    // Stops anyone from flooding a person's phone with codes.
+    // Stops anyone from flooding a person's inbox / phone with codes.
     const recent = await prisma.loginChallenge.count({ where: { userId: user.id, sends: { gt: 0 }, createdAt: { gt: new Date(Date.now() - 10 * 60 * 1000) } } });
-    if (recent >= MAX_TEXT_REQUESTS_PER_10_MIN) throw new HttpError(429, "Too many texts requested. Please wait a few minutes and try again.");
-    const challenge = await sendSmsCode(user, await createChallenge(req, user), phone);
+    if (recent >= MAX_TEXT_REQUESTS_PER_10_MIN) throw new HttpError(429, "Too many codes requested. Please wait a few minutes and try again.");
+    const base = await createChallenge(req, user);
+    const challenge = byEmail ? await sendEmailCode(user, base) : await sendSmsCode(user, base, phone!);
     res.json({
       status: "challenge" as const,
       challengeToken: signChallengeToken({ cid: challenge.id, sub: user.id }),
       next: "otp_verify" as const,
-      method: "SMS",
-      maskedPhone: maskPhone(phone),
-      smsAvailable: true,
+      method: byEmail ? "EMAIL" : "SMS",
+      maskedPhone: byEmail ? null : maskPhone(phone!),
+      maskedEmail: byEmail ? maskEmail(user.email) : null,
+      smsAvailable: smsAvailable(),
       expiresAt: challenge.expiresAt,
     });
   })
@@ -491,13 +528,14 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const { challengeToken, code } = challengeSchema.extend({ code: z.string().min(1).max(40) }).parse(req.body);
     const { challenge, user } = await loadChallenge(challengeToken);
-    if (!user.phoneVerifiedAt || user.mustChangePassword) throw new HttpError(400, "Text-message sign-in isn't available for this account.");
+    const viaEmail = challenge.pendingMethod === "EMAIL";
+    if (user.mustChangePassword || (!viaEmail && !user.phoneVerifiedAt)) throw new HttpError(400, "Code sign-in isn't available for this account.");
     if (!smsCodeMatches(challenge, code.replace(/\s+/g, ""))) {
       await registerFailure(req, user, challenge, "MFA_FAILED");
       throw new HttpError(401, "That code isn't right. Check it and try again.");
     }
-    // The text to the person's own verified phone is the proof of who they are.
-    res.json(await completeSignIn(req, user, challenge, true, {}, "text code"));
+    // The code sent to the person's own email / verified phone is the proof of who they are.
+    res.json(await completeSignIn(req, user, challenge, true, {}, viaEmail ? "email code" : "text code"));
   })
 );
 

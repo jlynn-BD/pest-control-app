@@ -19,8 +19,10 @@ export interface Challenge {
   status: "challenge";
   challengeToken: string;
   next: "password_change" | "mfa_enroll" | "mfa_verify" | "otp_verify";
-  method: MfaMethod | null;
+  method: MfaMethod | "EMAIL" | null;
   maskedPhone: string | null;
+  // Set when the sign-in code was emailed rather than texted.
+  maskedEmail?: string | null;
   smsAvailable: boolean;
   expiresAt: string;
 }
@@ -115,7 +117,7 @@ export function verifyMfa(challengeToken: string, code: string): Promise<SignedI
   return apiRequest<SignedIn>("/api/auth/mfa/verify", { ...open, body: { challengeToken, code } });
 }
 
-export function resendMfaCode(challengeToken: string): Promise<{ ok: true; maskedPhone: string }> {
+export function resendMfaCode(challengeToken: string): Promise<{ ok: true; maskedPhone?: string; maskedEmail?: string }> {
   return apiRequest("/api/auth/mfa/resend", { ...open, body: { challengeToken } });
 }
 
