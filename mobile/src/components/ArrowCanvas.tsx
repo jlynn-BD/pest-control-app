@@ -6,6 +6,7 @@ import Svg, { Circle, Line as SvgLine, Polygon, Rect, Text as SvgText } from "re
 import { arrowHeadPoints, gridLines, Line, Point } from "../lib/arrowGeometry";
 import { API_BASE_URL } from "../api/config";
 import { AuthImage } from "./AuthImage";
+import { MapScrollbar, SCROLLBAR_THICKNESS } from "./MapScrollbars";
 import { colors } from "./ui";
 
 export type SiteMapMode = "view" | "arrow" | "wall" | "label" | "annotate" | "measure" | "grid" | "pan";
@@ -1281,8 +1282,10 @@ function SiteMapCanvasInner({
 // current view on the way in, and what the person draws or drags is mapped
 // back to sheet coordinates on the way out. A sketch that never leaves the
 // original square with the default view passes through unchanged.
-export function SiteMapCanvas(props: React.ComponentProps<typeof SiteMapCanvasInner> & { view?: SiteMapView; onViewChange?: (view: SiteMapView) => void }) {
-  const { view: viewProp, onViewChange, ...rest } = props;
+export function SiteMapCanvas(
+  props: React.ComponentProps<typeof SiteMapCanvasInner> & { view?: SiteMapView; onViewChange?: (view: SiteMapView) => void; showScrollbars?: boolean }
+) {
+  const { view: viewProp, onViewChange, showScrollbars = false, ...rest } = props;
   const [panLive, setPanLive] = useState<{ dx: number; dy: number } | null>(null);
   const base = viewProp ?? DEFAULT_SITE_MAP_VIEW;
   const k = base.zoom;
@@ -1306,7 +1309,32 @@ export function SiteMapCanvas(props: React.ComponentProps<typeof SiteMapCanvasIn
   const worldGrid = resolveGrid(rest.grid);
   const viewGrid: SiteMapGrid = { ...worldGrid, cell: worldGrid.cell * k, ox: (worldGrid.ox - v.x) * k, oy: (worldGrid.oy - v.y) * k };
 
-  return (
+  // How far the drawing reaches, for the scroll bars.
+  const bounds = (() => {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    const add = (x: number, y: number) => {
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    };
+    for (const l of [...(rest.savedLines ?? []), ...(rest.pendingLines ?? [])]) {
+      add(l.x1, l.y1);
+      add(l.x2, l.y2);
+    }
+    for (const l of rest.labels ?? []) add(l.x, l.y);
+    for (const a of rest.annotations ?? []) {
+      add(a.x1, a.y1);
+      add(a.x2 ?? a.x1, a.y2 ?? a.y1);
+    }
+    return Number.isFinite(minX) ? { minX, maxX, minY, maxY } : { minX: 0, maxX: 1, minY: 0, maxY: 1 };
+  })();
+  const viewSize = 1 / k;
+
+  const canvas = (
     <SiteMapCanvasInner
       {...rest}
       arrows={(rest.arrows ?? [])
@@ -1349,9 +1377,42 @@ export function SiteMapCanvas(props: React.ComponentProps<typeof SiteMapCanvasIn
       onCaptionChange={rest.onCaptionChange ? (id, o) => rest.onCaptionChange!(id, { dx: o.dx / k, dy: o.dy / k }) : undefined}
     />
   );
+
+  if (!showScrollbars) return canvas;
+
+  // Spreadsheet-style: the map with a scroll bar along the bottom and the right edge.
+  const scrollTo = (x: number, y: number) => onViewChange?.({ x, y, zoom: k });
+  const wheel =
+    Platform.OS === "web"
+      ? ({
+          // A trackpad's sideways swipe (or Shift + wheel) scrolls the sheet sideways.
+          onWheel: (e: { deltaX: number; deltaY: number; shiftKey: boolean }) => {
+            const dx = e.deltaX !== 0 ? e.deltaX : e.shiftKey ? e.deltaY : 0;
+            if (dx !== 0) scrollTo(base.x + dx / (k * 560), base.y);
+          },
+        } as object)
+      : null;
+  return (
+    <View style={styles.frame} {...wheel}>
+      <View style={styles.frameRow}>
+        <View style={styles.frameCanvas}>{canvas}</View>
+        <MapScrollbar vertical viewMin={base.y} viewSize={viewSize} contentMin={bounds.minY} contentMax={bounds.maxY} onScroll={(y) => scrollTo(base.x, y)} />
+      </View>
+      <View style={styles.frameBottom}>
+        <View style={styles.frameCanvas}>
+          <MapScrollbar viewMin={base.x} viewSize={viewSize} contentMin={bounds.minX} contentMax={bounds.maxX} onScroll={(x) => scrollTo(x, base.y)} />
+        </View>
+        <View style={{ width: SCROLLBAR_THICKNESS + 6 }} />
+      </View>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
+  frame: { alignSelf: "center", width: "100%", maxWidth: 560 + SCROLLBAR_THICKNESS + 6 },
+  frameRow: { flexDirection: "row" },
+  frameCanvas: { flex: 1, minWidth: 0 },
+  frameBottom: { flexDirection: "row" },
   // Always square, whatever the screen: the PDF report prints this map on a
   // square page, so a map drawn on a wide iPad screen used to come out
   // squeezed sideways. Same shape everywhere = what you draw is what prints.

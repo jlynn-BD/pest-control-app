@@ -985,6 +985,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         grid={grid}
         view={view}
         onViewChange={setView}
+        showScrollbars={!isPhotoMode}
         panOnDrag={!isPhotoMode && wideEnoughToDrag}
         onGridChange={handleGridChange}
         onMeasureDrawn={handleMeasureDrawn}
