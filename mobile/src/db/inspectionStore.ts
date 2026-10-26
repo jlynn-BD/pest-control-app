@@ -598,6 +598,33 @@ export function addLocalChecklistResponsePhoto(
   return photo;
 }
 
+// Removing ONE photo (not the whole answer or finding). A photo that never
+// reached the server is simply dropped; one that did is remembered so the
+// next sync deletes it there too.
+function deletePhotoRow(table: "finding_photos" | "checklist_response_photos", kind: "FINDING" | "CHECKLIST", id: string): void {
+  const db = getDb();
+  const row = db.getFirstSync<{ remoteUrl: string | null }>(`SELECT remoteUrl FROM ${table} WHERE id = ?`, [id]);
+  if (row?.remoteUrl) db.runSync(`INSERT OR REPLACE INTO pending_photo_deletes (remoteUrl, kind) VALUES (?, ?)`, [row.remoteUrl, kind]);
+  db.runSync(`DELETE FROM ${table} WHERE id = ?`, [id]);
+}
+
+export function deleteLocalChecklistResponsePhoto(photoId: string): void {
+  deletePhotoRow("checklist_response_photos", "CHECKLIST", photoId);
+}
+
+export function deleteLocalFindingPhoto(photoId: string): void {
+  deletePhotoRow("finding_photos", "FINDING", photoId);
+}
+
+export function getPendingPhotoDeletes(): { remoteUrl: string; kind: "FINDING" | "CHECKLIST" }[] {
+  if (!isLocalDbAvailable()) return [];
+  return getDb().getAllSync<{ remoteUrl: string; kind: "FINDING" | "CHECKLIST" }>(`SELECT remoteUrl, kind FROM pending_photo_deletes`);
+}
+
+export function clearPendingPhotoDelete(remoteUrl: string): void {
+  getDb().runSync(`DELETE FROM pending_photo_deletes WHERE remoteUrl = ?`, [remoteUrl]);
+}
+
 // Lets a technician attach or detach a checklist template on an
 // already-started inspection, not just at creation time (NewInspectionScreen).
 // Detaching only hides the checklist section - it doesn't delete any
@@ -908,8 +935,12 @@ export function countPendingSyncRows(): number {
     "checklist_response_photos",
     "inspection_section_skips",
   ];
-  return tables.reduce((sum, table) => {
-    const row = db.getFirstSync<{ count: number }>(`SELECT COUNT(*) as count FROM ${table} WHERE syncStatus = 'pending'`);
-    return sum + (row?.count ?? 0);
-  }, 0);
+  const photoDeletes = db.getFirstSync<{ count: number }>(`SELECT COUNT(*) as count FROM pending_photo_deletes`)?.count ?? 0;
+  return (
+    photoDeletes +
+    tables.reduce((sum, table) => {
+      const row = db.getFirstSync<{ count: number }>(`SELECT COUNT(*) as count FROM ${table} WHERE syncStatus = 'pending'`);
+      return sum + (row?.count ?? 0);
+    }, 0)
+  );
 }

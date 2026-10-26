@@ -1,14 +1,16 @@
 import { appendPhotoFile } from "../lib/photoUpload";
-import { apiRequest } from "../api/client";
+import { ApiError, apiRequest } from "../api/client";
 import { getCachedCustomer, getCachedProperty, primeCache } from "../db/cache";
 import { pushDirtySketches } from "./siteMapSync";
 import {
+  clearPendingPhotoDelete,
   clearSyncConflict,
   countPendingSyncRows,
   ENTITY_TABLE,
   getPendingChecklistResponses,
   getPendingFindings,
   getPendingInspections,
+  getPendingPhotoDeletes,
   getPendingInspectionSectionSkips,
   getPendingRecommendations,
   getUploadableChecklistResponsePhotos,
@@ -277,6 +279,26 @@ async function runSyncOnce(): Promise<SyncResult> {
         uploaded += 1;
       } catch (err) {
         noteMediaError(err);
+      }
+    }
+
+    // Photos removed on this device after they had been uploaded: delete them on
+    // the server too. The server's photo id is the file name in the photo's URL.
+    for (const gone of getPendingPhotoDeletes()) {
+      try {
+        const id = gone.remoteUrl.split("/").pop()?.replace(/\.[^.]+$/, "");
+        if (!id) {
+          clearPendingPhotoDelete(gone.remoteUrl);
+          continue;
+        }
+        await apiRequest<void>(gone.kind === "FINDING" ? `/api/findings/photos/${id}` : `/api/checklist-responses/photos/${id}`, { method: "DELETE" });
+        clearPendingPhotoDelete(gone.remoteUrl);
+        pushed += 1;
+      } catch (err) {
+        // Already gone (404) or the inspection is finished and locked (409):
+        // nothing more to do. Anything else (no signal) is retried next sync.
+        if (err instanceof ApiError && (err.status === 404 || err.status === 409)) clearPendingPhotoDelete(gone.remoteUrl);
+        else noteMediaError(err);
       }
     }
 

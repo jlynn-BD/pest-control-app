@@ -6,6 +6,7 @@ import { deleteChecklistResponse } from "../api/inspections";
 import { getCachedTemplateSections } from "../db/cache";
 import {
   addLocalChecklistResponsePhoto,
+  deleteLocalChecklistResponsePhoto,
   addLocalFinding,
   addLocalFindingPhoto,
   deleteLocalChecklistResponse,
@@ -215,6 +216,13 @@ export function ChecklistPanel({
     ]);
   }
 
+  // Deletes one photo from a checklist item, leaving the item and its other photos alone.
+  function handleDeletePhoto(item: LocalTemplateItem, photoId: string) {
+    deleteLocalChecklistResponsePhoto(photoId);
+    setResponses((prev) => prev.map((r) => (r.templateItemId === item.id ? { ...r, photos: r.photos.filter((p) => p.id !== photoId) } : r)));
+    onChange?.();
+  }
+
   // Another issue under the same checklist item, typed right here: its own
   // description, severity and photos, no trip to the site map or the finding
   // form. It's a regular finding linked to this checklist answer, so it shows
@@ -370,6 +378,7 @@ export function ChecklistPanel({
                                 onUncheck={() => handleUncheck(item)}
                                 onNotesChange={(notes) => handleNotesChange(item, notes)}
                                 onAddPhoto={(notes, source) => handleAddPhoto(item, notes, source)}
+                                onDeletePhoto={(photoId) => handleDeletePhoto(item, photoId)}
                                 onAddToSiteMap={(notes) => handleAddToSiteMap(item, notes)}
                                 onAddIssue={(notes, issue) => handleAddIssue(item, notes, issue)}
                                 onEditFinding={onEditFinding}
@@ -408,6 +417,7 @@ function ChecklistItemRow({
   onUncheck,
   onNotesChange,
   onAddPhoto,
+  onDeletePhoto,
   onAddToSiteMap,
   onAddIssue,
   onEditFinding,
@@ -428,6 +438,8 @@ function ChecklistItemRow({
   onUncheck: () => void;
   onNotesChange: (notes: string | null) => void;
   onAddPhoto: (notes: string | null, source: "camera" | "library") => void;
+  // Removes just this one photo (the others on the item stay).
+  onDeletePhoto: (photoId: string) => void;
   onAddToSiteMap: (notes: string | null) => void;
   onAddIssue: (notes: string | null, issue: { description: string; severity: string; photos: string[] }) => void;
   onEditFinding: (findingId: string) => void;
@@ -542,7 +554,7 @@ function ChecklistItemRow({
           </View>
           <View style={styles.photoRow}>
             {issuePhotos.map((uri) => (
-              <PhotoThumb key={uri} uri={uri} style={styles.photoThumb} />
+              <PhotoThumb key={uri} uri={uri} style={styles.photoThumb} onDelete={() => setIssuePhotos((prev) => prev.filter((u) => u !== uri))} />
             ))}
             <Text
               style={styles.addPhotoLink}
@@ -594,7 +606,7 @@ function ChecklistItemRow({
           />
           <View style={styles.photoRow}>
             {photos.map((p) => (
-              <PhotoThumb key={p.id} uri={p.localUri} style={styles.photoThumb} />
+              <PhotoThumb key={p.id} uri={p.localUri} style={styles.photoThumb} onDelete={() => onDeletePhoto(p.id)} />
             ))}
             <Text
               style={styles.addPhotoLink}

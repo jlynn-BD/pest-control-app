@@ -135,7 +135,7 @@ findingsRouter.post(
 findingsRouter.delete(
   "/photos/:photoId",
   asyncHandler(async (req, res) => {
-    await prisma.findingPhoto.delete({ where: { id: req.params.photoId } });
+    await prisma.findingPhoto.deleteMany({ where: { id: req.params.photoId } });
     res.status(204).send();
   })
 );

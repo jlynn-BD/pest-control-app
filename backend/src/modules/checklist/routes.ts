@@ -103,7 +103,7 @@ checklistResponsesRouter.post(
 checklistResponsesRouter.delete(
   "/photos/:photoId",
   asyncHandler(async (req, res) => {
-    await prisma.checklistResponsePhoto.delete({ where: { id: req.params.photoId } });
+    await prisma.checklistResponsePhoto.deleteMany({ where: { id: req.params.photoId } });
     res.status(204).send();
   })
 );

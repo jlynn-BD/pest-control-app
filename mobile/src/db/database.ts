@@ -103,6 +103,11 @@ CREATE TABLE IF NOT EXISTS checklist_response_photos (
   id TEXT PRIMARY KEY, checklistResponseId TEXT, localUri TEXT, remoteUrl TEXT, caption TEXT, takenAt TEXT,
   sortOrder INTEGER, syncStatus TEXT DEFAULT 'pending'
 );
+-- A photo that was already uploaded and then removed on this device: the server
+-- is told to delete it at the next sync (see syncEngine.ts).
+CREATE TABLE IF NOT EXISTS pending_photo_deletes (
+  remoteUrl TEXT PRIMARY KEY, kind TEXT
+);
 CREATE TABLE IF NOT EXISTS inspection_section_skips (
   id TEXT PRIMARY KEY, inspectionId TEXT, category TEXT, technicianId TEXT, initials TEXT,
   confirmedAt TEXT, createdAt TEXT, syncStatus TEXT DEFAULT 'pending'

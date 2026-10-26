@@ -3,7 +3,7 @@ import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from "expo-spe
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { getCachedTemplateSections } from "../db/cache";
-import { addLocalFinding, addLocalFindingPhoto, deleteLocalFinding, getLocalInspectionDetail, updateLocalFinding } from "../db/inspectionStore";
+import { addLocalFinding, addLocalFindingPhoto, deleteLocalFinding, deleteLocalFindingPhoto, getLocalInspectionDetail, updateLocalFinding } from "../db/inspectionStore";
 import { deleteFinding, deleteRecommendation } from "../api/inspections";
 import { capturePhoto, pickPhotosFromLibrary } from "../lib/photo";
 import { getCurrentCoords } from "../lib/location";
@@ -216,6 +216,8 @@ export function FindingEditorForm({
       // Map position is left untouched on edit - moving a marker is a
       // redraw action on the site map itself, not something this form does.
       updateLocalFinding(existingFinding.id, input);
+      // Photos taken off the list while editing are deleted (just those).
+      existingFinding.photos.filter((p) => !photos.includes(p.localUri)).forEach((p) => deleteLocalFindingPhoto(p.id));
       const newUris = photos.filter((uri) => !existingPhotoUris.includes(uri));
       newUris.forEach((uri, index) => {
         addLocalFindingPhoto(existingFinding.id, {
@@ -320,7 +322,7 @@ export function FindingEditorForm({
       <Text style={styles.label}>Photos ({photos.length})</Text>
       <View style={styles.photoRow}>
         {photos.map((uri) => (
-          <PhotoThumb key={uri} uri={uri} style={styles.photoThumb} />
+          <PhotoThumb key={uri} uri={uri} style={styles.photoThumb} onDelete={() => setPhotos((prev) => prev.filter((u) => u !== uri))} />
         ))}
         <Pressable onPress={handleAddPhoto} style={styles.addPhotoButton}>
           <Text style={styles.addPhotoText}>📷 Take photo</Text>
