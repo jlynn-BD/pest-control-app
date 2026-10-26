@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Image, Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import * as authApi from "../../api/auth";
 import { ApiError } from "../../api/client";
-import { Field, PrimaryButton, colors } from "../../components/ui";
+import { Field, PrimaryButton, colors, fonts } from "../../components/ui";
 
 // The steps that can follow a correct password. Each one reports what the
 // server answered through onResult; the sign-in screen decides what to show
@@ -307,7 +307,7 @@ export function VerifyStep({ challenge, onSignedIn, onCancel }: { challenge: aut
       )}
       {info ? <Text style={styles.info}>{info}</Text> : null}
       <StepError message={error} />
-      <PrimaryButton title="Sign in" onPress={submit} loading={busy} />
+      <PrimaryButton title="Sign in" onPress={submit} loading={busy} variant="cta" />
       {sms && !useRecovery ? <LinkButton title={cooldown > 0 ? `Send a new code (${cooldown}s)` : "Send a new code"} onPress={resend} disabled={cooldown > 0} /> : null}
       <LinkButton title={useRecovery ? "Use my authenticator/text code instead" : "Lost your phone? Use a recovery code"} onPress={() => { setUseRecovery(!useRecovery); setCode(""); setError(null); }} />
       <LinkButton title="Back to sign in" onPress={onCancel} />
@@ -393,7 +393,7 @@ export function TextCodeStep({
       />
       {info ? <Text style={styles.info}>{info}</Text> : null}
       <StepError message={error} />
-      <PrimaryButton title="Sign in" onPress={submit} loading={busy} />
+      <PrimaryButton title="Sign in" onPress={submit} loading={busy} variant="cta" />
       <LinkButton title={cooldown > 0 ? `Send a new code (${cooldown}s)` : "Send a new code"} onPress={resend} disabled={cooldown > 0} />
       <LinkButton title="Use my password instead" onPress={onUsePassword} />
       <LinkButton title="Back" onPress={onCancel} />
@@ -428,14 +428,14 @@ export function RecoveryCodesStep({ codes, onDone }: { codes: string[]; onDone: 
 }
 
 const styles = StyleSheet.create({
-  heading: { fontSize: 20, fontWeight: "700", color: colors.text, textAlign: "center", marginBottom: 8 },
+  heading: { fontFamily: fonts.display, fontSize: 20, fontWeight: "700", color: colors.text, textAlign: "center", marginBottom: 8 },
   body: { fontSize: 14, color: colors.textMuted, textAlign: "center", marginBottom: 18, lineHeight: 20 },
   hint: { fontSize: 12, color: colors.textMuted, textAlign: "center", marginTop: 6 },
   gap: { height: 14 },
   error: { color: colors.danger, marginBottom: 14, textAlign: "center" },
-  info: { color: colors.primary, marginBottom: 10, textAlign: "center" },
+  info: { color: colors.primaryText, marginBottom: 10, textAlign: "center" },
   link: { paddingVertical: 12, alignItems: "center" },
-  linkText: { color: colors.primary, fontSize: 14, fontWeight: "600" },
+  linkText: { color: colors.primaryText, fontSize: 14, fontWeight: "600" },
   linkDisabled: { color: colors.textMuted },
   qrWrap: { alignItems: "center", marginBottom: 12 },
   qr: { width: 200, height: 200 },

@@ -40,7 +40,7 @@ import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { Geometry, MEASURE_COLOR, siteMapHintText, SiteMapArrow, SiteMapCanvas, SiteMapMode } from "../../components/ArrowCanvas";
 import { ChecklistPanel } from "../../components/ChecklistPanel";
 import { FindingEditorForm } from "../../components/FindingEditorForm";
-import { Badge, Card, Field, PrimaryButton, colors } from "../../components/ui";
+import { Badge, Card, Field, PrimaryButton, colors, fonts } from "../../components/ui";
 import type { LocalProperty } from "../../db/types";
 import type { Point } from "../../lib/arrowGeometry";
 
@@ -58,10 +58,10 @@ const ANNOTATION_TYPES: { type: SiteMapAnnotationType; label: string }[] = [
 ];
 const ANNOTATION_COLORS = [
   { label: "Red", value: "#C0392B" },
-  { label: "Orange", value: "#E07B18" },
-  { label: "Yellow", value: "#D4AC0D" },
-  { label: "Green", value: "#1F7A5C" },
-  { label: "Blue", value: "#2E6DA4" },
+  { label: "Orange", value: "#E67300" },
+  { label: "Yellow", value: "#FFC20D" },
+  { label: "Green", value: "#007A66" },
+  { label: "Blue", value: "#0079FF" },
 ];
 
 // Whichever wall/label/annotation was just auto-saved, so a one-tap "Undo"
@@ -1487,7 +1487,7 @@ const styles = StyleSheet.create({
   levelChipText: { fontSize: 13, color: colors.text },
   levelChipTextActive: { color: "#fff", fontWeight: "600" },
   levelChipAdd: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: 16, borderWidth: 1, borderColor: colors.primary, borderStyle: "dashed" },
-  levelChipAddText: { fontSize: 13, color: colors.primary, fontWeight: "600" },
+  levelChipAddText: { fontSize: 13, color: colors.primaryText, fontWeight: "600" },
   addLevelCard: { marginBottom: 14, gap: 8 },
   checklistBannerCard: { marginBottom: 14, gap: 4, borderColor: colors.primary, borderWidth: 2 },
   checklistBannerLabel: { fontSize: 12, color: colors.textMuted, fontWeight: "600" },
@@ -1531,7 +1531,7 @@ const styles = StyleSheet.create({
   uploadRow: { marginTop: 14 },
   labelPromptCard: { marginTop: 12, gap: 4 },
   editorCard: { marginTop: 14, gap: 4, borderColor: colors.primary, borderWidth: 2 },
-  editorTitle: { fontSize: 15, fontWeight: "700", color: colors.text, marginBottom: 4 },
+  editorTitle: { fontFamily: fonts.display, fontSize: 15, fontWeight: "700", color: colors.text, marginBottom: 4 },
   lastActionCard: { marginTop: 12, gap: 4, borderColor: colors.primary, borderWidth: 1 },
   toolsRow: { flexDirection: "row", gap: 8, marginTop: 10, flexWrap: "wrap" },
   toolChip: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
@@ -1545,7 +1545,7 @@ const styles = StyleSheet.create({
   nudgeBtn: { minWidth: 48, height: 44, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", backgroundColor: colors.card },
   nudgeWide: { paddingHorizontal: 14 },
   nudgeBtnText: { fontSize: 18, fontWeight: "700", color: colors.text },
-  dismissLink: { color: colors.primary, fontWeight: "600", fontSize: 13, marginTop: 4, paddingVertical: 12 },
+  dismissLink: { color: colors.primaryText, fontWeight: "600", fontSize: 13, marginTop: 4, paddingVertical: 12 },
   error: { color: colors.danger, textAlign: "center", marginTop: 10 },
   findingsListCard: { marginTop: 16, gap: 4 },
   findingsListRow: {

@@ -97,5 +97,5 @@ export function InstallHint() {
 const styles = StyleSheet.create({
   box: { marginTop: 24, alignItems: "center" },
   text: { color: colors.textMuted, fontSize: 13, textAlign: "center", lineHeight: 19 },
-  link: { color: colors.primary, fontWeight: "700", fontSize: 14 },
+  link: { color: colors.primaryText, fontWeight: "700", fontSize: 14 },
 });

@@ -4,7 +4,7 @@ import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getCustomer } from "../../api/customers";
 import { CustomersStackParamList } from "../../navigation/navigationTypes";
-import { Badge, Card, ErrorView, LoadingView, colors } from "../../components/ui";
+import { Badge, Card, ErrorView, LoadingView, colors, fonts } from "../../components/ui";
 
 type Props = NativeStackScreenProps<CustomersStackParamList, "CustomerDetail">;
 
@@ -70,12 +70,12 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, gap: 10 },
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  name: { fontSize: 22, fontWeight: "700", color: colors.text },
+  name: { fontFamily: fonts.display, fontSize: 22, fontWeight: "700", color: colors.text },
   meta: { fontSize: 14, color: colors.textMuted, marginTop: 2 },
-  sectionTitle: { fontSize: 15, fontWeight: "700", color: colors.text, marginTop: 18, marginBottom: 8 },
+  sectionTitle: { fontFamily: fonts.display, fontSize: 15, fontWeight: "700", color: colors.text, marginTop: 18, marginBottom: 8 },
   sectionHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 18 },
-  addLink: { color: colors.primary, fontWeight: "600", paddingVertical: 12 },
+  addLink: { color: colors.primaryText, fontWeight: "600", paddingVertical: 12 },
   emptyText: { color: colors.textMuted, fontStyle: "italic" },
   card: { marginBottom: 8 },
-  cardTitle: { fontSize: 15, fontWeight: "600", color: colors.text },
+  cardTitle: { fontFamily: fonts.display, fontSize: 15, fontWeight: "600", color: colors.text },
 });

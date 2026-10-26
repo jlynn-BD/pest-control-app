@@ -10,13 +10,13 @@ import EstimateListScreen from "../screens/estimates/EstimateListScreen";
 import EstimateDetailScreen from "../screens/estimates/EstimateDetailScreen";
 import EstimateFormScreen from "../screens/estimates/EstimateFormScreen";
 import { CustomersStackParamList } from "./navigationTypes";
-import { colors } from "../components/ui";
+import { headerScreenOptions } from "../components/ui";
 
 const Stack = createNativeStackNavigator<CustomersStackParamList>();
 
 export default function CustomersNavigator() {
   return (
-    <Stack.Navigator screenOptions={{ headerStyle: { backgroundColor: colors.card }, headerTintColor: colors.text }}>
+    <Stack.Navigator screenOptions={headerScreenOptions}>
       <Stack.Screen name="CustomerList" component={CustomerListScreen} options={{ title: "Customers" }} />
       <Stack.Screen name="CustomerDetail" component={CustomerDetailScreen} options={{ title: "Customer" }} />
       <Stack.Screen name="CustomerForm" component={CustomerFormScreen} options={{ title: "New Customer" }} />

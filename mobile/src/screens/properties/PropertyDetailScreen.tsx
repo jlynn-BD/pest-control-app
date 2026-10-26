@@ -12,7 +12,7 @@ import { getCachedProperty } from "../../db/cache";
 import { parseSiteMapSketch } from "../../lib/siteMapSketch";
 import { ApiError } from "../../api/client";
 import { CustomersStackParamList } from "../../navigation/navigationTypes";
-import { Badge, Card, ErrorView, LoadingView, PrimaryButton, colors } from "../../components/ui";
+import { Badge, Card, ErrorView, LoadingView, PrimaryButton, colors, fonts } from "../../components/ui";
 
 type Props = NativeStackScreenProps<CustomersStackParamList, "PropertyDetail">;
 
@@ -190,15 +190,15 @@ const styles = StyleSheet.create({
   buttonStack: { gap: 10 },
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16 },
-  title: { fontSize: 22, fontWeight: "700", color: colors.text },
+  title: { fontFamily: fonts.display, fontSize: 22, fontWeight: "700", color: colors.text },
   meta: { fontSize: 14, color: colors.textMuted, marginTop: 2 },
   notesCard: { marginTop: 14 },
   notesLabel: { fontSize: 12, color: colors.textMuted, fontWeight: "600", marginBottom: 4 },
   notesText: { fontSize: 14, color: colors.text },
-  sectionTitle: { fontSize: 15, fontWeight: "700", color: colors.text, marginTop: 20, marginBottom: 8 },
+  sectionTitle: { fontFamily: fonts.display, fontSize: 15, fontWeight: "700", color: colors.text, marginTop: 20, marginBottom: 8 },
   emptyText: { color: colors.textMuted, fontStyle: "italic", marginBottom: 10 },
   siteMapThumb: { width: "100%", height: 180, borderRadius: 10, marginBottom: 10, backgroundColor: colors.border },
   error: { color: colors.danger, marginBottom: 10 },
   card: { marginBottom: 8, gap: 4 },
-  cardTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
+  cardTitle: { fontFamily: fonts.display, fontSize: 14, fontWeight: "600", color: colors.text },
 });

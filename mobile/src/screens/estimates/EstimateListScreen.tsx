@@ -6,7 +6,7 @@ import { getCustomer } from "../../api/customers";
 import { ApiError } from "../../api/client";
 import { createEstimate, listEstimates } from "../../api/estimates";
 import { CustomersStackParamList } from "../../navigation/navigationTypes";
-import { Badge, Card, EmptyState, ErrorView, LoadingView, colors } from "../../components/ui";
+import { Badge, Card, EmptyState, ErrorView, LoadingView, colors, fonts } from "../../components/ui";
 
 type Props = NativeStackScreenProps<CustomersStackParamList, "EstimateList">;
 
@@ -81,11 +81,11 @@ export default function EstimateListScreen({ route, navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 16, paddingTop: 12 },
-  addLink: { color: colors.primary, fontWeight: "600", fontSize: 14, marginBottom: 12, paddingVertical: 12 },
+  addLink: { color: colors.primaryText, fontWeight: "600", fontSize: 14, marginBottom: 12, paddingVertical: 12 },
   errorText: { color: colors.danger, marginBottom: 12 },
   list: { gap: 10, paddingBottom: 24 },
   card: { gap: 4 },
   rowTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  title: { fontSize: 16, fontWeight: "700", color: colors.text },
+  title: { fontFamily: fonts.display, fontSize: 16, fontWeight: "700", color: colors.text },
   meta: { fontSize: 13, color: colors.textMuted },
 });

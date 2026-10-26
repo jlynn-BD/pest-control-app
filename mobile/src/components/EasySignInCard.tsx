@@ -15,7 +15,7 @@ import {
   platformAuthenticatorAvailable,
   rememberPasskeyOnThisDevice,
 } from "../lib/passkey";
-import { Card, Field, PrimaryButton, colors } from "./ui";
+import { Card, Field, PrimaryButton, colors, fonts } from "./ui";
 
 type Me = User & { smsAvailable?: boolean };
 
@@ -230,14 +230,14 @@ export function EasySignInCard({ compact = false, onDismiss }: { compact?: boole
 
 const styles = StyleSheet.create({
   card: { gap: 8 },
-  title: { fontSize: 16, fontWeight: "700", color: colors.text },
+  title: { fontFamily: fonts.display, fontSize: 16, fontWeight: "700", color: colors.text },
   body: { fontSize: 13, color: colors.textMuted, lineHeight: 18 },
   block: { marginTop: 8, gap: 8 },
   label: { fontSize: 13, fontWeight: "700", color: colors.text },
   deviceRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 },
   deviceText: { fontSize: 13, color: colors.text, flex: 1 },
-  remove: { color: colors.primary, fontWeight: "600", fontSize: 13, paddingVertical: 8 },
+  remove: { color: colors.primaryText, fontWeight: "600", fontSize: 13, paddingVertical: 8 },
   muted: { fontSize: 12, color: colors.textMuted, marginTop: 6 },
-  info: { color: colors.primary, fontSize: 13, marginTop: 6 },
+  info: { color: colors.primaryText, fontSize: 13, marginTop: 6 },
   error: { color: colors.danger, fontSize: 13, marginTop: 6 },
 });

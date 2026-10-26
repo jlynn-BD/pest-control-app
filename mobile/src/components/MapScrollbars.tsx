@@ -105,10 +105,10 @@ export function MapScrollbar({
 const styles = StyleSheet.create({
   hWrap: { flexDirection: "row", alignItems: "stretch", height: SCROLLBAR_THICKNESS, marginTop: 6 },
   vWrap: { flexDirection: "column", alignItems: "stretch", width: SCROLLBAR_THICKNESS, marginLeft: 6 },
-  hTrack: { flex: 1, backgroundColor: "#EEF1EF", borderRadius: 4, marginHorizontal: 2 },
-  vTrack: { flex: 1, backgroundColor: "#EEF1EF", borderRadius: 4, marginVertical: 2 },
-  thumb: { position: "absolute", backgroundColor: "#B4BEB9", borderRadius: 8 },
-  thumbActive: { backgroundColor: "#8C9A94" },
-  arrow: { width: SCROLLBAR_THICKNESS, height: SCROLLBAR_THICKNESS, alignItems: "center", justifyContent: "center", borderRadius: 4, backgroundColor: "#F6F7F6" },
+  hTrack: { flex: 1, backgroundColor: "#EAF0F8", borderRadius: 4, marginHorizontal: 2 },
+  vTrack: { flex: 1, backgroundColor: "#EAF0F8", borderRadius: 4, marginVertical: 2 },
+  thumb: { position: "absolute", backgroundColor: "#B6C4D8", borderRadius: 8 },
+  thumbActive: { backgroundColor: "#8497B3" },
+  arrow: { width: SCROLLBAR_THICKNESS, height: SCROLLBAR_THICKNESS, alignItems: "center", justifyContent: "center", borderRadius: 4, backgroundColor: "#F6F9FD" },
   arrowText: { fontSize: 9, color: colors.textMuted },
 });

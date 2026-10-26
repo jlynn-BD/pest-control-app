@@ -13,13 +13,13 @@ import EstimateDetailScreen from "../screens/estimates/EstimateDetailScreen";
 import EstimateFormScreen from "../screens/estimates/EstimateFormScreen";
 import SignatureCaptureScreen from "../screens/inspections/SignatureCaptureScreen";
 import { InspectionsStackParamList } from "./navigationTypes";
-import { colors } from "../components/ui";
+import { headerScreenOptions } from "../components/ui";
 
 const Stack = createNativeStackNavigator<InspectionsStackParamList>();
 
 export default function InspectionsNavigator() {
   return (
-    <Stack.Navigator screenOptions={{ headerStyle: { backgroundColor: colors.card }, headerTintColor: colors.text }}>
+    <Stack.Navigator screenOptions={headerScreenOptions}>
       <Stack.Screen name="InspectionList" component={InspectionListScreen} options={{ title: "Inspections" }} />
       <Stack.Screen name="InspectionDetail" component={InspectionDetailScreen} options={{ title: "Inspection" }} />
       <Stack.Screen name="LocalInspectionDetail" component={LocalInspectionDetailScreen} options={{ title: "Inspection" }} />

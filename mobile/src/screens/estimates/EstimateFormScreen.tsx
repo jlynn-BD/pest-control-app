@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getEstimate, LineItemInput, updateEstimate } from "../../api/estimates";
 import { ApiError } from "../../api/client";
-import { Card, Field, PrimaryButton, colors } from "../../components/ui";
+import { Card, Field, PrimaryButton, colors, fonts } from "../../components/ui";
 
 // Registered in both the Customers stack and the Inspections stack - see
 // the note in EstimateDetailScreen for why this uses a minimal nav surface
@@ -140,12 +140,12 @@ export default function EstimateFormScreen({ route, navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 40 },
-  sectionTitle: { fontSize: 15, fontWeight: "700", color: colors.text, marginBottom: 8 },
+  sectionTitle: { fontFamily: fonts.display, fontSize: 15, fontWeight: "700", color: colors.text, marginBottom: 8 },
   itemCard: { marginBottom: 10, gap: 4 },
   row: { flexDirection: "row", gap: 10 },
   rowHalf: { flex: 1 },
   removeLink: { color: colors.danger, fontSize: 13, fontWeight: "600", paddingVertical: 12 },
-  addLink: { color: colors.primary, fontWeight: "600", fontSize: 14, marginBottom: 16, paddingVertical: 12 },
+  addLink: { color: colors.primaryText, fontWeight: "600", fontSize: 14, marginBottom: 16, paddingVertical: 12 },
   meta: { fontSize: 13, color: colors.textMuted },
   body: { fontSize: 14, color: colors.text },
   totalsCard: { marginTop: 4, marginBottom: 16, gap: 4 },

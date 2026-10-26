@@ -14,7 +14,7 @@ import { ReportCard } from "../../components/ReportCard";
 import { InspectionHistoryLink } from "../../components/InspectionHistoryLink";
 import { FindingsAndRecommendations } from "../../components/FindingsAndRecommendations";
 import { runSync } from "../../sync/syncEngine";
-import { Badge, Card, PrimaryButton, colors } from "../../components/ui";
+import { Badge, Card, PrimaryButton, colors, fonts } from "../../components/ui";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "LocalInspectionDetail">;
 
@@ -170,11 +170,11 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, gap: 4 },
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  title: { fontSize: 20, fontWeight: "700", color: colors.text },
+  title: { fontFamily: fonts.display, fontSize: 20, fontWeight: "700", color: colors.text },
   meta: { fontSize: 13, color: colors.textMuted, marginTop: 2, marginBottom: 8 },
-  sectionTitle: { fontSize: 15, fontWeight: "700", color: colors.text, marginTop: 18, marginBottom: 8 },
+  sectionTitle: { fontFamily: fonts.display, fontSize: 15, fontWeight: "700", color: colors.text, marginTop: 18, marginBottom: 8 },
   card: { marginBottom: 8, gap: 2 },
-  cardTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
+  cardTitle: { fontFamily: fonts.display, fontSize: 14, fontWeight: "600", color: colors.text },
   body: { fontSize: 14, color: colors.text, marginTop: 4 },
   rowTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   photoRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },

@@ -214,7 +214,7 @@ function labelHitRect(l: { x: number; y: number }, width: number, height: number
 }
 
 const SEVERITY_COLOR: Record<string, string> = {
-  LOW: colors.primary,
+  LOW: colors.success,
   MEDIUM: colors.warning,
   HIGH: colors.danger,
   CRITICAL: colors.danger,
@@ -371,9 +371,9 @@ function applyDrag(base: Geometry, kind: HandleKind, dxn: number, dyn: number): 
 // down (dx/dy in pixels) - used for both the resize handles and the "drag the
 // shape itself to move it" surface. It refuses to give the gesture up, so a
 // drag that drifts vertically can't be stolen by the page scroll.
-const AIM_COLOR = "#1F7A5C";
+const AIM_COLOR = "#0079FF";
 // Distance lines and their readouts.
-export const MEASURE_COLOR = "#2E6DA4";
+export const MEASURE_COLOR = "#0079FF";
 
 // Mouse users see an open hand over anything draggable.
 // Crosshair cursor over the map while a drawing tool is active.
@@ -918,10 +918,10 @@ function SiteMapCanvasInner({
                 return (
                   <>
                     {lines.minor.map((g, i) => (
-                      <SvgLine key={`grid-minor-${i}`} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke="#E1E6E3" strokeWidth={0.75} />
+                      <SvgLine key={`grid-minor-${i}`} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke="#D9E3F0" strokeWidth={0.75} />
                     ))}
                     {lines.major.map((g, i) => (
-                      <SvgLine key={`grid-major-${i}`} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke="#B9C2BD" strokeWidth={1.25} />
+                      <SvgLine key={`grid-major-${i}`} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke="#B6C4D8" strokeWidth={1.25} />
                     ))}
                   </>
                 );
@@ -1446,7 +1446,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.primary,
   },
-  structureLabelText: { fontSize: 11, fontWeight: "700", color: colors.primary },
+  structureLabelText: { fontSize: 11, fontWeight: "700", color: colors.primaryText },
   structureLabelSelected: { borderWidth: 2, borderColor: colors.danger },
   shapeCaption: {
     position: "absolute",

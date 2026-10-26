@@ -7,7 +7,7 @@ import { createCustomer, listCustomers, type CustomerWithProperties } from "../a
 import { createProperty } from "../api/properties";
 import { listUsers } from "../api/users";
 import { useAuth } from "../context/AuthContext";
-import { Card, Field, PrimaryButton, colors } from "./ui";
+import { Card, Field, PrimaryButton, colors, fonts } from "./ui";
 
 // Books a client straight from the Schedule page: pick someone who is already
 // a customer, or type in a brand-new client (name + address) and schedule them
@@ -283,10 +283,10 @@ export function ScheduleClientForm({ day, onCreated, onCancel }: { day: string; 
 
 const styles = StyleSheet.create({
   card: { gap: 6, borderColor: colors.primary, borderWidth: 1 },
-  title: { fontSize: 17, fontWeight: "700", color: colors.text, marginBottom: 4 },
+  title: { fontFamily: fonts.display, fontSize: 17, fontWeight: "700", color: colors.text, marginBottom: 4 },
   label: { fontSize: 13, color: colors.textMuted, fontWeight: "600", marginTop: 8 },
   muted: { fontSize: 13, color: colors.textMuted, fontStyle: "italic" },
-  link: { color: colors.primary, fontWeight: "600", fontSize: 14, paddingVertical: 8 },
+  link: { color: colors.primaryText, fontWeight: "600", fontSize: 14, paddingVertical: 8 },
   selectedRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: colors.chip, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6 },
   selectedText: { fontSize: 16, fontWeight: "700", color: colors.text },
   resultRow: { borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 10, backgroundColor: colors.card },

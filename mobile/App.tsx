@@ -31,8 +31,8 @@ export default function App() {
 
   if (!webSqlReady) {
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#F4F6F5" }}>
-        <Text style={{ color: "#5C6B65" }}>Loading...</Text>
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#F3F7FC" }}>
+        <Text style={{ color: "#51668A" }}>Loading...</Text>
       </View>
     );
   }
@@ -44,7 +44,7 @@ export default function App() {
           {/* On a wide screen (tablet in landscape, desktop) the app is a centred
               column rather than content stretched edge to edge; on a phone or a
               portrait tablet this changes nothing. */}
-          <View style={{ flex: 1, backgroundColor: "#E4E9E6" }}>
+          <View style={{ flex: 1, backgroundColor: "#E3EAF4" }}>
             <View style={{ flex: 1, width: "100%", maxWidth: 960, alignSelf: "center", backgroundColor: colors.bg, overflow: "hidden" }}>
               <UpdateBanner />
               <RootNavigator />

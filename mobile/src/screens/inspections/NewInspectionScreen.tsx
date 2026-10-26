@@ -9,7 +9,7 @@ import type { LocalProperty, LocalTemplate } from "../../db/types";
 import { createLocalInspection, listLocalInspections } from "../../db/inspectionStore";
 import { useAuth } from "../../context/AuthContext";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
-import { Card, Field, PrimaryButton, colors } from "../../components/ui";
+import { Card, Field, PrimaryButton, colors, fonts } from "../../components/ui";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "NewInspection">;
 
@@ -192,11 +192,11 @@ export default function NewInspectionScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 40 },
-  sectionTitle: { fontSize: 15, fontWeight: "700", color: colors.text, marginTop: 12, marginBottom: 8 },
+  sectionTitle: { fontFamily: fonts.display, fontSize: 15, fontWeight: "700", color: colors.text, marginTop: 12, marginBottom: 8 },
   card: { marginBottom: 8 },
   cardSelected: { borderColor: colors.primary, borderWidth: 2 },
   cardTitleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  cardTitle: { fontSize: 15, fontWeight: "600", color: colors.text },
+  cardTitle: { fontFamily: fonts.display, fontSize: 15, fontWeight: "600", color: colors.text },
   inProgressBadge: {
     fontSize: 10,
     fontWeight: "700",

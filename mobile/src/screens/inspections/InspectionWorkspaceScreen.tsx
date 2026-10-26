@@ -20,7 +20,7 @@ import { parseSiteMapSketch } from "../../lib/siteMapSketch";
 import type { LocalSignature } from "../../db/types";
 import { PhotoThumb } from "../../components/PhotoThumb";
 import { AuthImage } from "../../components/AuthImage";
-import { Badge, Card, PrimaryButton, colors } from "../../components/ui";
+import { Badge, Card, PrimaryButton, colors, fonts } from "../../components/ui";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "InspectionWorkspace">;
 
@@ -238,6 +238,7 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
       <View style={styles.spacer} />
       {!isCompleted ? (
         <PrimaryButton
+          variant="cta"
           title="Complete inspection"
           onPress={handleComplete}
           disabled={!hasCustomerSignature || !hasTechnicianSignature || !checklistResolved}
@@ -328,12 +329,12 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 40 },
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 },
-  title: { fontSize: 20, fontWeight: "700", color: colors.text },
+  title: { fontFamily: fonts.display, fontSize: 20, fontWeight: "700", color: colors.text },
   meta: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
   section: { marginTop: 16 },
   sectionHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-  sectionTitle: { fontSize: 15, fontWeight: "700", color: colors.text },
-  addLink: { color: colors.primary, fontWeight: "600", fontSize: 13, paddingVertical: 12 },
+  sectionTitle: { fontFamily: fonts.display, fontSize: 15, fontWeight: "700", color: colors.text },
+  addLink: { color: colors.primaryText, fontWeight: "600", fontSize: 13, paddingVertical: 12 },
   secondaryLink: { color: colors.textMuted, fontWeight: "500", fontSize: 12, marginTop: 4, paddingVertical: 12 },
   itemCard: { marginBottom: 6, gap: 2 },
   wizardStepList: { gap: 2, marginBottom: 8 },
@@ -351,13 +352,13 @@ const styles = StyleSheet.create({
   wizardStepCheckboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
   wizardStepCheckboxMark: { color: "#fff", fontSize: 12, fontWeight: "700", lineHeight: 13 },
   wizardStepLabel: { fontSize: 13, fontWeight: "600", color: colors.text },
-  itemTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
+  itemTitle: { fontFamily: fonts.display, fontSize: 14, fontWeight: "600", color: colors.text },
   itemMeta: { fontSize: 12, color: colors.textMuted },
   recPhotoRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 },
   recPhoto: { width: 48, height: 48, borderRadius: 6 },
   signatureRow: { flexDirection: "row", gap: 10, marginTop: 4 },
   signatureCard: { flex: 1, alignItems: "flex-start", gap: 8 },
-  signatureCardDone: { borderColor: colors.primary },
+  signatureCardDone: { borderColor: colors.success },
   signatureImage: { width: "100%", height: 70, backgroundColor: "#fff", borderRadius: 6 },
   spacer: { height: 20 },
   hint: { color: colors.textMuted, fontSize: 12, textAlign: "center", marginTop: 8 },

@@ -1,7 +1,12 @@
 // Runs after `expo export --platform web`: makes the exported page
 // installable and phone-friendly. Expo's generated index.html has no way to
 // add these tags, so they're inserted here.
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+
+// Brand fonts (Red Hat Text, Barlow, Krona One - see public/fonts), declared inline
+// so they load with the page and are cached for offline use with the rest of the app.
+const fontsCssFile = new URL("../public/fonts/fonts.css", import.meta.url);
+const fontFaces = existsSync(fontsCssFile) ? readFileSync(fontsCssFile, "utf8") : "";
 
 const file = new URL("../dist/index.html", import.meta.url);
 let html = readFileSync(file, "utf8");
@@ -13,12 +18,18 @@ html = html.replace(
 
 const head = `
     <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#1F7A5C" />
+    <meta name="theme-color" content="#002255" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="PestApp" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preload" href="/fonts/RedHatText-400-700.woff2" as="font" type="font/woff2" crossorigin />
+    <style id="pestapp-fonts">
+${fontFaces}
+      html, body, #root { font-family: 'Red Hat Text', system-ui, -apple-system, 'Segoe UI', sans-serif; background-color: #F3F7FC; }
+      input, textarea, button, select { font-family: inherit; }
+    </style>
     <style id="pestapp-phone">
       /* dvh keeps the bottom tab bar above a phone browser's own toolbar */
       html, body { height: 100%; height: 100dvh; }

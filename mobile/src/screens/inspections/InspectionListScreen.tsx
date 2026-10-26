@@ -193,7 +193,7 @@ export default function InspectionListScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 16, paddingTop: 12 },
   addButton: { alignSelf: "flex-start", paddingVertical: 12, marginBottom: 4 },
-  addButtonText: { color: colors.primary, fontWeight: "600", fontSize: 15 },
+  addButtonText: { color: colors.primaryText, fontWeight: "600", fontSize: 15 },
   centerFill: { flex: 1, alignItems: "center", justifyContent: "center" },
   emptyTitle: { fontSize: 16, fontWeight: "600", color: colors.text },
   list: { gap: 10, paddingBottom: 24 },

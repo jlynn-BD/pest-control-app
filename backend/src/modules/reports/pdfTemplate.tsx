@@ -7,34 +7,40 @@
 import { Document, Image, Line, Link, Page, Polygon, Rect, StyleSheet, Svg, Text, View } from "@react-pdf/renderer";
 import React from "react";
 import { CHECKLIST_CATEGORY_LABEL, formatFeet, gridFeet, resolveGrid } from "@pest-app/shared";
+import { BRAND, LOGO_PATH, registerBrandFonts } from "../../lib/pdfBrand";
+
+registerBrandFonts();
 
 const styles = StyleSheet.create({
-  page: { padding: 32, fontSize: 10, fontFamily: "Helvetica", color: "#1A2421" },
+  page: { padding: 32, fontSize: 10, fontFamily: "Red Hat Text", color: "#002255" },
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 },
-  title: { fontSize: 20, fontWeight: 700 },
-  subtitle: { fontSize: 10, color: "#5C6B65", marginTop: 2 },
-  badge: { fontSize: 9, fontWeight: 700, padding: 4, backgroundColor: "#EAF3EF", borderRadius: 4 },
+  headerRight: { alignItems: "flex-end", maxWidth: 300 },
+  // The logo keeps its own proportions (432 x 285) - never stretched, recoloured or covered.
+  logo: { width: 114, height: 75 },
+  title: { fontSize: 15, fontFamily: "Krona One", color: BRAND.navy, textAlign: "right" },
+  subtitle: { fontSize: 10, color: "#51668A", marginTop: 4, textAlign: "right" },
+  badge: { fontSize: 9, fontWeight: 700, padding: 4, backgroundColor: "#E6F1FF", borderRadius: 4 },
   section: { marginTop: 16 },
-  sectionTitle: { fontSize: 13, fontWeight: 700, marginBottom: 8, borderBottomWidth: 1, borderBottomColor: "#E1E6E3", paddingBottom: 4 },
+  sectionTitle: { fontSize: 15, fontFamily: "Barlow", fontWeight: 700, color: BRAND.deepBlue, marginBottom: 8, borderBottomWidth: 2, borderBottomColor: BRAND.sky, paddingBottom: 4 },
   infoGrid: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
   infoBlock: { width: "45%", marginBottom: 8 },
-  infoLabel: { fontSize: 8, color: "#5C6B65", textTransform: "uppercase" },
+  infoLabel: { fontSize: 8, color: "#51668A", textTransform: "uppercase" },
   infoValue: { fontSize: 10, marginTop: 2 },
-  card: { borderWidth: 1, borderColor: "#E1E6E3", borderRadius: 6, padding: 10, marginBottom: 8 },
+  card: { borderWidth: 1, borderColor: "#D9E3F0", borderRadius: 6, padding: 10, marginBottom: 8 },
   cardHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  cardTitle: { fontSize: 11, fontWeight: 700 },
-  cardMeta: { fontSize: 9, color: "#5C6B65", marginTop: 2 },
+  cardTitle: { fontSize: 12, fontFamily: "Barlow", fontWeight: 700, color: BRAND.navy },
+  cardMeta: { fontSize: 9, color: "#51668A", marginTop: 2 },
   cardBody: { fontSize: 9.5, marginTop: 4 },
   severityHigh: { color: "#C0392B", fontWeight: 700 },
-  severityMedium: { color: "#B8860B", fontWeight: 700 },
-  severityLow: { color: "#1F7A5C", fontWeight: 700 },
+  severityMedium: { color: "#A85400", fontWeight: 700 },
+  severityLow: { color: "#007A66", fontWeight: 700 },
   checklistRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     flexWrap: "wrap",
     borderBottomWidth: 1,
-    borderBottomColor: "#F0F2F1",
+    borderBottomColor: "#EAF0F8",
     paddingVertical: 4,
   },
   checklistPrompt: { fontSize: 9.5, flexGrow: 1, flexBasis: "60%", paddingRight: 8 },
@@ -42,15 +48,15 @@ const styles = StyleSheet.create({
   // fixed column on the right, and any note on its own line underneath.
   // (They used to share one wrapping row, so a note was squeezed in beside
   // the status and printed right up against it, e.g. "NEEDS ATTENTIONGaps near plumbing".)
-  checklistItem: { borderBottomWidth: 1, borderBottomColor: "#F0F2F1", paddingVertical: 4 },
+  checklistItem: { borderBottomWidth: 1, borderBottomColor: "#EAF0F8", paddingVertical: 4 },
   checklistLine: { flexDirection: "row", alignItems: "flex-start" },
   checklistQuestion: { fontSize: 9.5, flex: 1, paddingRight: 12 },
   checklistStatus: { width: 100, fontSize: 9, textAlign: "right" },
-  checklistNotes: { fontSize: 9, color: "#3B4741", marginTop: 3, marginLeft: 6, paddingLeft: 6, borderLeftWidth: 2, borderLeftColor: "#E1E6E3" },
+  checklistNotes: { fontSize: 9, color: "#2C4068", marginTop: 3, marginLeft: 6, paddingLeft: 6, borderLeftWidth: 2, borderLeftColor: "#D9E3F0" },
   // Fixed at 540x540pt (7.5in x 7.5in at 72pt/in) to match a real printed
   // quad-ruled sketch page, not stretched to fill the column - see
   // gridLines() below for the 13.5pt minor / 67.5pt major square spacing.
-  siteMapBox: { width: 540, height: 540, position: "relative", borderWidth: 1, borderColor: "#E1E6E3", borderRadius: 4, overflow: "hidden", backgroundColor: "#FFFFFF" },
+  siteMapBox: { width: 540, height: 540, position: "relative", borderWidth: 1, borderColor: "#D9E3F0", borderRadius: 4, overflow: "hidden", backgroundColor: "#FFFFFF" },
   siteMapImage: { position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover" },
   siteMapLabel: {
     position: "absolute",
@@ -77,7 +83,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     fontSize: 8,
     fontWeight: 700,
-    color: "#1A2421",
+    color: "#002255",
     backgroundColor: "rgba(255,255,255,0.9)",
     borderRadius: 2,
     paddingVertical: 1,
@@ -87,11 +93,11 @@ const styles = StyleSheet.create({
     position: "absolute",
     fontSize: 8,
     fontWeight: 700,
-    color: "#1F7A5C",
-    backgroundColor: "#EAF3EF",
+    color: "#007A66",
+    backgroundColor: "#E6F1FF",
     borderRadius: 3,
     borderWidth: 1,
-    borderColor: "#1F7A5C",
+    borderColor: "#007A66",
     paddingVertical: 1,
     paddingHorizontal: 4,
   },
@@ -99,10 +105,10 @@ const styles = StyleSheet.create({
   photo: { width: 90, height: 90, borderRadius: 4 },
   signatureRow: { flexDirection: "row", gap: 24, marginTop: 8 },
   signatureBlock: { flex: 1 },
-  signatureImage: { width: 180, height: 70, borderWidth: 1, borderColor: "#E1E6E3", objectFit: "contain" },
+  signatureImage: { width: 180, height: 70, borderWidth: 1, borderColor: "#D9E3F0", objectFit: "contain" },
   signatureLabel: { fontSize: 9, marginTop: 4, fontWeight: 700 },
-  signatureMeta: { fontSize: 8, color: "#5C6B65" },
-  footer: { position: "absolute", bottom: 24, left: 32, right: 32, fontSize: 8, color: "#5C6B65", textAlign: "center" },
+  signatureMeta: { fontSize: 8, color: "#51668A" },
+  footer: { position: "absolute", bottom: 24, left: 32, right: 32, fontSize: 8, color: "#51668A", textAlign: "center" },
 });
 
 function severityStyle(severity: string) {
@@ -119,8 +125,8 @@ function checklistStatusStyle(status: string) {
 
 
 const SEVERITY_ARROW_COLOR: Record<string, string> = {
-  LOW: "#1F7A5C",
-  MEDIUM: "#B8860B",
+  LOW: "#007A66",
+  MEDIUM: "#A85400",
   HIGH: "#C0392B",
   CRITICAL: "#C0392B",
 };
@@ -361,11 +367,12 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
     <Document>
       <Page size="LETTER" style={styles.page}>
         <View style={styles.headerRow}>
-          <View>
+          <Image src={LOGO_PATH} style={styles.logo} />
+          <View style={styles.headerRight}>
             <Text style={styles.title}>Pest Inspection Report</Text>
             <Text style={styles.subtitle}>Generated {new Date(data.generatedAt).toLocaleString()}</Text>
+            <Text style={[styles.badge, { marginTop: 6 }]}>{data.status.replace(/_/g, " ")}</Text>
           </View>
-          <Text style={styles.badge}>{data.status.replace(/_/g, " ")}</Text>
         </View>
 
         <View style={styles.section}>
@@ -402,7 +409,7 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
           const gridDef = panel.grid;
           const grid = gridLines(gridDef);
           const lengthTags = [
-            ...(gridDef.showLengths ? panel.lines.map((l) => ({ x1: l.x1, y1: l.y1, x2: l.x2, y2: l.y2, color: "#1A2421" })) : []),
+            ...(gridDef.showLengths ? panel.lines.map((l) => ({ x1: l.x1, y1: l.y1, x2: l.x2, y2: l.y2, color: "#002255" })) : []),
             ...panel.annotations
               .filter((a) => a.type === "measure")
               .map((a) => ({ x1: a.x1, y1: a.y1, x2: a.x2 ?? a.x1, y2: a.y2 ?? a.y1, color: a.color })),
@@ -422,20 +429,20 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
                   {!panel.imagePath ? (
                     <>
                       {grid.minor.map((g, i) => (
-                        <Line key={`grid-minor-${i}`} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke="#E1E6E3" strokeWidth={0.0007} />
+                        <Line key={`grid-minor-${i}`} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke="#D9E3F0" strokeWidth={0.0007} />
                       ))}
                       {grid.major.map((g, i) => (
-                        <Line key={`grid-major-${i}`} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke="#B9C2BD" strokeWidth={0.0016} />
+                        <Line key={`grid-major-${i}`} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke="#B6C4D8" strokeWidth={0.0016} />
                       ))}
                     </>
                   ) : null}
                   {panel.lines.map((l, i) => (
-                    <Line key={`wall-${i}`} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke="#1A2421" strokeWidth={0.008} />
+                    <Line key={`wall-${i}`} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke="#002255" strokeWidth={0.008} />
                   ))}
                   {panel.arrows.map((a, i) => {
                     const start = { x: a.startX, y: a.startY };
                     const end = { x: a.endX, y: a.endY };
-                    const color = SEVERITY_ARROW_COLOR[a.severity] ?? "#1A2421";
+                    const color = SEVERITY_ARROW_COLOR[a.severity] ?? "#002255";
                     return (
                       <React.Fragment key={`arrow-${i}`}>
                         <Line x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke={color} strokeWidth={0.006} />
@@ -541,7 +548,7 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
                       {
                         left: `${Math.min(Math.max(a.startX * 100 - 15, 1), 78)}%`,
                         top: `${Math.min(Math.max(a.startY * 100 - 4, 1), 92)}%`,
-                        borderColor: SEVERITY_ARROW_COLOR[a.severity] ?? "#1A2421",
+                        borderColor: SEVERITY_ARROW_COLOR[a.severity] ?? "#002255",
                       },
                     ]}
                   >

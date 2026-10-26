@@ -23,5 +23,5 @@ export function InspectionHistoryLink({ inspectionId, title }: { inspectionId: s
 
 const styles = StyleSheet.create({
   link: { paddingVertical: 8 },
-  text: { color: colors.primary, fontWeight: "600", fontSize: 14 },
+  text: { color: colors.primaryText, fontWeight: "600", fontSize: 14 },
 });

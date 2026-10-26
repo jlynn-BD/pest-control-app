@@ -7,7 +7,7 @@ import { useSignaturePad } from "../../components/SignaturePad";
 import { SignatureBox, SignatureSvgHandle } from "../../components/SignatureBox";
 import { useCompletedLock } from "../../lib/useCompletedLock";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
-import { Field, PrimaryButton, colors } from "../../components/ui";
+import { Field, PrimaryButton, colors, fonts } from "../../components/ui";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "SignatureCapture">;
 
@@ -65,6 +65,6 @@ export default function SignatureCaptureScreen({ route, navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 40 },
-  heading: { fontSize: 18, fontWeight: "700", color: colors.text, marginBottom: 16 },
+  heading: { fontFamily: fonts.display, fontSize: 18, fontWeight: "700", color: colors.text, marginBottom: 16 },
   error: { color: colors.danger, marginVertical: 12, textAlign: "center" },
 });

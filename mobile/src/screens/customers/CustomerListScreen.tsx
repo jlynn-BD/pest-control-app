@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { listCustomers } from "../../api/customers";
 import { CustomersStackParamList } from "../../navigation/navigationTypes";
-import { Badge, EmptyState, ErrorView, Field, LoadingView, colors } from "../../components/ui";
+import { Badge, EmptyState, ErrorView, Field, LoadingView, colors, fonts } from "../../components/ui";
 
 type Props = NativeStackScreenProps<CustomersStackParamList, "CustomerList">;
 
@@ -62,7 +62,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 16, paddingTop: 12 },
   searchRow: { marginBottom: 4 },
   addButton: { alignSelf: "flex-start", paddingVertical: 12, marginBottom: 4 },
-  addButtonText: { color: colors.primary, fontWeight: "600", fontSize: 15 },
+  addButtonText: { color: colors.primaryText, fontWeight: "600", fontSize: 15 },
   list: { paddingBottom: 24, gap: 10 },
   row: {
     flexDirection: "row",
@@ -75,6 +75,6 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   rowMain: { flex: 1 },
-  name: { fontSize: 16, fontWeight: "600", color: colors.text },
+  name: { fontFamily: fonts.display, fontSize: 16, fontWeight: "600", color: colors.text },
   meta: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
 });

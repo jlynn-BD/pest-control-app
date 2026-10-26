@@ -1,7 +1,7 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { PhotoThumb } from "./PhotoThumb";
-import { Badge, Card, colors } from "./ui";
+import { Badge, Card, colors, fonts } from "./ui";
 
 export interface FindingRow {
   id: string;
@@ -63,9 +63,9 @@ export function FindingsAndRecommendations({
 }
 
 const styles = StyleSheet.create({
-  sectionTitle: { fontSize: 15, fontWeight: "700", color: colors.text, marginTop: 18, marginBottom: 8 },
+  sectionTitle: { fontFamily: fonts.display, fontSize: 15, fontWeight: "700", color: colors.text, marginTop: 18, marginBottom: 8 },
   card: { marginBottom: 8, gap: 2 },
-  cardTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
+  cardTitle: { fontFamily: fonts.display, fontSize: 14, fontWeight: "600", color: colors.text },
   meta: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
   body: { fontSize: 14, color: colors.text, marginTop: 4 },
   rowTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },

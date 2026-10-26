@@ -6,7 +6,7 @@ import { ApiError } from "../../api/client";
 import * as usersApi from "../../api/users";
 import type { Role } from "../../api/users";
 import { useAuth } from "../../context/AuthContext";
-import { Badge, Card, Field, LoadingView, PrimaryButton, colors } from "../../components/ui";
+import { Badge, Card, Field, LoadingView, PrimaryButton, colors, fonts } from "../../components/ui";
 
 const ROLES: { value: Role; label: string }[] = [
   { value: "TECHNICIAN", label: "Technician" },
@@ -272,8 +272,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: 10 },
   half: { flex: 1 },
   error: { color: colors.danger, marginVertical: 10, textAlign: "center" },
-  sectionTitle: { fontSize: 15, fontWeight: "700", color: colors.text, marginTop: 20, marginBottom: 8 },
-  cardTitle: { fontSize: 16, fontWeight: "700", color: colors.text, marginBottom: 8 },
+  sectionTitle: { fontFamily: fonts.display, fontSize: 15, fontWeight: "700", color: colors.text, marginTop: 20, marginBottom: 8 },
+  cardTitle: { fontFamily: fonts.display, fontSize: 16, fontWeight: "700", color: colors.text, marginBottom: 8 },
   warnCard: { marginBottom: 12, borderColor: colors.danger, borderWidth: 1 },
   secretCard: { marginBottom: 12, borderColor: colors.warning, borderWidth: 1 },
   secret: { fontSize: 22, fontWeight: "700", letterSpacing: 1, color: colors.text, marginVertical: 10, fontFamily: "Courier" },
@@ -287,7 +287,7 @@ const styles = StyleSheet.create({
   chipTextOn: { color: "#fff" },
   userCard: { marginBottom: 10, gap: 6 },
   inactive: { opacity: 0.6 },
-  name: { fontSize: 16, fontWeight: "700", color: colors.text },
+  name: { fontFamily: fonts.display, fontSize: 16, fontWeight: "700", color: colors.text },
   meta: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
   badges: { flexDirection: "row", gap: 6, flexWrap: "wrap", marginVertical: 6 },
   actions: { borderTopColor: colors.border, borderTopWidth: 1, marginTop: 8, paddingTop: 12 },

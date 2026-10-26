@@ -10,10 +10,10 @@ import { listLocalInspections, LocalInspectionListItem } from "../../db/inspecti
 import { ensureLocalInspection } from "../../lib/resumeInspection";
 import { inspectionForAppointment, startInspectionFromAppointment } from "../../lib/startInspection";
 import { ScheduleClientForm } from "../../components/ScheduleClientForm";
-import { Badge, Card, PrimaryButton, colors } from "../../components/ui";
+import { Badge, Card, PrimaryButton, colors, fonts } from "../../components/ui";
 
-const COMPLETED_GREEN = "#2E9E5B";
-const PENDING_YELLOW = "#F2B705";
+const COMPLETED_GREEN = "#007A66";
+const PENDING_YELLOW = "#FFC20D";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 // Local calendar day (not UTC) - a 9pm-local inspection must land on that
@@ -441,11 +441,11 @@ const styles = StyleSheet.create({
   monthRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   monthTitle: { fontSize: 18, fontWeight: "700", color: colors.text },
   monthButton: { paddingHorizontal: 14, minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
-  monthButtonText: { fontSize: 26, color: colors.primary, fontWeight: "600" },
+  monthButtonText: { fontSize: 26, color: colors.primaryText, fontWeight: "600" },
   legendRow: { flexDirection: "row", alignItems: "center", gap: 16, marginBottom: 4 },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
   legendText: { fontSize: 12, color: colors.textMuted, fontWeight: "600" },
-  todayLink: { marginLeft: "auto", color: colors.primary, fontWeight: "700", fontSize: 13, paddingVertical: 12 },
+  todayLink: { marginLeft: "auto", color: colors.primaryText, fontWeight: "700", fontSize: 13, paddingVertical: 12 },
   dot: { width: 9, height: 9, borderRadius: 5 },
   grid: { flexDirection: "row", flexWrap: "wrap" },
   cell: { width: `${100 / 7}%`, alignItems: "center", paddingVertical: 2 },
@@ -464,12 +464,12 @@ const styles = StyleSheet.create({
   dayBoxToday: { borderColor: colors.primary, borderWidth: 2 },
   dayBoxSelected: { backgroundColor: colors.chip, borderColor: colors.primary, borderWidth: 2 },
   dayNumber: { fontSize: 14, fontWeight: "600", color: colors.text },
-  dayNumberSelected: { color: colors.primary, fontWeight: "800" },
+  dayNumberSelected: { color: colors.primaryText, fontWeight: "800" },
   dotRow: { flexDirection: "row", gap: 3, height: 9 },
-  heading: { fontSize: 16, fontWeight: "700", color: colors.text, marginTop: 12 },
+  heading: { fontFamily: fonts.display, fontSize: 16, fontWeight: "700", color: colors.text, marginTop: 12 },
   card: { gap: 4, marginBottom: 2 },
   rowTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  time: { fontSize: 15, fontWeight: "700", color: colors.primary },
+  time: { fontSize: 15, fontWeight: "700", color: colors.primaryText },
   customer: { fontSize: 16, fontWeight: "600", color: colors.text },
   meta: { fontSize: 13, color: colors.textMuted },
   empty: { color: colors.textMuted, fontSize: 13, fontStyle: "italic", marginTop: 4 },

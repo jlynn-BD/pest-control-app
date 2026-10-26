@@ -125,7 +125,7 @@ export const SignatureBox = forwardRef<
       </div>
       <div
         onClick={onClear}
-        style={{ color: colors.primary, fontWeight: 600, marginTop: 8, textAlign: "right", cursor: "pointer" }}
+        style={{ color: colors.primaryText, fontWeight: 600, marginTop: 8, textAlign: "right", cursor: "pointer" }}
       >
         Clear signature
       </div>

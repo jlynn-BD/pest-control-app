@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useAuth } from "../../context/AuthContext";
 import { ApiError } from "../../api/client";
 import type { Challenge, LoginResult, SignedIn } from "../../api/auth";
 import * as authApi from "../../api/auth";
 import { InstallHint } from "../../components/InstallHint";
 import { biometricName, getPasskey, hasPasskeyHint, lastEmail, PasskeyCancelled, passkeysSupported, rememberLastEmail, rememberPasskeyOnThisDevice } from "../../lib/passkey";
-import { Field, PrimaryButton, colors } from "../../components/ui";
+import { Field, PrimaryButton, colors, fonts } from "../../components/ui";
 import { EnrollStep, PasswordChangeStep, RecoveryCodesStep, TextCodeStep, VerifyStep } from "./AuthSteps";
 
 export default function LoginScreen() {
@@ -215,7 +215,7 @@ export default function LoginScreen() {
             onSubmitEditing={handleContinue}
           />
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          <PrimaryButton title="Continue" onPress={handleContinue} loading={submitting} />
+          <PrimaryButton title="Continue" onPress={handleContinue} loading={submitting} variant="cta" />
           <Text style={styles.hintText}>We'll email you a sign-in code. No password to remember.</Text>
           {faceBlock}
           <Text style={styles.linkText} onPress={() => { setUsePassword(true); setError(null); }}>
@@ -254,7 +254,7 @@ export default function LoginScreen() {
           />
           {notice ? <Text style={styles.notice}>{notice}</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          <PrimaryButton title="Log in" onPress={handleSubmit} loading={submitting} />
+          <PrimaryButton title="Log in" onPress={handleSubmit} loading={submitting} variant="cta" />
           {codesAvailable === false ? null : (
             <Text style={styles.linkText} onPress={() => { setUsePassword(false); setError(null); setNotice(null); setPassword(""); }}>
               Email me a code instead
@@ -270,7 +270,10 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <Text style={styles.title}>PestApp Field</Text>
+        <View style={styles.brand}>
+          <Image source={require("../../../assets/blue-duck-logo.png")} style={styles.logo} resizeMode="contain" accessibilityLabel="Blue Duck Pest Control" />
+          <Text style={styles.title}>FIELD INSPECTIONS</Text>
+        </View>
         {body}
         <InstallHint />
       </ScrollView>
@@ -281,13 +284,16 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.bg },
   container: { flexGrow: 1, justifyContent: "center", padding: 24 },
-  title: { fontSize: 28, fontWeight: "700", color: colors.text, textAlign: "center", marginBottom: 6 },
+  brand: { alignItems: "center", marginBottom: 14 },
+  // The logo keeps its own proportions (432 x 285) and clear space around it.
+  logo: { width: 216, height: 142, marginBottom: 10 },
+  title: { fontFamily: fonts.headline, fontSize: 15, letterSpacing: 2, color: colors.text, textAlign: "center", marginBottom: 6 },
   subtitle: { fontSize: 14, color: colors.textMuted, textAlign: "center", marginBottom: 32 },
   form: {},
   error: { color: colors.danger, marginBottom: 14, textAlign: "center" },
   hintText: { color: colors.textMuted, fontSize: 12, textAlign: "center", marginTop: 8 },
   faceRow: { marginTop: 18 },
-  linkText: { color: colors.primary, fontSize: 14, fontWeight: "600", textAlign: "center", paddingVertical: 14 },
+  linkText: { color: colors.primaryText, fontSize: 14, fontWeight: "600", textAlign: "center", paddingVertical: 14 },
   notice: { color: colors.textMuted, fontSize: 13, textAlign: "center", marginBottom: 12, lineHeight: 18 },
   slow: { color: colors.textMuted, fontSize: 13, textAlign: "center", marginTop: 12 },
 });

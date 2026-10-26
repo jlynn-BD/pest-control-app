@@ -4,38 +4,43 @@
 // conflict across the two copies at the type level only. Runtime is
 // unaffected (this file runs through tsx, which strips types without
 // checking); EstimateData below stays fully typed and is what callers rely on.
-import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
+import { Document, Image, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import React from "react";
+import { BRAND, LOGO_PATH, registerBrandFonts } from "../../lib/pdfBrand";
+
+registerBrandFonts();
 
 const styles = StyleSheet.create({
-  page: { padding: 32, fontSize: 10, fontFamily: "Helvetica", color: "#1A2421" },
+  page: { padding: 32, fontSize: 10, fontFamily: "Red Hat Text", color: "#002255" },
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 },
-  title: { fontSize: 20, fontWeight: 700 },
-  subtitle: { fontSize: 10, color: "#5C6B65", marginTop: 2 },
-  badge: { fontSize: 9, fontWeight: 700, padding: 4, backgroundColor: "#EAF3EF", borderRadius: 4 },
+  title: { fontSize: 15, fontFamily: "Krona One", color: BRAND.navy, textAlign: "right" },
+  logo: { width: 114, height: 75 },
+  headerRight: { alignItems: "flex-end", maxWidth: 300 },
+  subtitle: { fontSize: 10, color: "#51668A", marginTop: 2 },
+  badge: { fontSize: 9, fontWeight: 700, padding: 4, backgroundColor: "#E6F1FF", borderRadius: 4 },
   section: { marginTop: 16 },
-  sectionTitle: { fontSize: 13, fontWeight: 700, marginBottom: 8, borderBottomWidth: 1, borderBottomColor: "#E1E6E3", paddingBottom: 4 },
+  sectionTitle: { fontSize: 15, fontFamily: "Barlow", fontWeight: 700, color: BRAND.deepBlue, marginBottom: 8, borderBottomWidth: 2, borderBottomColor: BRAND.sky, paddingBottom: 4 },
   infoGrid: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
   infoBlock: { width: "45%", marginBottom: 8 },
-  infoLabel: { fontSize: 8, color: "#5C6B65", textTransform: "uppercase" },
+  infoLabel: { fontSize: 8, color: "#51668A", textTransform: "uppercase" },
   infoValue: { fontSize: 10, marginTop: 2 },
-  table: { marginTop: 4, borderWidth: 1, borderColor: "#E1E6E3", borderRadius: 6 },
-  tableHeaderRow: { flexDirection: "row", backgroundColor: "#EAF3EF", paddingVertical: 6, paddingHorizontal: 10 },
-  tableRow: { flexDirection: "row", paddingVertical: 6, paddingHorizontal: 10, borderTopWidth: 1, borderTopColor: "#E1E6E3" },
+  table: { marginTop: 4, borderWidth: 1, borderColor: "#D9E3F0", borderRadius: 6 },
+  tableHeaderRow: { flexDirection: "row", backgroundColor: "#E6F1FF", paddingVertical: 6, paddingHorizontal: 10 },
+  tableRow: { flexDirection: "row", paddingVertical: 6, paddingHorizontal: 10, borderTopWidth: 1, borderTopColor: "#D9E3F0" },
   colDescription: { flex: 3, fontSize: 9.5 },
   colQty: { flex: 1, fontSize: 9.5, textAlign: "right" },
   colPrice: { flex: 1, fontSize: 9.5, textAlign: "right" },
   colAmount: { flex: 1, fontSize: 9.5, textAlign: "right" },
-  headerCell: { fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "#5C6B65" },
+  headerCell: { fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "#51668A" },
   totalsBlock: { marginTop: 12, alignSelf: "flex-end", width: 220 },
   totalsRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 3 },
-  totalsLabel: { fontSize: 10, color: "#5C6B65" },
+  totalsLabel: { fontSize: 10, color: "#51668A" },
   totalsValue: { fontSize: 10 },
-  grandTotalRow: { flexDirection: "row", justifyContent: "space-between", paddingTop: 6, marginTop: 4, borderTopWidth: 1, borderTopColor: "#1A2421" },
+  grandTotalRow: { flexDirection: "row", justifyContent: "space-between", paddingTop: 6, marginTop: 4, borderTopWidth: 1, borderTopColor: "#002255" },
   grandTotalLabel: { fontSize: 12, fontWeight: 700 },
   grandTotalValue: { fontSize: 12, fontWeight: 700 },
   cardBody: { fontSize: 9.5, marginTop: 4 },
-  footer: { position: "absolute", bottom: 24, left: 32, right: 32, fontSize: 8, color: "#5C6B65", textAlign: "center" },
+  footer: { position: "absolute", bottom: 24, left: 32, right: 32, fontSize: 8, color: "#51668A", textAlign: "center" },
 });
 
 function formatCurrency(amount: number): string {
@@ -70,11 +75,12 @@ export function EstimateDocument({ data }: { data: EstimateData }) {
     <Document>
       <Page size="LETTER" style={styles.page}>
         <View style={styles.headerRow}>
-          <View>
+          <Image src={LOGO_PATH} style={styles.logo} />
+          <View style={styles.headerRight}>
             <Text style={styles.title}>Service Estimate</Text>
             <Text style={styles.subtitle}>Generated {new Date(data.generatedAt).toLocaleString()}</Text>
+            <Text style={[styles.badge, { marginTop: 6 }]}>{data.status}</Text>
           </View>
-          <Text style={styles.badge}>{data.status}</Text>
         </View>
 
         <View style={styles.section}>

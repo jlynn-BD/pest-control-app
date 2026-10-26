@@ -96,7 +96,7 @@ export function PhotoThumb({ uri, style, onDelete }: { uri: string; style?: obje
 
 const styles = StyleSheet.create({
   wrap: { position: "relative" },
-  badge: { position: "absolute", top: -7, right: -7, width: 22, height: 22, borderRadius: 11, backgroundColor: "#1A2421", alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#fff" },
+  badge: { position: "absolute", top: -7, right: -7, width: 22, height: 22, borderRadius: 11, backgroundColor: "#002255", alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#fff" },
   badgeText: { color: "#fff", fontSize: 11, fontWeight: "800", lineHeight: 13 },
   confirmBadge: { position: "absolute", top: -9, right: -9, paddingHorizontal: 8, height: 24, borderRadius: 12, backgroundColor: "#C0392B", alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#fff" },
   confirmText: { color: "#fff", fontSize: 11, fontWeight: "800" },

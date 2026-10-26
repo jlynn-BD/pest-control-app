@@ -5,7 +5,7 @@ import CustomersNavigator from "./CustomersNavigator";
 import InspectionsNavigator from "./InspectionsNavigator";
 import ScheduleScreen from "../screens/schedule/ScheduleScreen";
 import SettingsNavigator from "./SettingsNavigator";
-import { colors } from "../components/ui";
+import { colors, fonts, headerScreenOptions } from "../components/ui";
 
 const Tab = createBottomTabNavigator();
 
@@ -22,12 +22,11 @@ export default function MainTabs() {
       screenOptions={({ route }) => ({
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
-        tabBarLabelStyle: { fontSize: 11, paddingBottom: 2 },
+        tabBarLabelStyle: { fontSize: 11, paddingBottom: 2, fontFamily: fonts.body, fontWeight: "600" },
         ...(Platform.OS === "web"
           ? { tabBarStyle: { minHeight: 62, paddingTop: 4, paddingBottom: "calc(env(safe-area-inset-bottom) + 6px)" as unknown as number } }
           : {}),
-        headerStyle: { backgroundColor: colors.card },
-        headerTintColor: colors.text,
+        ...headerScreenOptions,
         tabBarIcon: () => <Text style={{ fontSize: 20 }}>{ICONS[route.name]}</Text>,
       })}
     >

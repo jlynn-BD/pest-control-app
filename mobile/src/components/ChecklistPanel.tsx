@@ -662,13 +662,13 @@ function ChoiceButton({
   tone: "ok" | "issue";
   onPress: () => void;
 }) {
-  const accent = tone === "ok" ? colors.primary : colors.danger;
+  const accent = tone === "ok" ? colors.success : colors.danger;
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="checkbox"
       accessibilityState={{ checked }}
-      style={[styles.choice, checked && { borderColor: accent, backgroundColor: tone === "ok" ? colors.chip : "#FBEAE8" }]}
+      style={[styles.choice, checked && { borderColor: accent, backgroundColor: tone === "ok" ? "#E3F5F1" : "#FBEAE8" }]}
     >
       <View style={[styles.choiceBox, { borderColor: accent }, checked && { backgroundColor: accent }]}>
         {checked ? <Text style={styles.choiceMark}>✓</Text> : null}
@@ -749,17 +749,17 @@ const styles = StyleSheet.create({
   severityTextOn: { color: "#fff" },
   newIssueButtons: { flexDirection: "row", gap: 10, marginTop: 4 },
   newIssueButtonHalf: { flex: 1 },
-  addAnotherIssueLink: { color: colors.primary, fontWeight: "600", fontSize: 13, marginTop: 4, paddingVertical: 12 },
+  addAnotherIssueLink: { color: colors.primaryText, fontWeight: "600", fontSize: 13, marginTop: 4, paddingVertical: 12 },
   photoRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 4 },
   photoThumb: { width: 56, height: 56, borderRadius: 6 },
   // Photos shown straight on the item, big enough to recognise at a glance.
   summaryPhotos: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 8 },
-  summaryThumb: { width: 84, height: 84, borderRadius: 8, borderWidth: 1, borderColor: "#E1E6E3" },
-  addPhotoLink: { color: colors.primary, fontWeight: "600", fontSize: 13, paddingVertical: 12 },
+  summaryThumb: { width: 84, height: 84, borderRadius: 8, borderWidth: 1, borderColor: "#D9E3F0" },
+  addPhotoLink: { color: colors.primaryText, fontWeight: "600", fontSize: 13, paddingVertical: 12 },
   checkAllTop: { marginLeft: 0, marginTop: 0, marginBottom: 12, fontSize: 15 },
-  checkAllLink: { color: colors.primary, fontWeight: "600", fontSize: 13, marginLeft: 8, marginTop: 4, paddingVertical: 12 },
+  checkAllLink: { color: colors.primaryText, fontWeight: "600", fontSize: 13, marginLeft: 8, marginTop: 4, paddingVertical: 12 },
   checkAllConfirmRow: { flexDirection: "row", alignItems: "center", gap: 12, marginLeft: 8, marginTop: 4 },
   checkAllConfirmText: { fontSize: 13, color: colors.text, flexShrink: 1 },
-  checkAllConfirmAction: { color: colors.primary, fontWeight: "700", fontSize: 13 },
+  checkAllConfirmAction: { color: colors.primaryText, fontWeight: "700", fontSize: 13 },
   checkAllCancelAction: { color: colors.textMuted, fontWeight: "600", fontSize: 13 },
 });

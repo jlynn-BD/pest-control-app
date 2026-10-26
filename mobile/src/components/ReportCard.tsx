@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { ApiError } from "../api/client";
 import { generateReport, getReport } from "../api/reports";
 import { downloadAndShareReport } from "../lib/report";
-import { Card, PrimaryButton, colors } from "./ui";
+import { Card, PrimaryButton, colors, fonts } from "./ui";
 
 // Generate / regenerate / share the PDF report for a completed inspection.
 // Shared by the server-backed and on-device detail screens so both offer it.
@@ -52,12 +52,12 @@ export function ReportCard({ inspectionId }: { inspectionId: string }) {
               <PrimaryButton title="Regenerate" onPress={() => generateMutation.mutate()} loading={generateMutation.isPending} />
             </View>
             <View style={styles.buttonHalf}>
-              <PrimaryButton title="Share PDF" onPress={() => handleShare(report.id)} loading={sharing} />
+              <PrimaryButton title="Share PDF" onPress={() => handleShare(report.id)} loading={sharing} variant="cta" />
             </View>
           </View>
         </>
       ) : (
-        <PrimaryButton title="Generate report" onPress={() => generateMutation.mutate()} loading={generateMutation.isPending} />
+        <PrimaryButton title="Generate report" onPress={() => generateMutation.mutate()} loading={generateMutation.isPending} variant="cta" />
       )}
       {reportError ? <Text style={styles.errorText}>{reportError}</Text> : null}
     </Card>
@@ -66,7 +66,7 @@ export function ReportCard({ inspectionId }: { inspectionId: string }) {
 
 const styles = StyleSheet.create({
   reportCard: { marginTop: 12, marginBottom: 4, gap: 4 },
-  cardTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
+  cardTitle: { fontFamily: fonts.display, fontSize: 14, fontWeight: "600", color: colors.text },
   meta: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
   buttonRow: { flexDirection: "row", gap: 10, marginTop: 8 },
   buttonHalf: { flex: 1 },

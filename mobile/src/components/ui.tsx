@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -9,17 +10,46 @@ import {
   View,
 } from "react-native";
 
+// Blue Duck Pest Control brand colors (from the brand guidelines):
+//   navy 002255 - deep blue 003969 - blue 0079FF - sky 26A5FF - light sky 4DD2FF
+//   teal green 007A66 - lime 77C242 - orange E67300 - yellow FFC20D - pale yellow FFF3A3
+// The greys are tints of the navy so everything sits in one family.
 export const colors = {
-  bg: "#F4F6F5",
+  bg: "#F3F7FC",
   card: "#FFFFFF",
-  border: "#E1E6E3",
-  text: "#1A2421",
-  textMuted: "#5C6B65",
-  primary: "#1F7A5C",
-  primaryDark: "#155C44",
+  border: "#D9E3F0",
+  text: "#002255", // navy
+  textMuted: "#51668A",
+  primary: "#0079FF", // bright blue: buttons, selected states, active tabs
+  primaryDark: "#003969", // deep blue: pressed buttons, headers
+  primaryText: "#0062CC", // the same blue, darkened a touch so small link text stays easy to read
+  success: "#007A66", // teal green: OK / done / completed
   danger: "#C0392B",
-  warning: "#B8860B",
-  chip: "#EAF3EF",
+  warning: "#E67300", // orange
+  chip: "#E6F1FF",
+  navy: "#002255",
+  sky: "#26A5FF",
+  lime: "#77C242",
+  orange: "#E67300",
+  yellow: "#FFC20D",
+  paleYellow: "#FFF3A3",
+};
+
+// Brand typefaces. The brand fonts Country Blues / Ronsard Crystal are paid, so
+// the guidelines' free alternates are used: Barlow for display headings, Krona
+// One for the big headline, Red Hat Text for everything else. Loaded by the web
+// app (see public/fonts); other platforms fall back to the system font.
+export const fonts = {
+  body: Platform.OS === "web" ? "'Red Hat Text', system-ui, -apple-system, sans-serif" : undefined,
+  display: Platform.OS === "web" ? "Barlow, 'Red Hat Text', system-ui, sans-serif" : undefined,
+  headline: Platform.OS === "web" ? "'Krona One', Barlow, system-ui, sans-serif" : undefined,
+};
+
+// Header bar for the stacks: navy with white title, like the brand's buttons and logo badge.
+export const headerScreenOptions = {
+  headerStyle: { backgroundColor: colors.navy },
+  headerTintColor: "#FFFFFF",
+  headerTitleStyle: { fontFamily: fonts.display, fontWeight: "700" as const, fontSize: 20 },
 };
 
 export function Screen({ children }: { children: React.ReactNode }) {
@@ -56,25 +86,38 @@ export function ErrorView({ message }: { message: string }) {
   );
 }
 
+// "cta" is the bright orange call-to-action (sign in, complete, share); the
+// brand guide asks for brighter colors on those. "navy" is the brand's dark button.
+export type ButtonVariant = "primary" | "cta" | "navy" | "success";
+const BUTTON_COLOR: Record<ButtonVariant, { bg: string; pressed: string }> = {
+  primary: { bg: colors.primary, pressed: colors.primaryDark },
+  cta: { bg: colors.orange, pressed: "#BF5E00" },
+  navy: { bg: colors.navy, pressed: "#001A40" },
+  success: { bg: colors.success, pressed: "#005C4D" },
+};
+
 export function PrimaryButton({
   title,
   onPress,
   disabled,
   loading,
+  variant = "primary",
 }: {
   title: string;
   onPress: () => void;
   disabled?: boolean;
   loading?: boolean;
+  variant?: ButtonVariant;
 }) {
+  const color = BUTTON_COLOR[variant];
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled || loading}
       style={({ pressed }) => [
         styles.primaryButton,
+        { backgroundColor: pressed ? color.pressed : color.bg },
         (disabled || loading) && styles.buttonDisabled,
-        pressed && styles.buttonPressed,
       ]}
     >
       {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>{title}</Text>}
@@ -168,7 +211,7 @@ const styles = StyleSheet.create({
   },
   centerFill: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24, gap: 8 },
   mutedText: { color: colors.textMuted, fontSize: 14, textAlign: "center" },
-  emptyTitle: { color: colors.text, fontSize: 16, fontWeight: "600" },
+  emptyTitle: { color: colors.text, fontSize: 18, fontWeight: "700", fontFamily: fonts.display },
   errorText: { color: colors.danger, fontSize: 14, textAlign: "center" },
   primaryButton: {
     backgroundColor: colors.primary,
@@ -178,8 +221,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   buttonDisabled: { opacity: 0.5 },
-  buttonPressed: { backgroundColor: colors.primaryDark },
-  primaryButtonText: { color: "#fff", fontWeight: "600", fontSize: 16 },
+  primaryButtonText: { color: "#fff", fontWeight: "700", fontSize: 16, fontFamily: fonts.body },
   field: { marginBottom: 14 },
   fieldLabel: { fontSize: 13, color: colors.textMuted, marginBottom: 6, fontWeight: "500" },
   inputWithToggle: { paddingRight: 64 },
@@ -197,9 +239,9 @@ const styles = StyleSheet.create({
   },
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   badgeDefault: { backgroundColor: colors.chip },
-  badgeWarning: { backgroundColor: "#FBF0D9" },
+  badgeWarning: { backgroundColor: colors.paleYellow },
   badgeDanger: { backgroundColor: "#F8D7D3" },
-  badgeSuccess: { backgroundColor: "#DBEFE4" },
+  badgeSuccess: { backgroundColor: "#D3EFE9" },
   badgeText: { fontSize: 12, fontWeight: "600", color: colors.text },
   checkboxRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 4 },
   checkboxBox: {
