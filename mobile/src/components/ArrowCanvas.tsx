@@ -371,7 +371,7 @@ function applyDrag(base: Geometry, kind: HandleKind, dxn: number, dyn: number): 
 // down (dx/dy in pixels) - used for both the resize handles and the "drag the
 // shape itself to move it" surface. It refuses to give the gesture up, so a
 // drag that drifts vertically can't be stolen by the page scroll.
-const AIM_COLOR = "#0079FF";
+const AIM_COLOR = "#E67300";
 // Distance lines and their readouts.
 export const MEASURE_COLOR = "#0079FF";
 

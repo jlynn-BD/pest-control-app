@@ -20,13 +20,13 @@ export const colors = {
   border: "#D9E3F0",
   text: "#002255", // navy
   textMuted: "#51668A",
-  primary: "#0079FF", // bright blue: buttons, selected states, active tabs
-  primaryDark: "#003969", // deep blue: pressed buttons, headers
-  primaryText: "#0062CC", // the same blue, darkened a touch so small link text stays easy to read
+  primary: "#E67300", // brand orange (the duck's shirt and cap): buttons, selected states, active tabs
+  primaryDark: "#B85C00", // darker orange: pressed buttons
+  primaryText: "#B35A00", // the same orange, darkened a touch so small link text stays easy to read
   success: "#007A66", // teal green: OK / done / completed
   danger: "#C0392B",
   warning: "#E67300", // orange
-  chip: "#E6F1FF",
+  chip: "#FFF0DC", // pale orange tint for selected backgrounds
   navy: "#002255",
   sky: "#26A5FF",
   lime: "#77C242",
@@ -47,7 +47,8 @@ export const fonts = {
 
 // Header bar for the stacks: navy with white title, like the brand's buttons and logo badge.
 export const headerScreenOptions = {
-  headerStyle: { backgroundColor: colors.navy },
+  // The brand yellow outline along the bottom, like the logo's outline.
+  headerStyle: { backgroundColor: colors.navy, borderBottomColor: colors.yellow, borderBottomWidth: 3 },
   headerTintColor: "#FFFFFF",
   headerTitleStyle: { fontFamily: fonts.display, fontWeight: "700" as const, fontSize: 20 },
 };
@@ -91,7 +92,7 @@ export function ErrorView({ message }: { message: string }) {
 export type ButtonVariant = "primary" | "cta" | "navy" | "success";
 const BUTTON_COLOR: Record<ButtonVariant, { bg: string; pressed: string }> = {
   primary: { bg: colors.primary, pressed: colors.primaryDark },
-  cta: { bg: colors.orange, pressed: "#BF5E00" },
+  cta: { bg: colors.orange, pressed: colors.primaryDark },
   navy: { bg: colors.navy, pressed: "#001A40" },
   success: { bg: colors.success, pressed: "#005C4D" },
 };

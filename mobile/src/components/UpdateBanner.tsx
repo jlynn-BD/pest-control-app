@@ -49,8 +49,8 @@ export function UpdateBanner() {
 }
 
 const styles = StyleSheet.create({
-  bar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, backgroundColor: "#0079FF", paddingHorizontal: 16, paddingVertical: 10 },
+  bar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, backgroundColor: "#E67300", paddingHorizontal: 16, paddingVertical: 10 },
   text: { color: "#fff", fontSize: 14, fontWeight: "600", flex: 1 },
   button: { backgroundColor: "#fff", paddingVertical: 6, paddingHorizontal: 14, borderRadius: 999 },
-  buttonText: { color: "#0079FF", fontSize: 14, fontWeight: "800" },
+  buttonText: { color: "#B35A00", fontSize: 14, fontWeight: "800" },
 });

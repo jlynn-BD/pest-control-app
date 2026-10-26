@@ -19,7 +19,7 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 10, color: "#51668A", marginTop: 2 },
   badge: { fontSize: 9, fontWeight: 700, padding: 4, backgroundColor: "#E6F1FF", borderRadius: 4 },
   section: { marginTop: 16 },
-  sectionTitle: { fontSize: 15, fontFamily: "Barlow", fontWeight: 700, color: BRAND.deepBlue, marginBottom: 8, borderBottomWidth: 2, borderBottomColor: BRAND.sky, paddingBottom: 4 },
+  sectionTitle: { fontSize: 15, fontFamily: "Barlow", fontWeight: 700, color: BRAND.deepBlue, marginBottom: 8, borderBottomWidth: 2, borderBottomColor: BRAND.orange, paddingBottom: 4 },
   infoGrid: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
   infoBlock: { width: "45%", marginBottom: 8 },
   infoLabel: { fontSize: 8, color: "#51668A", textTransform: "uppercase" },
