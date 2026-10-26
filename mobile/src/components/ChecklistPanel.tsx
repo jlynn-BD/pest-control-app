@@ -484,14 +484,25 @@ function ChecklistItemRow({
         <ChoiceButton label="Issues" checked={hasIssue} tone="issue" onPress={() => choose("NEEDS_ATTENTION")} />
       </View>
       {hasIssue && !detailsOpen ? (
-        <View style={styles.issueSummary}>
-          <Text style={styles.issueSummaryText} numberOfLines={2}>
-            {notes && notes.trim() ? notes.trim() : "Photo added"}
-            {photos.length > 0 ? `  ·  ${photos.length} photo${photos.length === 1 ? "" : "s"}` : ""}
-          </Text>
-          <Text style={styles.addPhotoLink} onPress={onActivate}>
-            Edit
-          </Text>
+        <View>
+          <View style={styles.issueSummary}>
+            <Text style={styles.issueSummaryText} numberOfLines={2}>
+              {notes && notes.trim() ? notes.trim() : "Photo added"}
+              {photos.length > 0 ? `  ·  ${photos.length} photo${photos.length === 1 ? "" : "s"}` : ""}
+            </Text>
+            <Text style={styles.addPhotoLink} onPress={onActivate}>
+              Edit
+            </Text>
+          </View>
+          {/* The photos are right there on the item (tap one to see it full
+              size, e.g. to show the customer) - no need to open Edit first. */}
+          {photos.length > 0 ? (
+            <View style={styles.summaryPhotos}>
+              {photos.map((p) => (
+                <PhotoThumb key={p.id} uri={p.localUri} style={styles.summaryThumb} />
+              ))}
+            </View>
+          ) : null}
         </View>
       ) : null}
       {hasIssue && issues.length > 0 ? (
@@ -505,6 +516,13 @@ function ChecklistItemRow({
                   {issue.photos.length > 0 ? `  ·  ${issue.photos.length} photo${issue.photos.length === 1 ? "" : "s"}` : ""}
                   {issue.siteMapArrowStartX != null ? "  ·  📍 on site map" : ""}
                 </Text>
+                {issue.photos.length > 0 ? (
+                  <View style={styles.summaryPhotos}>
+                    {issue.photos.map((p) => (
+                      <PhotoThumb key={p.id} uri={p.localUri} style={styles.summaryThumb} />
+                    ))}
+                  </View>
+                ) : null}
               </View>
               <Text style={styles.addPhotoLink} onPress={() => onEditFinding(issue.id)}>
                 Edit
@@ -733,7 +751,10 @@ const styles = StyleSheet.create({
   newIssueButtonHalf: { flex: 1 },
   addAnotherIssueLink: { color: colors.primary, fontWeight: "600", fontSize: 13, marginTop: 4, paddingVertical: 12 },
   photoRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 4 },
-  photoThumb: { width: 48, height: 48, borderRadius: 6 },
+  photoThumb: { width: 56, height: 56, borderRadius: 6 },
+  // Photos shown straight on the item, big enough to recognise at a glance.
+  summaryPhotos: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 8 },
+  summaryThumb: { width: 84, height: 84, borderRadius: 8, borderWidth: 1, borderColor: "#E1E6E3" },
   addPhotoLink: { color: colors.primary, fontWeight: "600", fontSize: 13, paddingVertical: 12 },
   checkAllTop: { marginLeft: 0, marginTop: 0, marginBottom: 12, fontSize: 15 },
   checkAllLink: { color: colors.primary, fontWeight: "600", fontSize: 13, marginLeft: 8, marginTop: 4, paddingVertical: 12 },
