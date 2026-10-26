@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React, { useEffect, useState } from "react";
 import { Platform, Text, View } from "react-native";
 import { colors } from "./src/components/ui";
+import { UpdateBanner } from "./src/components/UpdateBanner";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "./src/context/AuthContext";
@@ -45,6 +46,7 @@ export default function App() {
               portrait tablet this changes nothing. */}
           <View style={{ flex: 1, backgroundColor: "#E4E9E6" }}>
             <View style={{ flex: 1, width: "100%", maxWidth: 960, alignSelf: "center", backgroundColor: colors.bg, overflow: "hidden" }}>
+              <UpdateBanner />
               <RootNavigator />
             </View>
           </View>
