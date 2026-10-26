@@ -15,7 +15,7 @@ import {
 import type { LocalChecklistResponse, LocalChecklistResponsePhoto, LocalFinding, LocalFindingPhoto, LocalTemplateItem } from "../db/types";
 import { CHECKLIST_CATEGORY_DISPLAY_ORDER, CHECKLIST_CATEGORY_LABEL } from "../lib/checklist";
 import { capturePhoto, pickPhotosFromLibrary } from "../lib/photo";
-import { AuthImage } from "./AuthImage";
+import { PhotoThumb } from "./PhotoThumb";
 import { Badge, Card, Field, PrimaryButton, colors } from "./ui";
 
 type ResponseWithPhotos = LocalChecklistResponse & { photos: LocalChecklistResponsePhoto[] };
@@ -542,7 +542,7 @@ function ChecklistItemRow({
           </View>
           <View style={styles.photoRow}>
             {issuePhotos.map((uri) => (
-              <AuthImage key={uri} uri={uri} style={styles.photoThumb} />
+              <PhotoThumb key={uri} uri={uri} style={styles.photoThumb} />
             ))}
             <Text
               style={styles.addPhotoLink}
@@ -594,7 +594,7 @@ function ChecklistItemRow({
           />
           <View style={styles.photoRow}>
             {photos.map((p) => (
-              <AuthImage key={p.id} uri={p.localUri} style={styles.photoThumb} />
+              <PhotoThumb key={p.id} uri={p.localUri} style={styles.photoThumb} />
             ))}
             <Text
               style={styles.addPhotoLink}

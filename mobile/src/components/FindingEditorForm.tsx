@@ -9,7 +9,7 @@ import { capturePhoto, pickPhotosFromLibrary } from "../lib/photo";
 import { getCurrentCoords } from "../lib/location";
 import { CHECKLIST_CATEGORY_SHORT_LABEL, findChecklistResponseSummary, listChecklistResponseSummaries } from "../lib/checklist";
 import { SegmentedControl } from "./ChipMultiSelect";
-import { AuthImage } from "./AuthImage";
+import { PhotoThumb } from "./PhotoThumb";
 import { Badge, Field, PrimaryButton, colors } from "./ui";
 
 const SEVERITY_OPTIONS = [Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL];
@@ -320,7 +320,7 @@ export function FindingEditorForm({
       <Text style={styles.label}>Photos ({photos.length})</Text>
       <View style={styles.photoRow}>
         {photos.map((uri) => (
-          <AuthImage key={uri} uri={uri} style={styles.photoThumb} />
+          <PhotoThumb key={uri} uri={uri} style={styles.photoThumb} />
         ))}
         <Pressable onPress={handleAddPhoto} style={styles.addPhotoButton}>
           <Text style={styles.addPhotoText}>📷 Take photo</Text>

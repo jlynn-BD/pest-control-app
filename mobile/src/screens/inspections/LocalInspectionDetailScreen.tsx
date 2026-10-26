@@ -8,6 +8,7 @@ import { CHECKLIST_CATEGORY_LABEL, CHECKLIST_STATUS_LABEL, groupChecklistForDisp
 import { buildSiteMapPanels, parseSiteMapSketch } from "../../lib/siteMapSketch";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { SiteMapCanvas } from "../../components/ArrowCanvas";
+import { PhotoThumb } from "../../components/PhotoThumb";
 import { AuthImage } from "../../components/AuthImage";
 import { ReportCard } from "../../components/ReportCard";
 import { InspectionHistoryLink } from "../../components/InspectionHistoryLink";
@@ -129,7 +130,7 @@ export default function LocalInspectionDetailScreen({ route }: Props) {
               {item.photos.length > 0 ? (
                 <View style={styles.photoRow}>
                   {item.photos.map((p) => (
-                    <AuthImage key={p.id} uri={p.localUri} style={styles.photoThumb} />
+                    <PhotoThumb key={p.id} uri={p.localUri} style={styles.photoThumb} />
                   ))}
                 </View>
               ) : null}

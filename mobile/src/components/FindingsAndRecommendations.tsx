@@ -1,6 +1,6 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { AuthImage } from "./AuthImage";
+import { PhotoThumb } from "./PhotoThumb";
 import { Badge, Card, colors } from "./ui";
 
 export interface FindingRow {
@@ -43,7 +43,7 @@ export function FindingsAndRecommendations({
           {f.photoUris.length > 0 ? (
             <View style={styles.photoRow}>
               {f.photoUris.map((uri) => (
-                <AuthImage key={uri} uri={uri} style={styles.photoThumb} />
+                <PhotoThumb key={uri} uri={uri} style={styles.photoThumb} />
               ))}
             </View>
           ) : null}

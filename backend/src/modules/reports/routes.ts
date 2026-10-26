@@ -4,6 +4,7 @@ import React from "react";
 import { CHECKLIST_CATEGORY_DISPLAY_ORDER, fitView, getSiteMapLevelRank, levelPoints, parseRawSketch, resolveGrid, visibleSketch } from "@pest-app/shared";
 import { generateId } from "../../lib/id";
 import { prisma } from "../../lib/prisma";
+import { isShareablePhotoKey, signPhotoLink } from "../../lib/mediaLinks";
 import { storage } from "../../lib/storage";
 import { asyncHandler, HttpError } from "../../middleware/error-handler";
 import { requireAuth } from "../../middleware/auth";
@@ -16,14 +17,17 @@ const MEDIA_PREFIX = "/api/media/file/";
 
 // Loads a stored image for the PDF. A file that's gone (or can't be read as
 // PNG/JPEG) is skipped instead of failing the whole report.
-async function loadReportImage(fileUrl: string): Promise<ReportImage | null> {
+async function loadReportImage(fileUrl: string, publicBase?: string): Promise<ReportImage | null> {
   const key = fileUrl.startsWith(MEDIA_PREFIX) ? fileUrl.slice(MEDIA_PREFIX.length) : fileUrl;
   const file = await storage.read(key);
   if (!file) return null;
   const isPng = file.data.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
   const isJpg = file.data.subarray(0, 2).equals(Buffer.from([0xff, 0xd8]));
   if (!isPng && !isJpg) return null;
-  return { data: file.data, format: isPng ? "png" : "jpg" };
+  // An inspection photo gets a link to its full-size picture, so tapping it in
+  // the PDF opens it (the customer has no login to the app).
+  const href = publicBase && isShareablePhotoKey(key) ? `${publicBase}/api/public/photo/${signPhotoLink(key)}` : undefined;
+  return { data: file.data, format: isPng ? "png" : "jpg", ...(href ? { href } : {}) };
 }
 
 function toReportRecommendation(r: { title: string; description: string | null; priority: string; status: string; deadline: Date | null }) {
@@ -36,7 +40,7 @@ function toReportRecommendation(r: { title: string; description: string | null; 
   };
 }
 
-async function buildReportData(inspectionId: string): Promise<ReportData> {
+async function buildReportData(inspectionId: string, publicBase?: string): Promise<ReportData> {
   const inspection = await prisma.inspection.findFirst({
     where: { id: inspectionId, deletedAt: null },
     include: {
@@ -148,7 +152,7 @@ async function buildReportData(inspectionId: string): Promise<ReportData> {
         locationDetail: f.locationDetail,
         severity: f.severity,
         description: f.description,
-        photoPaths: (await Promise.all(f.photos.map((p) => loadReportImage(p.fileUrl)))).filter((img): img is ReportImage => img !== null),
+        photoPaths: (await Promise.all(f.photos.map((p) => loadReportImage(p.fileUrl, publicBase)))).filter((img): img is ReportImage => img !== null),
         recommendation: rec ? toReportRecommendation(rec) : null,
       };
     })),
@@ -175,7 +179,9 @@ reportsRouter.post(
     if (inspection.status !== "COMPLETED") throw new HttpError(400, "Inspection must be completed before generating a report");
     if (inspection.signatures.length === 0) throw new HttpError(400, "At least one signature is required before generating a report");
 
-    const data = await buildReportData(inspection.id);
+    // Where the photo links in the PDF point: this server's public address.
+    const publicBase = (process.env.PUBLIC_API_URL || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
+    const data = await buildReportData(inspection.id, publicBase);
     // renderToBuffer's typing wants a literal <Document> element; our
     // wrapper component always renders exactly one, so this cast is safe
     // (see the @ts-nocheck note in pdfTemplate.tsx for the underlying

@@ -4,6 +4,8 @@ import cors from "cors";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler";
 import { auditRequests } from "./middleware/audit";
 import { blockEditsToCompletedInspections } from "./lib/inspectionLock";
+import { verifyPhotoLink } from "./lib/mediaLinks";
+import { storage } from "./lib/storage";
 import { auditRouter } from "./modules/audit/routes";
 import { authRouter } from "./modules/auth/routes";
 import { usersRouter } from "./modules/users/routes";
@@ -52,6 +54,24 @@ app.use(express.json({ limit: "5mb" }));
 
 // "build" is the git commit Render deployed (handy for confirming a deploy went live).
 app.get("/api/health", (req, res) => res.json({ status: "ok", time: new Date().toISOString(), build: (process.env.RENDER_GIT_COMMIT || "local").slice(0, 7) }));
+
+// Photo links inside emailed reports: signed, expiring, photos only, no login
+// (the customer has none). Must come before anything that requires one.
+app.get("/api/public/photo/:token", async (req, res, next) => {
+  try {
+    const key = verifyPhotoLink(req.params.token);
+    if (!key) return res.status(404).json({ error: "This link is not valid or has expired." });
+    const file = await storage.read(key);
+    if (!file) return res.status(404).json({ error: "Photo not found." });
+    res.setHeader("Content-Type", file.contentType);
+    res.setHeader("Content-Disposition", "inline");
+    res.setHeader("Cache-Control", "private, max-age=86400");
+    res.setHeader("X-Robots-Tag", "noindex, nofollow");
+    res.send(file.data);
+  } catch (err) {
+    next(err);
+  }
+});
 
 app.use("/api", auditRequests);
 app.use("/api", blockEditsToCompletedInspections);

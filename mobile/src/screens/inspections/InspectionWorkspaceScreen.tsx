@@ -18,6 +18,7 @@ import { useCompletedLock } from "../../lib/useCompletedLock";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { parseSiteMapSketch } from "../../lib/siteMapSketch";
 import type { LocalSignature } from "../../db/types";
+import { PhotoThumb } from "../../components/PhotoThumb";
 import { AuthImage } from "../../components/AuthImage";
 import { Badge, Card, PrimaryButton, colors } from "../../components/ui";
 
@@ -197,7 +198,7 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
                 {f.photos.length > 0 ? (
                   <View style={styles.recPhotoRow}>
                     {f.photos.map((p) => (
-                      <AuthImage key={p.id} uri={p.localUri} style={styles.recPhoto} />
+                      <PhotoThumb key={p.id} uri={p.localUri} style={styles.recPhoto} />
                     ))}
                   </View>
                 ) : null}

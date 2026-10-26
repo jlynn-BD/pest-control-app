@@ -4,7 +4,7 @@
 // conflict across the two copies at the type level only. Runtime is
 // unaffected (this file runs through tsx, which strips types without
 // checking); ReportData below stays fully typed and is what callers rely on.
-import { Document, Image, Line, Page, Polygon, Rect, StyleSheet, Svg, Text, View } from "@react-pdf/renderer";
+import { Document, Image, Line, Link, Page, Polygon, Rect, StyleSheet, Svg, Text, View } from "@react-pdf/renderer";
 import React from "react";
 import { CHECKLIST_CATEGORY_LABEL, formatFeet, gridFeet, resolveGrid } from "@pest-app/shared";
 
@@ -252,6 +252,8 @@ export interface ReportSiteMapAnnotation {
 export interface ReportImage {
   data: Buffer;
   format: "png" | "jpg";
+  // Where the full-size picture opens when it is tapped in the PDF.
+  href?: string;
 }
 
 export interface ReportSiteMapPanel {
@@ -587,6 +589,9 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
           {data.findings.length === 0 && data.standaloneRecommendations.length === 0 ? (
             <Text style={styles.cardBody}>No findings or recommendations recorded.</Text>
           ) : null}
+          {data.findings.some((f) => f.photoPaths.some((p) => p.href)) ? (
+            <Text style={[styles.cardMeta, { marginBottom: 6 }]}>Tap any photo to open it full size.</Text>
+          ) : null}
           {data.findings.map((f, i) => (
             <View key={i} style={styles.card} wrap={false}>
               <View style={styles.cardHeaderRow}>
@@ -605,9 +610,15 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
               {f.description ? <Text style={styles.cardBody}>{f.description}</Text> : null}
               {f.photoPaths.length > 0 ? (
                 <View style={styles.photoRow}>
-                  {f.photoPaths.map((p, pi) => (
-                    <Image key={pi} src={{ data: p.data, format: p.format }} style={styles.photo} />
-                  ))}
+                  {f.photoPaths.map((p, pi) =>
+                    p.href ? (
+                      <Link key={pi} src={p.href}>
+                        <Image src={{ data: p.data, format: p.format }} style={styles.photo} />
+                      </Link>
+                    ) : (
+                      <Image key={pi} src={{ data: p.data, format: p.format }} style={styles.photo} />
+                    )
+                  )}
                 </View>
               ) : null}
             </View>
