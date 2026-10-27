@@ -1,5 +1,4 @@
 import { Router } from "express";
-import path from "node:path";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma";
 import { generateId } from "../../lib/id";
@@ -7,6 +6,7 @@ import { storage } from "../../lib/storage";
 import { asyncHandler, HttpError } from "../../middleware/error-handler";
 import { requireAuth } from "../../middleware/auth";
 import { upload } from "../../middleware/upload";
+import { photoExt } from "../../lib/uploadExt";
 
 const findingSchema = z.object({
   areaLocation: z.string().min(1),
@@ -112,7 +112,7 @@ findingsRouter.post(
     if (!finding) throw new HttpError(404, "Finding not found");
 
     const photoId = generateId();
-    const ext = path.extname(req.file.originalname) || ".jpg";
+    const ext = photoExt(req.file.originalname);
     const key = `photos/${finding.id}/${photoId}${ext}`;
     await storage.save(req.file.buffer, key);
 

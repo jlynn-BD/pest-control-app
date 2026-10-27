@@ -73,3 +73,23 @@ services:
       - type: rewrite
         source: /*
         destination: /index.html
+    # Response headers for every page and file. The sign-in tokens live in the
+    # browser, so the page must not be embeddable in someone else's site
+    # (clickjacking), type-sniffed, or leak its address, and may only ask for
+    # the camera/location it actually uses (photos).
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: no-referrer
+      - path: /*
+        name: Strict-Transport-Security
+        value: max-age=15552000; includeSubDomains
+      - path: /*
+        name: Permissions-Policy
+        value: camera=(self), geolocation=(self), microphone=()

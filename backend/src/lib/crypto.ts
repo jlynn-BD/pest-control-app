@@ -1,9 +1,10 @@
 import crypto from "node:crypto";
+import { requireSecret } from "./env";
 
 // Everything secret-derived comes from the existing JWT secrets so Render
 // needs no new env var; MFA_ENCRYPTION_KEY can override it later.
 function baseSecret(): string {
-  return process.env.MFA_ENCRYPTION_KEY || process.env.JWT_REFRESH_SECRET || "dev-refresh-secret";
+  return process.env.MFA_ENCRYPTION_KEY || requireSecret("JWT_REFRESH_SECRET", "dev-refresh-secret");
 }
 
 function key(purpose: string): Buffer {

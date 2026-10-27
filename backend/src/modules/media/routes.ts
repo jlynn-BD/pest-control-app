@@ -1,10 +1,10 @@
 import { Router } from "express";
-import path from "node:path";
 import { generateId } from "../../lib/id";
 import { storage } from "../../lib/storage";
 import { asyncHandler, HttpError } from "../../middleware/error-handler";
 import { requireAuth } from "../../middleware/auth";
 import { upload } from "../../middleware/upload";
+import { documentExt } from "../../lib/uploadExt";
 
 export const mediaRouter = Router();
 mediaRouter.use(requireAuth);
@@ -15,7 +15,7 @@ mediaRouter.post(
   asyncHandler(async (req, res) => {
     if (!req.file) throw new HttpError(400, "No file uploaded");
     const id = generateId();
-    const ext = path.extname(req.file.originalname) || "";
+    const ext = documentExt(req.file.originalname);
     const key = `uploads/${id}${ext}`;
     await storage.save(req.file.buffer, key);
     res.status(201).json({ id, url: `/api/media/file/${key}` });

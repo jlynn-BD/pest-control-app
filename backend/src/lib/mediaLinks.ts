@@ -1,10 +1,11 @@
 import jwt from "jsonwebtoken";
+import { requireSecret } from "./env";
 
 // Links that let a customer open a photo from the emailed PDF report at full
 // size without an account. Each link is signed (nobody can make one up or
 // change it to reach another file), only ever opens inspection photos, and
 // stops working after REPORT_LINK_DAYS (default one year).
-const SECRET = `${process.env.JWT_ACCESS_SECRET || "dev-access-secret"}:media-link`;
+const SECRET = `${requireSecret("JWT_ACCESS_SECRET", "dev-access-secret")}:media-link`;
 const DAYS = Number(process.env.REPORT_LINK_DAYS || 365);
 
 // Only the photos taken during an inspection - never signatures, reports or site plans.

@@ -1,5 +1,4 @@
 import { Router } from "express";
-import path from "node:path";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma";
 import { generateId } from "../../lib/id";
@@ -7,6 +6,7 @@ import { storage } from "../../lib/storage";
 import { asyncHandler, HttpError } from "../../middleware/error-handler";
 import { requireAuth } from "../../middleware/auth";
 import { upload } from "../../middleware/upload";
+import { photoExt } from "../../lib/uploadExt";
 import { mergeSketches, parseRawSketch, RawSketch } from "@pest-app/shared";
 
 export const propertiesRouter = Router();
@@ -144,7 +144,7 @@ propertiesRouter.post(
     const property = await prisma.property.findFirst({ where: { id: req.params.id, deletedAt: null } });
     if (!property) throw new HttpError(404, "Property not found");
 
-    const ext = path.extname(req.file.originalname) || ".jpg";
+    const ext = photoExt(req.file.originalname);
     const key = `site-maps/${property.id}/${generateId()}${ext}`;
     await storage.save(req.file.buffer, key);
 

@@ -1,7 +1,8 @@
 import jwt from "jsonwebtoken";
+import { requireSecret } from "./env";
 
-const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || "dev-access-secret";
-const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || "dev-refresh-secret";
+const ACCESS_SECRET = requireSecret("JWT_ACCESS_SECRET", "dev-access-secret");
+const REFRESH_SECRET = requireSecret("JWT_REFRESH_SECRET", "dev-refresh-secret");
 // A separate key (derived, so Render needs no new env var) for the
 // half-finished-login token: it must never be accepted as an access token.
 const CHALLENGE_SECRET = `${ACCESS_SECRET}:challenge`;

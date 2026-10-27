@@ -10,7 +10,9 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
-    "seed": "tsx prisma/seed.ts"
+    "seed": "tsx prisma/seed.ts",
+    "backup": "tsx scripts/backup.ts",
+    "restore": "tsx scripts/restore.ts"
   },
   "dependencies": {
     "@pest-app/shared": "*",
@@ -23,7 +25,7 @@
     "express": "^4.21.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
-    "nodemailer": "^6.9.16",
+    "nodemailer": "^10.2.1",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "uuid": "^9.0.1",

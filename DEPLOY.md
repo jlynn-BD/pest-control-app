@@ -48,6 +48,31 @@ Use a mailbox the whole crew can't read; the code is the key to the account. (Op
 
 **Emergency switch:** setting `MFA_ENFORCED=false` on the backend turns the requirement off for accounts that haven't set up a second step. Don't leave it that way.
 
+## Backups and recovery
+
+Everything the app stores - customers, inspections, signatures, **and every photo and PDF** - lives in the one Postgres database (`pestapp-db`), so backing up that database backs up everything.
+
+**1. Render's own backups (already on - the database is on a paid plan).** Render continuously backs up paid databases and can restore to any moment in the last few days (3 on a Hobby workspace, 7 on Professional - check the Recovery tab). To use it: Render -> `pestapp-db` -> **Recovery** -> pick a time. Restoring creates a *new* database; point `DATABASE_URL` at it, so nothing is overwritten. The same tab has **Create export** for a one-click downloadable copy.
+
+**2. Your own copy, off Render (recommended weekly, and before any risky change).**
+
+1. Render -> `pestapp-db` -> **Connections** -> copy the **External Database URL**. Treat it like a password.
+2. In the project folder run `npm run backup -w backend` and paste the URL when asked (the typing is hidden and it is not saved anywhere).
+3. It writes `~/pestapp-backups/pestapp-<date>.jsonl.gz` (readable only by you), reads it back to prove it is complete, and prints a SHA256. Copy the file somewhere private and **not** on this computer only (an encrypted drive or a private cloud folder). It contains customer data and photos.
+
+It only reads the database and never changes it.
+
+**Restoring from your copy** (into a new, empty database - it refuses anything else):
+
+1. Create a new empty Postgres database on Render and copy its External URL.
+2. `DATABASE_URL='<new url>' npm run prisma:migrate:deploy -w backend` (creates the empty tables).
+3. `npm run restore -w backend -- ~/pestapp-backups/<file>.jsonl.gz` and paste the new URL when asked. It loads everything in one all-or-nothing step and counts the rows afterwards.
+4. Point the backend's `DATABASE_URL` at the new database.
+
+`npm run restore -w backend -- <file> --check` only verifies a backup file, with no database needed - handy for checking an old backup is still good.
+
+**Test a restore at least once** before you need one. A backup that has never been restored is a hope, not a backup.
+
 ## Known limitations on the free tier
 
 - **File uploads don't persist.** No disk is attached on the free backend plan, so photos, site-map images, and generated PDFs live on ephemeral local disk and disappear whenever the service restarts (including the automatic spin-down after 15 minutes idle). Findings/checklist/treatment data in Postgres is unaffected — only the actual files. Fix: upgrade `pestapp-backend` to a paid instance type and attach a Render Disk (ask and I'll wire it into `render.yaml`).
