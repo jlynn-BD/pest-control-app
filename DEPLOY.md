@@ -62,6 +62,14 @@ Everything the app stores - customers, inspections, signatures, **and every phot
 
 It only reads the database and never changes it.
 
+**Keep a copy off this computer automatically.** Run it once with a private cloud folder (iCloud Drive or Google Drive; never a shared folder):
+
+```bash
+npm run backup -w backend -- --copy-to "$HOME/Library/Mobile Documents/com~apple~CloudDocs/PestApp Backups"
+```
+
+The folder is remembered, so every later `npm run backup -w backend` also copies the new file there and checks the copy is identical. If the folder is missing the backup still succeeds and says so. macOS may ask once to let Terminal use iCloud Drive: allow it.
+
 **Restoring from your copy** (into a new, empty database - it refuses anything else):
 
 1. Create a new empty Postgres database on Render and copy its External URL.

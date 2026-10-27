@@ -3,6 +3,7 @@
 // compressed file you can keep anywhere. Reads only; changes nothing.
 //
 //   npm run backup -w backend
+//   npm run backup -w backend -- --copy-to "<folder>"   # also copy each backup there (remembered)
 //
 // Paste the database's *External* connection string when asked (Render ->
 // pestapp-db -> Connections). Restore with `npm run restore -w backend`.
@@ -17,11 +18,53 @@ import { client, connectionString, hostOf, ident } from "./dbConnect";
 const FORMAT = "pestapp-backup-v1";
 const SKIP = new Set(["_prisma_migrations"]);
 
+// An optional second folder (a private iCloud Drive / Google Drive folder, an
+// external drive) that every backup is copied into, so a copy exists off this
+// computer. The folder is remembered in a small settings file next to the backups.
+function copyTarget(outDir: string): string | null {
+  const flag = process.argv.indexOf("--copy-to");
+  const settings = path.join(outDir, "copy-to.txt");
+  if (flag !== -1) {
+    const dir = process.argv[flag + 1];
+    if (!dir || dir.startsWith("--")) throw new Error('Give a folder after --copy-to, e.g. --copy-to "~/Library/Mobile Documents/com~apple~CloudDocs/PestApp Backups"');
+    const resolved = path.resolve(dir.replace(/^~(?=$|\/)/, os.homedir()));
+    fs.writeFileSync(settings, resolved + "\n", { mode: 0o600 });
+    return resolved;
+  }
+  return fs.existsSync(settings) ? fs.readFileSync(settings, "utf8").trim() || null : null;
+}
+
+function cloudFolders(): string[] {
+  const found: string[] = [];
+  const icloud = path.join(os.homedir(), "Library/Mobile Documents/com~apple~CloudDocs");
+  if (fs.existsSync(icloud)) found.push(icloud);
+  const cs = path.join(os.homedir(), "Library/CloudStorage");
+  if (fs.existsSync(cs)) for (const d of fs.readdirSync(cs)) if (d.startsWith("GoogleDrive")) found.push(path.join(cs, d, "My Drive"));
+  return found;
+}
+
+function copyOffSite(file: string, dir: string, sha: string) {
+  try {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const dest = path.join(dir, path.basename(file));
+    fs.copyFileSync(file, dest);
+    const copied = crypto.createHash("sha256").update(fs.readFileSync(dest)).digest("hex");
+    if (copied !== sha) throw new Error("the copy did not match the original");
+    console.log(`Copied to ${dest} (checked identical).`);
+    console.log("If that folder syncs to the cloud, wait for it to finish uploading before closing your laptop.");
+  } catch (err) {
+    console.log(`\nWARNING: could not copy to ${dir}: ${err instanceof Error ? err.message : err}`);
+    console.log("The backup itself is fine and still in the backups folder; fix the folder and run again, or copy the file by hand.");
+  }
+}
+
 async function main() {
-  const url = await connectionString("BACKUP_DATABASE_URL", "Database connection string (hidden)");
-  const db = client(url);
+  // Settings first, so a mistyped option is reported before asking for the password.
   const outDir = process.env.BACKUP_DIR || path.join(os.homedir(), "pestapp-backups");
   fs.mkdirSync(outDir, { recursive: true, mode: 0o700 });
+  const copyDir = copyTarget(outDir);
+  const url = await connectionString("BACKUP_DATABASE_URL", "Database connection string (hidden)");
+  const db = client(url);
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").slice(0, 19);
   const outFile = path.join(outDir, `pestapp-${stamp}.jsonl.gz`);
 
@@ -117,8 +160,15 @@ async function main() {
   const mb = (fs.statSync(outFile).size / 1048576).toFixed(1);
   console.log(`\nDone. ${total} rows in ${Object.keys(verify).length} tables, ${mb} MB, verified by reading it back.`);
   console.log(`File:   ${outFile}`);
-  console.log(`SHA256: ${hash.digest("hex")}`);
-  console.log("This file contains customer data and photos - keep it somewhere private (encrypted disk / private cloud folder).");
+  const sha = hash.digest("hex");
+  console.log(`SHA256: ${sha}`);
+  if (copyDir) {
+    copyOffSite(outFile, copyDir, sha);
+  } else {
+    console.log("\nThis file contains customer data and photos and is only on this computer. To copy every backup to a private cloud folder automatically, run once:");
+    const example = cloudFolders()[0];
+    console.log(`  npm run backup -w backend -- --copy-to "${example ? path.join(example, "PestApp Backups") : "<private folder>"}"`);
+  }
 }
 
 main().catch((err) => {
