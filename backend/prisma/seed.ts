@@ -1,6 +1,8 @@
 import { PrismaClient } from "@prisma/client";
 import { v4 as uuidv4 } from "uuid";
 import bcrypt from "bcryptjs";
+import crypto from "node:crypto";
+import { isProduction } from "../src/lib/env";
 import { storage } from "../src/lib/storage";
 
 const prisma = new PrismaClient();
@@ -556,10 +558,34 @@ async function main() {
     }
   }
 
+  // The three demo accounts above share a password that is published in the
+  // repo, and this seed runs on every boot - so a demo account an admin
+  // deleted would come back as an active, MFA-less admin anyone could sign in
+  // to. When deployed, lock any that nobody has actually set up: switched off,
+  // password replaced with a random one, existing sessions ended. An account
+  // somebody has signed in to or enrolled a second step on is left alone, and
+  // nothing is locked until a real admin with a second step exists (on a brand
+  // new deployment the demo admin is how that first real admin gets created).
+  if (isProduction()) {
+    const demoEmails = [admin.email, office.email, tech.email];
+    const realAdmins = await prisma.user.count({ where: { role: "ADMIN", active: true, mfaMethod: { not: null }, email: { notIn: demoEmails } } });
+    if (realAdmins > 0) {
+      const locked = await prisma.user.updateMany({
+        where: { email: { in: demoEmails }, lastLoginAt: null, mfaMethod: null, active: true },
+        data: { active: false, passwordHash: await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 10), sessionsValidAfter: new Date() },
+      });
+      if (locked.count) console.log(`Locked ${locked.count} unused demo account(s).`);
+    } else {
+      console.log("WARNING: the demo accounts (public password) are still active. Create a real admin, then restart to lock them.");
+    }
+  }
+
   console.log("Seed complete.");
-  console.log(`  Admin login:      admin@pestapp.dev / password123`);
-  console.log(`  Office login:     office@pestapp.dev / password123`);
-  console.log(`  Technician login: tech@pestapp.dev / password123 (id: ${tech.id})`);
+  if (!isProduction()) {
+    console.log(`  Admin login:      admin@pestapp.dev / password123`);
+    console.log(`  Office login:     office@pestapp.dev / password123`);
+    console.log(`  Technician login: tech@pestapp.dev / password123 (id: ${tech.id})`);
+  }
   console.log(`  Sample customer:  ${customer.name} (id: ${customer.id})`);
   console.log(`  Sample property:  ${property.label} (id: ${property.id})`);
 }

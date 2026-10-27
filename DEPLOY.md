@@ -17,7 +17,7 @@ This repo deploys as three pieces, all provisioned in one shot by `render.yaml`:
 2. **Create a free Render account** at https://render.com (sign in with GitHub is easiest — it also handles the repo-access step below).
 3. In the Render dashboard: **New → Blueprint**, connect the GitHub repo, and select it. Render reads `render.yaml` at the repo root and provisions all three services automatically — no manual field entry needed.
 4. Wait for all three services to finish their first deploy (a few minutes). Render will show you the live URLs for `pestapp-backend` and `pestapp-web`. The backend's start command seeds demo data automatically on every boot (Shell/one-off jobs need a paid plan, and the seed script is idempotent, so this runs it instead of requiring a manual step) — no action needed here.
-5. Send your boss the `pestapp-web` URL, and follow **Accounts & sign-in security** below to create real accounts. (The seed script still creates three sample accounts, `admin@`, `office@` and `tech@pestapp.dev`, all with the password `password123`. That password is published in this repo, so use them only to get started and then turn them off.)
+5. Send your boss the `pestapp-web` URL, and follow **Accounts & sign-in security** below to create real accounts. (The seed script still creates three sample accounts, `admin@`, `office@` and `tech@pestapp.dev`, all with the password `password123`. That password is published in this repo, so use them only to get started. Once a real admin with a second step exists, the server locks any of them nobody has set up, on every restart - deleting one does not bring it back usable.)
 
 ## Accounts & sign-in security
 
@@ -25,7 +25,7 @@ Everyone signs in with their **own** account: email + password + a second step (
 
 **Adding people (admin only):** Settings → Team → "+ Add a person". The app shows a one-time temporary password; give it to the person privately. At their first sign-in they choose their own password and set up their second step. Admins can also reset a password, reset someone's second step (lost phone), unlock an account, or turn off access (they're signed out everywhere immediately; their past work stays).
 
-**First-time setup right after this was deployed:** sign in as `admin@pestapp.dev` / `password123`, set up two-step sign-in, create real accounts (including a second admin), then turn off the three `@pestapp.dev` demo accounts under Team.
+**First-time setup right after this was deployed:** sign in as `admin@pestapp.dev` / `password123`, set up two-step sign-in, create real accounts (including a second admin), then turn off the three `@pestapp.dev` demo accounts under Team. (After that first real admin exists, the next restart also locks any demo account that was never signed in to, so it cannot be used even if it is recreated.)
 
 **Second step:** the person picks an authenticator app (works today, no cost, works offline) or text-message codes. Text messages need a Twilio account: add `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `TWILIO_FROM_NUMBER` (or `TWILIO_MESSAGING_SERVICE_SID`) to the `pestapp-backend` environment in the Render dashboard. Until then the app only offers the authenticator option. US carriers require a number registered for A2P 10DLC (or a verified toll-free number) before texts are delivered reliably; Twilio walks you through this and it can take days, so start early. Each person also gets 10 one-time recovery codes at setup.
 
