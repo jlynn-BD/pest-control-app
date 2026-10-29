@@ -4,6 +4,7 @@ import { prisma } from "../../lib/prisma";
 import { generateId } from "../../lib/id";
 import { asyncHandler, HttpError } from "../../middleware/error-handler";
 import { requireAuth } from "../../middleware/auth";
+import { technicianId } from "../../lib/technicianScope";
 
 const followUpSchema = z.object({
   reason: z.string().optional().nullable(),
@@ -53,9 +54,11 @@ followUpsRouter.get(
   "/",
   asyncHandler(async (req, res) => {
     const upcoming = req.query.upcoming === "true";
+    const mine = technicianId(req);
     const followUps = await prisma.followUp.findMany({
       where: {
         deletedAt: null,
+        ...(mine ? { inspection: { technicianId: mine } } : {}),
         status: { not: "COMPLETED" },
         ...(upcoming ? { scheduledDate: { gte: new Date() } } : {}),
       },

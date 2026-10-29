@@ -5,6 +5,7 @@ import { generateId } from "../../lib/id";
 import { storage } from "../../lib/storage";
 import { asyncHandler, HttpError } from "../../middleware/error-handler";
 import { requireAuth } from "../../middleware/auth";
+import { technicianId } from "../../lib/technicianScope";
 import { upload } from "../../middleware/upload";
 import { photoExt } from "../../lib/uploadExt";
 import { mergeSketches, parseRawSketch, RawSketch } from "@pest-app/shared";
@@ -119,8 +120,9 @@ propertiesRouter.delete(
 propertiesRouter.get(
   "/:id/inspections",
   asyncHandler(async (req, res) => {
+    const mine = technicianId(req);
     const inspections = await prisma.inspection.findMany({
-      where: { propertyId: req.params.id, deletedAt: null },
+      where: { propertyId: req.params.id, deletedAt: null, ...(mine ? { technicianId: mine } : {}) },
       include: {
         technician: { select: { id: true, firstName: true, lastName: true } },
         findings: true,

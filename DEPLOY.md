@@ -48,6 +48,10 @@ Use a mailbox the whole crew can't read; the code is the key to the account. (Op
 
 **Emergency switch:** setting `MFA_ENFORCED=false` on the backend turns the requirement off for accounts that haven't set up a second step. Don't leave it that way.
 
+**Who sees what:** admins and office staff see everything. A technician sees only the inspections assigned to them and everything on them (findings, checklist, recommendations, signatures, photos, reports, follow-ups, estimates), plus their own appointments - enforced on the server (`backend/src/lib/technicianScope.ts`), including for the offline sync. Customers and properties stay a shared company directory on purpose, because technicians add and look up clients in the field. An inspection can only be handed to another technician by an admin or office user.
+
+**Security alert emails** (`backend/src/lib/securityAlerts.ts`, sent with the same email setup as sign-in codes): admins are emailed when someone is added, deleted, re-enabled or given a different role, when a password or second step is reset, when an account is locked after failed sign-ins, and when a sign-in session looks copied. Each person is emailed when their own account is signed in to from a device it has not been used on before, or its password / fingerprint unlock changes. The same alert is not repeated within 10 minutes. Set `SECURITY_ALERTS=false` to turn it off.
+
 ## Backups and recovery
 
 Everything the app stores - customers, inspections, signatures, **and every photo and PDF** - lives in the one Postgres database (`pestapp-db`), so backing up that database backs up everything.

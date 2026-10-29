@@ -22,6 +22,11 @@ declare global {
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
+  // Already checked earlier in this same request (see scopeTechnicians).
+  if (req.user) {
+    next();
+    return;
+  }
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
     next(new HttpError(401, "Missing bearer token"));

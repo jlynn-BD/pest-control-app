@@ -6,6 +6,7 @@ import { prisma } from "../../lib/prisma";
 import { generateId } from "../../lib/id";
 import { asyncHandler, HttpError } from "../../middleware/error-handler";
 import { requireAuth } from "../../middleware/auth";
+import { technicianId } from "../../lib/technicianScope";
 import { EstimateDocument, EstimateData } from "./pdfTemplate";
 
 export const estimatesRouter = Router();
@@ -52,9 +53,11 @@ estimatesRouter.get(
   "/",
   asyncHandler(async (req, res) => {
     const { customerId, propertyId, inspectionId, status } = req.query as Record<string, string | undefined>;
+    const mine = technicianId(req);
     const estimates = await prisma.estimate.findMany({
       where: {
         deletedAt: null,
+        ...(mine ? { OR: [{ createdByUserId: mine }, { inspection: { technicianId: mine } }] } : {}),
         ...(customerId ? { customerId } : {}),
         ...(propertyId ? { propertyId } : {}),
         ...(inspectionId ? { inspectionId } : {}),

@@ -2,6 +2,7 @@ import type { Request } from "express";
 import { prisma } from "./prisma";
 import { generateId } from "./id";
 import { clientInfo, logActivity } from "./audit";
+import { notifySecurityEvent } from "./securityAlerts";
 
 export { clientInfo };
 
@@ -34,6 +35,7 @@ export function recordAuthEvent(req: Request, type: AuthEventType, data: { userI
   const { ip, userAgent } = clientInfo(req);
   prisma.authEvent
     .create({ data: { id: generateId(), type, userId: data.userId ?? null, email: data.email ?? null, detail: data.detail ?? null, ip, userAgent } })
+    .then(() => notifySecurityEvent(req, type, data))
     .catch((err) => console.error("authEvent write failed", err));
 }
 

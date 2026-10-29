@@ -7,6 +7,7 @@ import type { Request } from "express";
 import { diffRecords, logActivity, snapshot } from "../../lib/audit";
 import { ENTITIES, buildSummary } from "../../lib/auditEntities";
 import { lockedInspectionIds } from "../../lib/inspectionLock";
+import { technicianId, technicianMayUseInspection } from "../../lib/technicianScope";
 
 export const syncRouter = Router();
 syncRouter.use(requireAuth);
@@ -253,6 +254,15 @@ async function applyChange(req: Request, change: Change, locked: Set<string>, in
   return { entity: change.entity, id: change.id, result: "conflict", serverRow: existing };
 }
 
+async function technicianMaySync(userId: string, change: Change, inspectionId: string | null): Promise<boolean> {
+  // Nobody hands an inspection to someone else through the sync.
+  if (change.entity === "Inspection") {
+    const wanted = change.data?.technicianId;
+    if (typeof wanted === "string" && wanted !== userId) return false;
+  }
+  return technicianMayUseInspection(userId, inspectionId);
+}
+
 const pushSchema = z.object({ changes: z.array(changeSchema) });
 
 syncRouter.post(
@@ -268,19 +278,32 @@ syncRouter.post(
     const locked = await lockedInspectionIds(inspectionIds.filter((id): id is string => Boolean(id)));
     // Applied sequentially (not Promise.all) so a Finding created earlier in
     // the same batch is visible to a Recommendation referencing it later.
+    const mine = technicianId(req);
     for (let i = 0; i < changes.length; i++) {
+      // A technician's changes to someone else's inspection are refused the same
+      // way a completed inspection's are ("locked": nothing saved, and the
+      // device stops retrying), rather than failing the whole batch for good.
+      if (mine && !(await technicianMaySync(mine, changes[i], inspectionIds[i]))) {
+        results.push({ entity: changes[i].entity, id: changes[i].id, result: "locked" });
+        continue;
+      }
       results.push(await applyChange(req, changes[i], locked, inspectionIds[i]));
     }
     res.json({ results });
   })
 );
 
-const ENTITY_QUERIES: Record<string, (since: Date) => Promise<unknown[]>> = {
-  Inspection: (since) => prisma.inspection.findMany({ where: { updatedAt: { gt: since } } }),
-  Finding: (since) => prisma.finding.findMany({ where: { updatedAt: { gt: since } } }),
-  Recommendation: (since) => prisma.recommendation.findMany({ where: { updatedAt: { gt: since } } }),
-  ChecklistResponse: (since) => prisma.checklistResponse.findMany({ where: { updatedAt: { gt: since } } }),
-  InspectionSectionSkip: (since) => prisma.inspectionSectionSkip.findMany({ where: { createdAt: { gt: since } } }),
+// `mine` is the technician's own id (they only receive their own inspections
+// and what hangs off them), or null for admins and office staff.
+const ENTITY_QUERIES: Record<string, (since: Date, mine: string | null) => Promise<unknown[]>> = {
+  Inspection: (since, mine) => prisma.inspection.findMany({ where: { updatedAt: { gt: since }, ...(mine ? { technicianId: mine } : {}) } }),
+  Finding: (since, mine) => prisma.finding.findMany({ where: { updatedAt: { gt: since }, ...(mine ? { inspection: { technicianId: mine } } : {}) } }),
+  Recommendation: (since, mine) =>
+    prisma.recommendation.findMany({ where: { updatedAt: { gt: since }, ...(mine ? { inspection: { technicianId: mine } } : {}) } }),
+  ChecklistResponse: (since, mine) =>
+    prisma.checklistResponse.findMany({ where: { updatedAt: { gt: since }, ...(mine ? { inspection: { technicianId: mine } } : {}) } }),
+  InspectionSectionSkip: (since, mine) =>
+    prisma.inspectionSectionSkip.findMany({ where: { createdAt: { gt: since }, ...(mine ? { inspection: { technicianId: mine } } : {}) } }),
 };
 
 syncRouter.get(
@@ -292,7 +315,7 @@ syncRouter.get(
     const data: Record<string, unknown[]> = {};
     for (const entity of entitiesParam) {
       const query = ENTITY_QUERIES[entity];
-      if (query) data[entity] = await query(since);
+      if (query) data[entity] = await query(since, technicianId(req));
     }
 
     res.json({ data, serverTime: new Date().toISOString() });

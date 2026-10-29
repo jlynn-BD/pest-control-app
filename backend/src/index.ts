@@ -4,6 +4,7 @@ import cors from "cors";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler";
 import { auditRequests } from "./middleware/audit";
 import { blockEditsToCompletedInspections } from "./lib/inspectionLock";
+import { scopeTechnicians } from "./lib/technicianScope";
 import { verifyPhotoLink } from "./lib/mediaLinks";
 import { storage } from "./lib/storage";
 import { auditRouter } from "./modules/audit/routes";
@@ -75,6 +76,7 @@ app.get("/api/public/photo/:token", async (req, res, next) => {
 
 app.use("/api", auditRequests);
 app.use("/api", blockEditsToCompletedInspections);
+app.use("/api", scopeTechnicians);
 app.use("/api/auth", authRouter);
 app.use("/api/audit", auditRouter);
 app.use("/api/users", usersRouter);
