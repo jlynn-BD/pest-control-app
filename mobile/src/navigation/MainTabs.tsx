@@ -3,14 +3,12 @@ import React from "react";
 import { Platform, Text } from "react-native";
 import CustomersNavigator from "./CustomersNavigator";
 import InspectionsNavigator from "./InspectionsNavigator";
-import ScheduleScreen from "../screens/schedule/ScheduleScreen";
 import SettingsNavigator from "./SettingsNavigator";
 import { colors, fonts, headerScreenOptions } from "../components/ui";
 
 const Tab = createBottomTabNavigator();
 
 const ICONS: Record<string, string> = {
-  Schedule: "\u{1F4C5}",
   Customers: "\u{1F465}",
   Inspections: "\u{1F50D}",
   Settings: "\u{2699}",
@@ -19,6 +17,7 @@ const ICONS: Record<string, string> = {
 export default function MainTabs() {
   return (
     <Tab.Navigator
+      initialRouteName="Inspections"
       screenOptions={({ route }) => ({
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
@@ -30,7 +29,6 @@ export default function MainTabs() {
         tabBarIcon: () => <Text style={{ fontSize: 20 }}>{ICONS[route.name]}</Text>,
       })}
     >
-      <Tab.Screen name="Schedule" component={ScheduleScreen} />
       <Tab.Screen name="Customers" component={CustomersNavigator} options={{ headerShown: false }} />
       <Tab.Screen name="Inspections" component={InspectionsNavigator} options={{ headerShown: false }} />
       <Tab.Screen name="Settings" component={SettingsNavigator} options={{ headerShown: false }} />

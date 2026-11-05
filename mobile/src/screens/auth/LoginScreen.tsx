@@ -199,7 +199,7 @@ export default function LoginScreen() {
   } else if (!usePassword) {
     body = (
       <>
-        <Text style={styles.subtitle}>Sign in to view your schedule and inspections</Text>
+        <Text style={styles.subtitle}>Sign in to view your inspections</Text>
         <View style={styles.form}>
           <Field
             label="Email"
@@ -228,7 +228,7 @@ export default function LoginScreen() {
   } else {
     body = (
       <>
-        <Text style={styles.subtitle}>Sign in to view your schedule and inspections</Text>
+        <Text style={styles.subtitle}>Sign in to view your inspections</Text>
         <View style={styles.form}>
           <Field
             label="Email"

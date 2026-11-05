@@ -53,10 +53,6 @@ export type InspectionsStackParamList = {
   EstimateForm: { estimateId: string };
 };
 
-export type ScheduleStackParamList = {
-  Schedule: undefined;
-};
-
 export type SettingsStackParamList = {
   Settings: undefined;
 };
