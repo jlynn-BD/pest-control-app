@@ -185,7 +185,7 @@ export interface SiteMapSketch {
 // (a separate, freely-named drawing feature) shouldn't silently disagree
 // with it just because levels happen to get added in whatever order a
 // technician draws them.
-export const SITE_MAP_LEVEL_SUGGESTIONS = ["Exterior", "1st Floor", "2nd Floor", "3rd Floor", "Basement", "Crawlspace", "Attic"] as const;
+export const SITE_MAP_LEVEL_SUGGESTIONS = ["Exterior", "1st Floor", "2nd Floor", "3rd Floor", "Basement", "Attic", "Crawlspace"] as const;
 
 export interface InspectionTemplate extends BaseEntity {
   name: string;

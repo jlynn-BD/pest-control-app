@@ -248,10 +248,9 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   const wallCount = selectedLevel?.lines.length ?? 0;
   const annotationCount = selectedLevel?.annotations.length ?? 0;
 
-  // Only categories the wizard has unlocked so far are shown here - lets a
-  // technician review/edit anything already reached without being able to
-  // jump ahead out of sequence from the map (see ChecklistPanel's
-  // allowedCategories prop / ChecklistScreen for the same restriction).
+  // Every checklist step is open (they can be done in any order), so every
+  // category is offered here (see ChecklistPanel's allowedCategories prop /
+  // ChecklistScreen).
   const wizardStatus = detail?.inspection.templateId
     ? getWizardStepStatus(getCachedTemplateSections(detail.inspection.templateId), detail.checklistResponses, property ?? undefined, detail.sectionSkips)
     : null;

@@ -1,11 +1,13 @@
 import type { TemplateSectionCategory } from "../enums";
 
-// The mandatory inspection wizard's step order - every technician walks
-// these in this exact sequence, every time (Matt's ask: inspection quality
-// shouldn't depend on which sections an individual technician feels like
-// checking). EXTERIOR/FIRST_FLOOR are required and can never be skipped;
-// the rest, including ATTIC, are conditional and can only be bypassed by an
-// explicit "this property doesn't have this" answer (see
+// The mandatory inspection checklist's steps, in their display order.
+// Every step has to be finished before an inspection can be completed
+// (inspection quality shouldn't depend on which sections an individual
+// technician feels like checking) - but they can be done in ANY order: a
+// technician is usually invited inside and talks with the customer first,
+// so the exterior often comes later. EXTERIOR/FIRST_FLOOR can never be
+// skipped; the rest, including ATTIC, are conditional and can only be
+// bypassed by an explicit "this property doesn't have this" answer (see
 // `applicabilityField`, which names the Property boolean that answer is
 // stored on - see getWizardStepStatus below for how that combines with
 // per-item responses into a single resolved/unresolved state per step).
@@ -26,8 +28,8 @@ export const WIZARD_STEPS: WizardStepDefinition[] = [
   { category: "SECOND_FLOOR", label: "Second Floor Inspection Checklist", shortLabel: "2nd Floor", required: false, applicabilityField: "hasSecondFloor" },
   { category: "THIRD_FLOOR", label: "Third Floor Inspection Checklist", shortLabel: "3rd Floor", required: false, applicabilityField: "hasThirdFloor" },
   { category: "BASEMENT", label: "Basement Inspection Checklist", shortLabel: "Basement", required: false, applicabilityField: "hasBasement" },
-  { category: "CRAWLSPACE", label: "Crawl Space Inspection Checklist", shortLabel: "Crawl Space", required: false, applicabilityField: "hasCrawlspace" },
   { category: "ATTIC", label: "Attic Inspection Checklist", shortLabel: "Attic", required: false, applicabilityField: "hasAttic" },
+  { category: "CRAWLSPACE", label: "Crawl Space Inspection Checklist", shortLabel: "Crawl Space", required: false, applicabilityField: "hasCrawlspace" },
 ];
 
 // Single source of truth for category display metadata - previously
@@ -60,9 +62,9 @@ const LEVEL_NAME_TO_CATEGORY: Record<string, WizardStepCategory> = {
   "3rd floor": "THIRD_FLOOR",
   "third floor": "THIRD_FLOOR",
   basement: "BASEMENT",
+  attic: "ATTIC",
   crawlspace: "CRAWLSPACE",
   "crawl space": "CRAWLSPACE",
-  attic: "ATTIC",
 };
 
 export function getSiteMapLevelRank(name: string): number {
@@ -114,11 +116,14 @@ export interface WizardStepStatus {
 export interface WizardStatus {
   steps: WizardStepStatus[];
   canComplete: boolean;
-  // Index of the first unresolved step, or the last step's index once
-  // every step is resolved. A step is reachable iff its index is <= this -
-  // doubles as both the wizard's default landing step and the forward-
-  // navigation boundary (can always go back, never jump ahead).
+  // Every step is open from the start - a technician may begin with whichever
+  // one suits the visit - so this is always the last step's index. (Kept so
+  // existing "steps up to this one are reachable" checks keep working.)
   furthestUnlockedIndex: number;
+  // Where to drop the technician when they open the checklist: the step they
+  // are partway through if there is one, else the first step not yet done,
+  // else the last step once everything is done.
+  suggestedIndex: number;
 }
 
 export function getWizardStepStatus(
@@ -130,8 +135,6 @@ export function getWizardStepStatus(
   const answeredItemIds = new Set(responses.map((r) => r.templateItemId));
   const skippedCategories = new Set((sectionSkips ?? []).map((s) => s.category));
   const steps: WizardStepStatus[] = [];
-  let blocked = false;
-  let furthestUnlockedIndex = 0;
 
   WIZARD_STEPS.forEach((def, index) => {
     const requiredItems = sections
@@ -158,12 +161,11 @@ export function getWizardStepStatus(
     const resolved = def.required ? answeredEnough : (applicable === false && skippedCategories.has(def.category)) || answeredEnough;
 
     steps.push({ category: def.category, label: def.label, shortLabel: def.shortLabel, required: def.required, applicable, resolved, itemsTotal, itemsAnswered });
-
-    if (!blocked) {
-      furthestUnlockedIndex = index;
-      if (!resolved) blocked = true;
-    }
   });
 
-  return { steps, canComplete: steps.every((s) => s.resolved), furthestUnlockedIndex };
+  const partway = steps.findIndex((s) => !s.resolved && s.itemsAnswered > 0);
+  const firstOpen = steps.findIndex((s) => !s.resolved);
+  const suggestedIndex = partway !== -1 ? partway : firstOpen !== -1 ? firstOpen : steps.length - 1;
+
+  return { steps, canComplete: steps.every((s) => s.resolved), furthestUnlockedIndex: steps.length - 1, suggestedIndex };
 }

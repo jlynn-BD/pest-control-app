@@ -16,9 +16,8 @@ type Props = NativeStackScreenProps<InspectionsStackParamList, "Checklist">;
 // now, shared with SiteMapScreen's embedded copy - see that file's comment).
 // This route is the "review everything at once" entry point (from
 // InspectionWorkspaceScreen's "View full checklist" link) - unlike the
-// step-by-step wizard, it's restricted to categories the wizard has already
-// unlocked (not just the current step) so a technician can browse/edit
-// anything reached so far without being able to jump ahead out of sequence.
+// step-by-step wizard, it shows every checklist step at once (all steps are
+// open - they can be done in any order) so a technician can browse/edit any of them.
 export default function ChecklistScreen({ route, navigation }: Props) {
   const { inspectionId } = route.params;
   useCompletedLock(inspectionId, navigation);

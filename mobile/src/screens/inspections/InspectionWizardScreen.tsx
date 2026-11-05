@@ -19,14 +19,13 @@ import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "InspectionWizard">;
 
-// Matt's ask: every technician walks Exterior -> First Floor -> Second Floor
-// (if applicable) -> Third Floor (if applicable) -> Basement (if applicable)
-// -> Crawl Space (if applicable) -> Attic (if applicable), in that fixed
-// order, every time - no picking which sections to bother with. A step can
-// only be reached once every step before it is resolved (see
-// getWizardStepStatus); a conditional step resolves either by answering it
-// or by explicitly marking the
-// property as not having that area - never by silently leaving it blank.
+// Every step - Exterior, First Floor, Second Floor, Third Floor, Basement,
+// Attic, Crawl Space (the last five "if applicable") - has to be finished
+// before the inspection can be completed, but they can be done in ANY order:
+// technicians are usually invited inside and talk with the customer first, so
+// every step is open from the start. A conditional step resolves either by
+// answering it or by explicitly marking the property as not having that
+// area - never by silently leaving it blank (see getWizardStepStatus).
 export default function InspectionWizardScreen({ route, navigation }: Props) {
   const { inspectionId } = route.params;
   useCompletedLock(inspectionId, navigation);
@@ -57,9 +56,10 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
     useCallback(() => {
       const next = refresh();
       // Drop the technician at wherever they need to continue each time
-      // this screen is (re)focused - manual Back/chip taps within a single
+      // this screen is (re)focused (the step they are partway through, else
+      // the first one not done) - manual Back/chip taps within a single
       // visit aren't affected, only re-entering the wizard fresh.
-      if (next) setStepIndex(next.furthestUnlockedIndex);
+      if (next) setStepIndex(next.suggestedIndex);
       setConfirmingNotApplicable(false);
       setInitials("");
     }, [refresh])
@@ -77,8 +77,14 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
 
   const step = status.steps[stepIndex];
   const stepDef = WIZARD_STEPS[stepIndex];
-  const canGoNext = step.resolved;
-  const isLastStep = stepIndex === status.steps.length - 1;
+  // The step to head to next: the next one not done after this (wrapping to an
+  // earlier one that was left for later), or none once everything is done -
+  // then the button reads "Finish" and returns to the inspection.
+  const nextOpenIndex = (() => {
+    const after = status.steps.findIndex((s, i) => i > stepIndex && !s.resolved);
+    return after !== -1 ? after : status.steps.findIndex((s, i) => i < stepIndex && !s.resolved);
+  })();
+  const isLastStep = nextOpenIndex === -1;
   // This inspection's own accountability record for this step, if the
   // technician has already confirmed it here - a property flag left over
   // from a PRIOR inspection (step.applicable === false with no skip here
@@ -95,12 +101,11 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
   }
 
   function handleNext() {
-    if (!canGoNext) return;
     if (isLastStep) {
       navigation.goBack();
       return;
     }
-    goToStep(stepIndex + 1);
+    goToStep(nextOpenIndex);
   }
 
   async function handleConfirmNotApplicable() {
@@ -152,6 +157,8 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
           );
         })}
       </View>
+
+      <Text style={styles.orderHint}>Start with whichever step fits the visit - they can be done in any order. All of them need to be finished to complete the inspection.</Text>
 
       <Text style={styles.stepTitle}>{step.label}</Text>
       {!step.required ? (
@@ -221,9 +228,9 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
         </>
       )}
 
-      {!canGoNext ? (
+      {!step.resolved ? (
         <Text style={styles.blockedHint}>
-          {step.itemsTotal - step.itemsAnswered} of {step.itemsTotal} required item(s) still need an answer.
+          {step.itemsTotal - step.itemsAnswered} of {step.itemsTotal} required item(s) in this step still need an answer.
         </Text>
       ) : null}
 
@@ -232,7 +239,7 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
           <PrimaryButton title="Back" onPress={() => goToStep(stepIndex - 1)} disabled={stepIndex === 0} />
         </View>
         <View style={styles.buttonHalf}>
-          <PrimaryButton title={isLastStep ? "Finish" : "Next"} onPress={handleNext} disabled={!canGoNext} />
+          <PrimaryButton title={isLastStep ? "Finish" : "Next step"} onPress={handleNext} />
         </View>
       </View>
     </ScrollView>
@@ -270,6 +277,7 @@ const styles = StyleSheet.create({
   stepRowLabelLocked: { color: colors.textMuted },
   stepTitle: { fontSize: 18, fontWeight: "700", color: colors.text, marginBottom: 4 },
   stepHint: { fontSize: 12, color: colors.textMuted, marginBottom: 12 },
+  orderHint: { fontSize: 12, color: colors.textMuted, marginBottom: 14 },
   naCard: { gap: 8, marginBottom: 16 },
   naText: { fontSize: 14, color: colors.text },
   naMeta: { fontSize: 12, color: colors.textMuted },
