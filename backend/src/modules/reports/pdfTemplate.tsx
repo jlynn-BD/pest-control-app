@@ -104,6 +104,11 @@ const styles = StyleSheet.create({
   photoRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 },
   // "cover" crops a photo to the square instead of squashing it out of shape.
   photo: { width: 90, height: 90, borderRadius: 4, objectFit: "cover" },
+  // The Photo Gallery: each photo large enough to inspect, two to a page.
+  galleryItem: { marginBottom: 10, borderBottomWidth: 1, borderBottomColor: "#EAF0F8", paddingBottom: 6 },
+  galleryCaption: { fontSize: 10, color: "#2C4068", marginBottom: 4 },
+  galleryPhoto: { width: "100%", maxHeight: 255, objectFit: "contain", backgroundColor: "#F3F7FC", borderRadius: 4 },
+  galleryBack: { fontSize: 9, color: "#B35A00", marginTop: 4 },
   signatureRow: { flexDirection: "row", gap: 24, marginTop: 8 },
   signatureBlock: { flex: 1 },
   signatureImage: { width: 180, height: 70, borderWidth: 1, borderColor: "#D9E3F0", objectFit: "contain" },
@@ -261,8 +266,11 @@ export interface ReportSiteMapAnnotation {
 export interface ReportImage {
   data: Buffer;
   format: "png" | "jpg";
-  // Where the full-size picture opens when it is tapped in the PDF.
-  href?: string;
+  // Photos only: this picture's anchor in the PDF ("photo-3") and what it shows.
+  // Tapping a thumbnail jumps to its large copy in the Photo Gallery at the end
+  // of the report - inside the PDF, so no browser or web link is involved.
+  id?: string;
+  caption?: string;
 }
 
 export interface ReportSiteMapPanel {
@@ -358,6 +366,8 @@ export interface ReportData {
   siteMapPanels: ReportSiteMapPanel[];
   // Pictures of the property taken before the checklist (arrival, overall views).
   propertyPhotos: ReportImage[];
+  // Every photo above, in report order, shown large at the end of the report.
+  gallery: ReportImage[];
   checklistSections: ReportChecklistSection[];
   skippedSections: ReportSkippedSection[];
   findings: ReportFinding[];
@@ -365,6 +375,29 @@ export interface ReportData {
   // generated automatically) - the rest live on their finding above.
   standaloneRecommendations: ReportRecommendation[];
   signatures: ReportSignature[];
+}
+
+const TAP_HINT = "Tap a photo to see it larger (it opens in the Photo Gallery at the end of this report).";
+
+// A row of small photos. Each links to its large copy in the Photo Gallery at
+// the end of the report (an in-document link, so the viewer just jumps there).
+// The wrapper carries an anchor so the gallery can link back here.
+function PhotoRow({ photos }: { photos: ReportImage[] }) {
+  return (
+    <View style={styles.photoRow}>
+      {photos.map((p, i) => (
+        <View key={i} id={p.id ? `${p.id}-t` : undefined}>
+          {p.id ? (
+            <Link src={`#${p.id}`}>
+              <Image src={{ data: p.data, format: p.format }} style={styles.photo} />
+            </Link>
+          ) : (
+            <Image src={{ data: p.data, format: p.format }} style={styles.photo} />
+          )}
+        </View>
+      ))}
+    </View>
+  );
 }
 
 // One checklist answer: the question, its status, any notes, and the pictures
@@ -377,19 +410,7 @@ function ChecklistItemRow({ item }: { item: ReportChecklistItem }) {
         <Text style={[styles.checklistStatus, checklistStatusStyle(item.status)]}>{item.status.replace(/_/g, " ")}</Text>
       </View>
       {item.notes ? <Text style={styles.checklistNotes}>{item.notes}</Text> : null}
-      {item.photoPaths.length > 0 ? (
-        <View style={styles.photoRow}>
-          {item.photoPaths.map((p, pi) =>
-            p.href ? (
-              <Link key={pi} src={p.href}>
-                <Image src={{ data: p.data, format: p.format }} style={styles.photo} />
-              </Link>
-            ) : (
-              <Image key={pi} src={{ data: p.data, format: p.format }} style={styles.photo} />
-            )
-          )}
-        </View>
-      ) : null}
+      {item.photoPaths.length > 0 ? <PhotoRow photos={item.photoPaths} /> : null}
     </View>
   );
 }
@@ -438,18 +459,8 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
         {data.propertyPhotos.length > 0 ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Property Photos</Text>
-            {data.propertyPhotos.some((p) => p.href) ? <Text style={[styles.cardMeta, { marginBottom: 6 }]}>Tap any photo to open it full size.</Text> : null}
-            <View style={styles.photoRow}>
-              {data.propertyPhotos.map((p, pi) =>
-                p.href ? (
-                  <Link key={pi} src={p.href}>
-                    <Image src={{ data: p.data, format: p.format }} style={styles.photo} />
-                  </Link>
-                ) : (
-                  <Image key={pi} src={{ data: p.data, format: p.format }} style={styles.photo} />
-                )
-              )}
-            </View>
+            <Text style={[styles.cardMeta, { marginBottom: 6 }]}>{TAP_HINT}</Text>
+            <PhotoRow photos={data.propertyPhotos} />
           </View>
         ) : null}
 
@@ -615,8 +626,8 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
             {/* The heading travels with the first item (which can now carry photos), so it is never left alone at the foot of a page. */}
             <View wrap={false}>
               <Text style={styles.sectionTitle}>{CHECKLIST_CATEGORY_LABEL[section.category] ?? section.category}</Text>
-              {si === 0 && data.checklistSections.some((sec) => sec.items.some((i) => i.photoPaths.some((p) => p.href))) ? (
-                <Text style={[styles.cardMeta, { marginBottom: 4 }]}>Tap any photo to open it full size.</Text>
+              {si === 0 && data.checklistSections.some((sec) => sec.items.some((i) => i.photoPaths.length > 0)) ? (
+                <Text style={[styles.cardMeta, { marginBottom: 4 }]}>{TAP_HINT}</Text>
               ) : null}
               {section.items.slice(0, 1).map((item, ii) => (
                 <ChecklistItemRow key={ii} item={item} />
@@ -649,9 +660,7 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
           {data.findings.length === 0 && data.standaloneRecommendations.length === 0 ? (
             <Text style={styles.cardBody}>No findings or recommendations recorded.</Text>
           ) : null}
-          {data.findings.some((f) => f.photoPaths.some((p) => p.href)) ? (
-            <Text style={[styles.cardMeta, { marginBottom: 6 }]}>Tap any photo to open it full size.</Text>
-          ) : null}
+          {data.findings.some((f) => f.photoPaths.length > 0) ? <Text style={[styles.cardMeta, { marginBottom: 6 }]}>{TAP_HINT}</Text> : null}
           {data.findings.map((f, i) => (
             <View key={i} style={styles.card} wrap={false}>
               <View style={styles.cardHeaderRow}>
@@ -668,19 +677,7 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
                 </Text>
               ) : null}
               {f.description ? <Text style={styles.cardBody}>{f.description}</Text> : null}
-              {f.photoPaths.length > 0 ? (
-                <View style={styles.photoRow}>
-                  {f.photoPaths.map((p, pi) =>
-                    p.href ? (
-                      <Link key={pi} src={p.href}>
-                        <Image src={{ data: p.data, format: p.format }} style={styles.photo} />
-                      </Link>
-                    ) : (
-                      <Image key={pi} src={{ data: p.data, format: p.format }} style={styles.photo} />
-                    )
-                  )}
-                </View>
-              ) : null}
+              {f.photoPaths.length > 0 ? <PhotoRow photos={f.photoPaths} /> : null}
             </View>
           ))}
           {data.standaloneRecommendations.map((r, i) => (
@@ -718,6 +715,22 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
             ))}
           </View>
         </View>
+
+        {data.gallery.length > 0 ? (
+          <View break>
+            <Text style={styles.sectionTitle}>Photo Gallery</Text>
+            <Text style={[styles.cardMeta, { marginBottom: 8 }]}>Tap "Back to report" under a photo to return to where it appears.</Text>
+            {data.gallery.map((p, i) => (
+              <View key={i} id={p.id} style={styles.galleryItem} wrap={false}>
+                <Text style={styles.galleryCaption}>{p.caption}</Text>
+                <Image src={{ data: p.data, format: p.format }} style={styles.galleryPhoto} />
+                <Link src={`#${p.id}-t`} style={styles.galleryBack}>
+                  Back to report
+                </Link>
+              </View>
+            ))}
+          </View>
+        ) : null}
 
         <Text style={styles.footer} fixed>
           PestApp Field — Report for inspection {data.inspectionId}
