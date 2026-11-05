@@ -210,6 +210,8 @@ export interface ReportChecklistItem {
   prompt: string;
   status: string;
   notes: string | null;
+  // Pictures taken on this checklist item.
+  photoPaths: ReportImage[];
 }
 
 export interface ReportChecklistSection {
@@ -363,6 +365,33 @@ export interface ReportData {
   // generated automatically) - the rest live on their finding above.
   standaloneRecommendations: ReportRecommendation[];
   signatures: ReportSignature[];
+}
+
+// One checklist answer: the question, its status, any notes, and the pictures
+// taken on it (each tappable to open full size).
+function ChecklistItemRow({ item }: { item: ReportChecklistItem }) {
+  return (
+    <View style={styles.checklistItem} wrap={false}>
+      <View style={styles.checklistLine}>
+        <Text style={styles.checklistQuestion}>{item.prompt}</Text>
+        <Text style={[styles.checklistStatus, checklistStatusStyle(item.status)]}>{item.status.replace(/_/g, " ")}</Text>
+      </View>
+      {item.notes ? <Text style={styles.checklistNotes}>{item.notes}</Text> : null}
+      {item.photoPaths.length > 0 ? (
+        <View style={styles.photoRow}>
+          {item.photoPaths.map((p, pi) =>
+            p.href ? (
+              <Link key={pi} src={p.href}>
+                <Image src={{ data: p.data, format: p.format }} style={styles.photo} />
+              </Link>
+            ) : (
+              <Image key={pi} src={{ data: p.data, format: p.format }} style={styles.photo} />
+            )
+          )}
+        </View>
+      ) : null}
+    </View>
+  );
 }
 
 export function InspectionReportDocument({ data }: { data: ReportData }) {
@@ -583,15 +612,18 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
 
         {data.checklistSections.map((section, si) => (
           <View style={styles.section} key={si}>
-            <Text style={styles.sectionTitle}>{CHECKLIST_CATEGORY_LABEL[section.category] ?? section.category}</Text>
-            {section.items.map((item, ii) => (
-              <View key={ii} style={styles.checklistItem} wrap={false}>
-                <View style={styles.checklistLine}>
-                  <Text style={styles.checklistQuestion}>{item.prompt}</Text>
-                  <Text style={[styles.checklistStatus, checklistStatusStyle(item.status)]}>{item.status.replace(/_/g, " ")}</Text>
-                </View>
-                {item.notes ? <Text style={styles.checklistNotes}>{item.notes}</Text> : null}
-              </View>
+            {/* The heading travels with the first item (which can now carry photos), so it is never left alone at the foot of a page. */}
+            <View wrap={false}>
+              <Text style={styles.sectionTitle}>{CHECKLIST_CATEGORY_LABEL[section.category] ?? section.category}</Text>
+              {si === 0 && data.checklistSections.some((sec) => sec.items.some((i) => i.photoPaths.some((p) => p.href))) ? (
+                <Text style={[styles.cardMeta, { marginBottom: 4 }]}>Tap any photo to open it full size.</Text>
+              ) : null}
+              {section.items.slice(0, 1).map((item, ii) => (
+                <ChecklistItemRow key={ii} item={item} />
+              ))}
+            </View>
+            {section.items.slice(1).map((item, ii) => (
+              <ChecklistItemRow key={ii + 1} item={item} />
             ))}
           </View>
         ))}

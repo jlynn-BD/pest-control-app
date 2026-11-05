@@ -53,7 +53,7 @@ async function buildReportData(inspectionId: string, publicBase?: string): Promi
       followUpsFrom: { orderBy: { createdAt: "desc" }, take: 1 },
       checklistResponses: {
         where: { deletedAt: null },
-        include: { templateItem: { include: { section: true } } },
+        include: { templateItem: { include: { section: true } }, photos: { orderBy: { sortOrder: "asc" } } },
       },
       sectionSkips: { include: { technician: true } },
       photos: { orderBy: { sortOrder: "asc" } },
@@ -61,11 +61,13 @@ async function buildReportData(inspectionId: string, publicBase?: string): Promi
   });
   if (!inspection) throw new HttpError(404, "Inspection not found");
 
-  const checklistByCategory = new Map<string, { prompt: string; status: string; notes: string | null }[]>();
+  const checklistByCategory = new Map<string, { prompt: string; status: string; notes: string | null; photoPaths: ReportImage[] }[]>();
   for (const r of inspection.checklistResponses) {
     const category = r.templateItem.section.category;
     const items = checklistByCategory.get(category) ?? [];
-    items.push({ prompt: r.templateItem.prompt, status: r.status, notes: r.notes });
+    // The pictures taken on this checklist item, shown under its answer.
+    const photoPaths = (await Promise.all(r.photos.map((p) => loadReportImage(p.fileUrl, publicBase)))).filter((img): img is ReportImage => img !== null);
+    items.push({ prompt: r.templateItem.prompt, status: r.status, notes: r.notes, photoPaths });
     checklistByCategory.set(category, items);
   }
   const checklistSections = CHECKLIST_CATEGORY_DISPLAY_ORDER.filter((c) => checklistByCategory.has(c)).map((category) => ({
