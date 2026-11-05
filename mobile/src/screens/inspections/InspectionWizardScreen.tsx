@@ -85,6 +85,9 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
     return after !== -1 ? after : status.steps.findIndex((s, i) => i < stepIndex && !s.resolved);
   })();
   const isLastStep = nextOpenIndex === -1;
+  // "an attic", "a basement", "a 2nd floor" - the sentence reads wrong with a fixed "a".
+  const areaName = step.shortLabel.toLowerCase();
+  const areaWithArticle = `${/^[aeiou]/.test(areaName) ? "an" : "a"} ${areaName}`;
   // This inspection's own accountability record for this step, if the
   // technician has already confirmed it here - a property flag left over
   // from a PRIOR inspection (step.applicable === false with no skip here
@@ -173,7 +176,7 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
 
       {!step.required && mySkip ? (
         <Card style={styles.naCard}>
-          <Text style={styles.naText}>This property doesn't have a {step.shortLabel.toLowerCase()}.</Text>
+          <Text style={styles.naText}>This property doesn't have {areaWithArticle}.</Text>
           <Text style={styles.naMeta}>
             Confirmed by {mySkip.initials} · {new Date(mySkip.confirmedAt).toLocaleString()}
           </Text>
@@ -183,7 +186,7 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
         </Card>
       ) : !step.required && previouslyMarkedElsewhere && !confirmingNotApplicable ? (
         <Card style={styles.naCard}>
-          <Text style={styles.naText}>This property doesn't have a {step.shortLabel.toLowerCase()}.</Text>
+          <Text style={styles.naText}>This property doesn't have {areaWithArticle}.</Text>
           <PrimaryButton title="Confirm for this inspection" onPress={() => setConfirmingNotApplicable(true)} />
           <Text style={styles.secondaryLink} onPress={handleUndoNotApplicable}>
             Actually, it does - let me answer this
@@ -192,7 +195,7 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
       ) : !step.required && confirmingNotApplicable ? (
         <Card style={styles.naConfirmCard}>
           <Text style={styles.naConfirmText}>
-            I confirm this property does not have a {step.shortLabel.toLowerCase()}. This is recorded on this inspection's audit
+            I confirm this property does not have {areaWithArticle}. This is recorded on this inspection's audit
             trail with your initials, name, and the time - Blue Duck can show exactly who signed off on this if it's ever
             questioned.
           </Text>
@@ -215,16 +218,16 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
             onChange={refresh}
             onAddToSiteMap={(responseId) => navigation.navigate("SiteMap", { inspectionId, fromChecklistResponseId: responseId })}
             onEditFinding={(findingId) => navigation.navigate("FindingForm", { inspectionId, editingFindingId: findingId })}
+            // Right under "Check all as satisfactory": a technician at a house
+            // with no attic shouldn't have to scroll past every item to say so.
+            topExtra={
+              !step.required ? (
+                <Card style={styles.naTriggerCard}>
+                  <Checkbox label={`This property doesn't have ${areaWithArticle}`} checked={false} onChange={() => setConfirmingNotApplicable(true)} />
+                </Card>
+              ) : null
+            }
           />
-          {!step.required ? (
-            <Card style={styles.naTriggerCard}>
-              <Checkbox
-                label={`This property doesn't have a ${step.shortLabel.toLowerCase()}`}
-                checked={false}
-                onChange={() => setConfirmingNotApplicable(true)}
-              />
-            </Card>
-          ) : null}
         </>
       )}
 
@@ -282,7 +285,7 @@ const styles = StyleSheet.create({
   naText: { fontSize: 14, color: colors.text },
   naMeta: { fontSize: 12, color: colors.textMuted },
   naConfirmCard: { marginTop: 12, gap: 8 },
-  naTriggerCard: { marginTop: 12 },
+  naTriggerCard: { marginTop: 4, marginBottom: 12 },
   naConfirmText: { fontSize: 13, color: colors.text },
   secondaryLink: { color: colors.textMuted, fontWeight: "500", fontSize: 12, marginTop: 12, textAlign: "center", paddingVertical: 12 },
   blockedHint: { color: colors.textMuted, fontSize: 12, textAlign: "center", marginTop: 16 },

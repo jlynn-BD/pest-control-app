@@ -42,6 +42,7 @@ export function ChecklistPanel({
   allowedCategories,
   onChange,
   refreshSignal,
+  topExtra,
 }: {
   inspectionId: string;
   onAddToSiteMap: (responseId: string) => void;
@@ -63,6 +64,10 @@ export function ChecklistPanel({
   // far, so a technician can review/edit anything already reached but can't
   // answer a category out of sequence from these entry points.
   allowedCategories?: string[];
+  // Shown right under the "check all as satisfactory" link, above the search
+  // box and the items - for the wizard's "this property doesn't have one"
+  // choice, so it is the first thing offered instead of buried below every item.
+  topExtra?: React.ReactNode;
   // Fires after every response mutation (check/uncheck/notes/photo) - lets
   // a host that derives its own state from responses (the wizard's
   // step-resolved/Next-button gating) stay in sync live instead of only on
@@ -304,6 +309,7 @@ export function ChecklistPanel({
   return (
     <View>
       {categoryFilter ? renderCheckAll(categoryFilter, visibleUnchecked(categoryFilter), true) : null}
+      {topExtra}
       <Field label="" placeholder="Search checklist (e.g. door, weep hole, foundation)" value={search} onChangeText={setSearch} />
 
       {visibleCategories.map((category) => {
