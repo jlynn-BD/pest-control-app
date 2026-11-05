@@ -348,10 +348,28 @@ model Inspection {
   checklistResponses ChecklistResponse[]
   estimates          Estimate[]
   sectionSkips       InspectionSectionSkip[]
+  photos             InspectionPhoto[]
 
   @@index([propertyId])
   @@index([technicianId])
   @@index([status])
+}
+
+// Pictures taken of the property itself - before (or apart from) the checklist
+// and findings, e.g. arriving at the house. Same shape as the other photo
+// tables; the file lives in StoredFile under inspection-photos/<inspectionId>/.
+model InspectionPhoto {
+  id           String    @id
+  inspectionId String
+  fileUrl      String
+  caption      String?
+  takenAt      DateTime?
+  sortOrder    Int       @default(0)
+  createdAt    DateTime  @default(now())
+
+  inspection Inspection @relation(fields: [inspectionId], references: [id])
+
+  @@index([inspectionId])
 }
 
 // Accountability record for Matt's ask: when a technician marks a

@@ -75,6 +75,8 @@ const RULES: Rule[] = [
   R("POST", `/inspections/${ID}/findings`, { entity: "Finding", kind: "created", parent: { inspectionId: 1 } }),
   R("PATCH", `/findings/${ID}`, { entity: "Finding", kind: "updated", id: 1 }),
   R("DELETE", `/findings/${ID}`, { entity: "Finding", kind: "deleted", id: 1 }),
+  R("POST", `/inspections/${ID}/photos`, { entity: "InspectionPhoto", kind: "created" }),
+  R("DELETE", `/inspection-photos/${ID}`, { entity: "InspectionPhoto", kind: "deleted", id: 1 }),
   R("POST", `/findings/${ID}/photos`, { entity: "FindingPhoto", kind: "created" }),
   R("DELETE", `/findings/photos/${ID}`, { entity: "FindingPhoto", kind: "deleted", id: 1 }),
   // checklist

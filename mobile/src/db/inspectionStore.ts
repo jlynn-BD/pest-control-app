@@ -8,6 +8,7 @@ import type {
   LocalChecklistResponsePhoto,
   LocalFinding,
   LocalFindingPhoto,
+  LocalInspectionPhoto,
   LocalInspection,
   LocalInspectionSectionSkip,
   LocalRecommendation,
@@ -90,6 +91,7 @@ export function deleteLocalInspection(id: string): void {
   );
   db.runSync(`DELETE FROM checklist_responses WHERE inspectionId = ?`, [id]);
   db.runSync(`DELETE FROM inspection_section_skips WHERE inspectionId = ?`, [id]);
+  db.runSync(`DELETE FROM inspection_photos WHERE inspectionId = ?`, [id]);
   db.runSync(`DELETE FROM inspections WHERE id = ?`, [id]);
 }
 
@@ -180,6 +182,13 @@ export function hydrateLocalInspectionFromRemote(detail: InspectionDetail): void
         );
       }
     }
+    for (const p of detail.photos ?? []) {
+      db.runSync(
+        `INSERT INTO inspection_photos (id, inspectionId, localUri, remoteUrl, caption, takenAt, sortOrder, syncStatus)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'synced')`,
+        [p.id, detail.id, `${API_BASE_URL}${p.fileUrl}`, p.fileUrl, p.caption ?? null, iso(p.takenAt), p.sortOrder]
+      );
+    }
     for (const k of detail.sectionSkips ?? []) {
       db.runSync(
         `INSERT INTO inspection_section_skips (id, inspectionId, category, technicianId, initials, confirmedAt, createdAt, syncStatus)
@@ -204,6 +213,8 @@ export interface LocalInspectionDetail {
   signatures: LocalSignature[];
   checklistResponses: (LocalChecklistResponse & { photos: LocalChecklistResponsePhoto[] })[];
   sectionSkips: LocalInspectionSectionSkip[];
+  // Pictures of the property taken before the checklist.
+  photos: LocalInspectionPhoto[];
 }
 
 export function getLocalInspectionDetail(inspectionId: string): LocalInspectionDetail | null {
@@ -249,6 +260,8 @@ export function getLocalInspectionDetail(inspectionId: string): LocalInspectionD
     [inspectionId]
   );
 
+  const photos = db.getAllSync<LocalInspectionPhoto>(`SELECT * FROM inspection_photos WHERE inspectionId = ? ORDER BY sortOrder ASC, takenAt ASC`, [inspectionId]);
+
   return {
     inspection,
     findings: findingsWithPhotos,
@@ -256,6 +269,7 @@ export function getLocalInspectionDetail(inspectionId: string): LocalInspectionD
     signatures,
     checklistResponses: checklistResponsesWithPhotos,
     sectionSkips,
+    photos,
   };
 }
 
@@ -598,14 +612,40 @@ export function addLocalChecklistResponsePhoto(
   return photo;
 }
 
+// A picture of the property itself, taken before (or apart from) the checklist.
+export function addLocalInspectionPhoto(inspectionId: string, input: { localUri: string; caption?: string | null; sortOrder: number }): LocalInspectionPhoto {
+  const photo: LocalInspectionPhoto = {
+    id: generateId(),
+    inspectionId,
+    localUri: input.localUri,
+    remoteUrl: null,
+    caption: input.caption ?? null,
+    takenAt: nowIso(),
+    sortOrder: input.sortOrder,
+    syncStatus: "pending",
+  };
+  getDb().runSync(
+    `INSERT INTO inspection_photos (id, inspectionId, localUri, remoteUrl, caption, takenAt, sortOrder, syncStatus)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [photo.id, photo.inspectionId, photo.localUri, photo.remoteUrl, photo.caption, photo.takenAt, photo.sortOrder, photo.syncStatus]
+  );
+  return photo;
+}
+
+export type PhotoKind = "FINDING" | "CHECKLIST" | "INSPECTION";
+
 // Removing ONE photo (not the whole answer or finding). A photo that never
 // reached the server is simply dropped; one that did is remembered so the
 // next sync deletes it there too.
-function deletePhotoRow(table: "finding_photos" | "checklist_response_photos", kind: "FINDING" | "CHECKLIST", id: string): void {
+function deletePhotoRow(table: "finding_photos" | "checklist_response_photos" | "inspection_photos", kind: PhotoKind, id: string): void {
   const db = getDb();
   const row = db.getFirstSync<{ remoteUrl: string | null }>(`SELECT remoteUrl FROM ${table} WHERE id = ?`, [id]);
   if (row?.remoteUrl) db.runSync(`INSERT OR REPLACE INTO pending_photo_deletes (remoteUrl, kind) VALUES (?, ?)`, [row.remoteUrl, kind]);
   db.runSync(`DELETE FROM ${table} WHERE id = ?`, [id]);
+}
+
+export function deleteLocalInspectionPhoto(photoId: string): void {
+  deletePhotoRow("inspection_photos", "INSPECTION", photoId);
 }
 
 export function deleteLocalChecklistResponsePhoto(photoId: string): void {
@@ -616,9 +656,9 @@ export function deleteLocalFindingPhoto(photoId: string): void {
   deletePhotoRow("finding_photos", "FINDING", photoId);
 }
 
-export function getPendingPhotoDeletes(): { remoteUrl: string; kind: "FINDING" | "CHECKLIST" }[] {
+export function getPendingPhotoDeletes(): { remoteUrl: string; kind: PhotoKind }[] {
   if (!isLocalDbAvailable()) return [];
-  return getDb().getAllSync<{ remoteUrl: string; kind: "FINDING" | "CHECKLIST" }>(`SELECT remoteUrl, kind FROM pending_photo_deletes`);
+  return getDb().getAllSync<{ remoteUrl: string; kind: PhotoKind }>(`SELECT remoteUrl, kind FROM pending_photo_deletes`);
 }
 
 export function clearPendingPhotoDelete(remoteUrl: string): void {
@@ -901,6 +941,21 @@ export function getUploadableChecklistResponsePhotos(): (LocalChecklistResponseP
 }
 export function markChecklistResponsePhotoSynced(id: string, remoteUrl: string): void {
   getDb().runSync(`UPDATE checklist_response_photos SET syncStatus = 'synced', remoteUrl = ? WHERE id = ?`, [remoteUrl, id]);
+}
+
+// Property photos need their inspection to exist server-side first, since the
+// upload endpoint is nested under /inspections/:id/photos.
+export function getUploadableInspectionPhotos(): (LocalInspectionPhoto & { inspectionSyncStatus: string })[] {
+  if (!isLocalDbAvailable()) return [];
+  return getDb().getAllSync<LocalInspectionPhoto & { inspectionSyncStatus: string }>(
+    `SELECT p.*, i.syncStatus as inspectionSyncStatus
+     FROM inspection_photos p
+     JOIN inspections i ON i.id = p.inspectionId
+     WHERE p.syncStatus = 'pending' AND i.syncStatus = 'synced'`
+  );
+}
+export function markInspectionPhotoSynced(id: string, remoteUrl: string): void {
+  getDb().runSync(`UPDATE inspection_photos SET syncStatus = 'synced', remoteUrl = ? WHERE id = ?`, [remoteUrl, id]);
 }
 
 // Signatures likewise need their parent inspection to exist server-side first.

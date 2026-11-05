@@ -98,6 +98,17 @@ export default function LocalInspectionDetailScreen({ route }: Props) {
       ) : null}
 
 
+      {detail.photos.length > 0 ? (
+        <>
+          <Text style={styles.sectionTitle}>Property photos ({detail.photos.length})</Text>
+          <View style={styles.photoRow}>
+            {detail.photos.map((p) => (
+              <PhotoThumb key={p.id} uri={p.localUri} style={styles.photoThumb} />
+            ))}
+          </View>
+        </>
+      ) : null}
+
       {siteMapPanels.map((panel, i) => (
         <View key={i}>
           <Text style={styles.sectionTitle}>{panel.title}</Text>

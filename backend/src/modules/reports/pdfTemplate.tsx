@@ -102,7 +102,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   photoRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 },
-  photo: { width: 90, height: 90, borderRadius: 4 },
+  // "cover" crops a photo to the square instead of squashing it out of shape.
+  photo: { width: 90, height: 90, borderRadius: 4, objectFit: "cover" },
   signatureRow: { flexDirection: "row", gap: 24, marginTop: 8 },
   signatureBlock: { flex: 1 },
   signatureImage: { width: 180, height: 70, borderWidth: 1, borderColor: "#D9E3F0", objectFit: "contain" },
@@ -353,6 +354,8 @@ export interface ReportData {
   generatedAt: string;
   followUpDate: string | null;
   siteMapPanels: ReportSiteMapPanel[];
+  // Pictures of the property taken before the checklist (arrival, overall views).
+  propertyPhotos: ReportImage[];
   checklistSections: ReportChecklistSection[];
   skippedSections: ReportSkippedSection[];
   findings: ReportFinding[];
@@ -402,6 +405,24 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
             </View>
           ) : null}
         </View>
+
+        {data.propertyPhotos.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Property Photos</Text>
+            {data.propertyPhotos.some((p) => p.href) ? <Text style={[styles.cardMeta, { marginBottom: 6 }]}>Tap any photo to open it full size.</Text> : null}
+            <View style={styles.photoRow}>
+              {data.propertyPhotos.map((p, pi) =>
+                p.href ? (
+                  <Link key={pi} src={p.href}>
+                    <Image src={{ data: p.data, format: p.format }} style={styles.photo} />
+                  </Link>
+                ) : (
+                  <Image key={pi} src={{ data: p.data, format: p.format }} style={styles.photo} />
+                )
+              )}
+            </View>
+          </View>
+        ) : null}
 
         {data.siteMapPanels.map((rawPanel, pi) => {
           const panel = transformPanel(rawPanel);

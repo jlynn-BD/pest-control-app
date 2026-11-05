@@ -56,6 +56,7 @@ async function buildReportData(inspectionId: string, publicBase?: string): Promi
         include: { templateItem: { include: { section: true } } },
       },
       sectionSkips: { include: { technician: true } },
+      photos: { orderBy: { sortOrder: "asc" } },
     },
   });
   if (!inspection) throw new HttpError(404, "Inspection not found");
@@ -138,6 +139,7 @@ async function buildReportData(inspectionId: string, publicBase?: string): Promi
     generatedAt: new Date().toISOString(),
     followUpDate: inspection.followUpsFrom[0]?.scheduledDate?.toISOString() ?? null,
     siteMapPanels,
+    propertyPhotos: (await Promise.all(inspection.photos.map((p) => loadReportImage(p.fileUrl, publicBase)))).filter((img): img is ReportImage => img !== null),
     checklistSections,
     skippedSections: inspection.sectionSkips.map((s) => ({
       category: s.category,

@@ -19,6 +19,7 @@ import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { parseSiteMapSketch } from "../../lib/siteMapSketch";
 import type { LocalSignature } from "../../db/types";
 import { PhotoThumb } from "../../components/PhotoThumb";
+import { PropertyPhotos } from "../../components/PropertyPhotos";
 import { AuthImage } from "../../components/AuthImage";
 import { Badge, Card, PrimaryButton, colors, fonts } from "../../components/ui";
 
@@ -97,6 +98,8 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
         </View>
         <Badge label={isCompleted ? "Completed" : "In progress"} tone={isCompleted ? "success" : "warning"} />
       </View>
+
+      <PropertyPhotos inspectionId={inspectionId} photos={detail.photos} onChange={(photos) => setDetail((d) => (d ? { ...d, photos } : d))} />
 
       <View style={styles.section}>
         <View style={styles.sectionHeaderRow}>

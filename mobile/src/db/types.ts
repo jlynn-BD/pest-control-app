@@ -153,6 +153,17 @@ export interface LocalChecklistResponsePhoto {
   syncStatus: "pending" | "synced";
 }
 
+export interface LocalInspectionPhoto {
+  id: string;
+  inspectionId: string;
+  localUri: string;
+  remoteUrl: string | null;
+  caption: string | null;
+  takenAt: string | null;
+  sortOrder: number;
+  syncStatus: "pending" | "synced";
+}
+
 export interface LocalInspectionSectionSkip {
   id: string;
   inspectionId: string;

@@ -155,6 +155,15 @@ export const ENTITIES: Record<string, EntityDef> = {
       return inspectionLinks(f?.inspectionId);
     },
   },
+  InspectionPhoto: {
+    type: "InspectionPhoto",
+    article: "a",
+    noun: "photo",
+    model: "inspectionPhoto",
+    createVerb: "uploaded",
+    label: async () => "taken before the checklist",
+    links: (r) => inspectionLinks(r.inspectionId),
+  },
   ChecklistResponsePhoto: {
     type: "ChecklistResponsePhoto",
     article: "a",

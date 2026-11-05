@@ -14,7 +14,7 @@ import { customersRouter, contactsRouter } from "./modules/customers/routes";
 import { propertiesRouter } from "./modules/properties/routes";
 import { templatesRouter } from "./modules/templates/routes";
 import { appointmentsRouter } from "./modules/appointments/routes";
-import { inspectionsRouter } from "./modules/inspections/routes";
+import { inspectionsRouter, inspectionPhotosRouter } from "./modules/inspections/routes";
 import { findingsOnInspectionRouter, findingsRouter } from "./modules/findings/routes";
 import { checklistResponsesOnInspectionRouter, checklistResponsesRouter } from "./modules/checklist/routes";
 import { estimateDraftOnInspectionRouter, estimatesRouter } from "./modules/estimates/routes";
@@ -93,6 +93,7 @@ app.use("/api/inspections/:inspectionId/recommendations", recommendationsOnInspe
 app.use("/api/inspections/:inspectionId/signatures", signaturesOnInspectionRouter);
 app.use("/api/inspections/:inspectionId/followups", followUpsOnInspectionRouter);
 app.use("/api/inspections", inspectionsRouter);
+app.use("/api/inspection-photos", inspectionPhotosRouter);
 app.use("/api/findings", findingsRouter);
 app.use("/api/checklist-responses", checklistResponsesRouter);
 app.use("/api/recommendations", recommendationsRouter);

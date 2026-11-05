@@ -17,7 +17,7 @@ export async function lockedInspectionIds(ids: string[]): Promise<Set<string>> {
   return new Set(rows.map((r) => r.id));
 }
 
-async function inspectionIdOf(kind: "finding" | "recommendation" | "checklist" | "findingPhoto" | "checklistPhoto", id: string): Promise<string | null> {
+async function inspectionIdOf(kind: "finding" | "recommendation" | "checklist" | "findingPhoto" | "checklistPhoto" | "inspectionPhoto", id: string): Promise<string | null> {
   switch (kind) {
     case "finding":
       return (await prisma.finding.findUnique({ where: { id }, select: { inspectionId: true } }))?.inspectionId ?? null;
@@ -25,6 +25,8 @@ async function inspectionIdOf(kind: "finding" | "recommendation" | "checklist" |
       return (await prisma.recommendation.findUnique({ where: { id }, select: { inspectionId: true } }))?.inspectionId ?? null;
     case "checklist":
       return (await prisma.checklistResponse.findUnique({ where: { id }, select: { inspectionId: true } }))?.inspectionId ?? null;
+    case "inspectionPhoto":
+      return (await prisma.inspectionPhoto.findUnique({ where: { id }, select: { inspectionId: true } }))?.inspectionId ?? null;
     case "findingPhoto": {
       const p = await prisma.findingPhoto.findUnique({ where: { id }, select: { finding: { select: { inspectionId: true } } } });
       return p?.finding.inspectionId ?? null;
@@ -57,6 +59,8 @@ export async function blockEditsToCompletedInspections(req: Request, _res: Respo
       inspectionId = await inspectionIdOf("findingPhoto", parts[2]);
     } else if (parts[0] === "checklist-responses" && parts[1] === "photos" && parts[2] && req.method === "DELETE") {
       inspectionId = await inspectionIdOf("checklistPhoto", parts[2]);
+    } else if (parts[0] === "inspection-photos" && parts[1] && req.method === "DELETE") {
+      inspectionId = await inspectionIdOf("inspectionPhoto", parts[1]);
     } else if (parts[0] === "recommendations" && parts.length === 2 && (req.method === "PATCH" || req.method === "DELETE")) {
       inspectionId = await inspectionIdOf("recommendation", parts[1]);
     }

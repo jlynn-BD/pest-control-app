@@ -14,6 +14,8 @@ import {
   getPendingInspectionSectionSkips,
   getPendingRecommendations,
   getUploadableChecklistResponsePhotos,
+  getUploadableInspectionPhotos,
+  markInspectionPhotoSynced,
   getUploadableFindingPhotos,
   getUploadableSignatures,
   markChecklistResponsePhotoSynced,
@@ -282,6 +284,24 @@ async function runSyncOnce(): Promise<SyncResult> {
       }
     }
 
+    for (const photo of getUploadableInspectionPhotos()) {
+      try {
+        const form = new FormData();
+        await appendPhotoFile(form, photo.localUri, `photo-${photo.id}.jpg`);
+        if (photo.caption) form.append("caption", photo.caption);
+        form.append("sortOrder", String(photo.sortOrder));
+        const created = await apiRequest<{ fileUrl: string }>(`/api/inspections/${photo.inspectionId}/photos`, {
+          method: "POST",
+          body: form,
+          isFormData: true,
+        });
+        markInspectionPhotoSynced(photo.id, created.fileUrl);
+        uploaded += 1;
+      } catch (err) {
+        noteMediaError(err);
+      }
+    }
+
     // Photos removed on this device after they had been uploaded: delete them on
     // the server too. The server's photo id is the file name in the photo's URL.
     for (const gone of getPendingPhotoDeletes()) {
@@ -291,7 +311,7 @@ async function runSyncOnce(): Promise<SyncResult> {
           clearPendingPhotoDelete(gone.remoteUrl);
           continue;
         }
-        await apiRequest<void>(gone.kind === "FINDING" ? `/api/findings/photos/${id}` : `/api/checklist-responses/photos/${id}`, { method: "DELETE" });
+        await apiRequest<void>(gone.kind === "FINDING" ? `/api/findings/photos/${id}` : gone.kind === "INSPECTION" ? `/api/inspection-photos/${id}` : `/api/checklist-responses/photos/${id}`, { method: "DELETE" });
         clearPendingPhotoDelete(gone.remoteUrl);
         pushed += 1;
       } catch (err) {

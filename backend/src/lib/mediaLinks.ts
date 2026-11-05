@@ -10,7 +10,7 @@ const DAYS = Number(process.env.REPORT_LINK_DAYS || 365);
 
 // Only the photos taken during an inspection - never signatures, reports or site plans.
 export function isShareablePhotoKey(key: string): boolean {
-  return (key.startsWith("photos/") || key.startsWith("checklist-photos/")) && !key.includes("..");
+  return (key.startsWith("photos/") || key.startsWith("checklist-photos/") || key.startsWith("inspection-photos/")) && !key.includes("..");
 }
 
 export function signPhotoLink(key: string): string {

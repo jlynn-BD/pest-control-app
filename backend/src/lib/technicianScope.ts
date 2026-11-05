@@ -47,6 +47,8 @@ async function inspectionOf(kind: string, id: string): Promise<string | null> {
       );
     case "recommendation":
       return (await prisma.recommendation.findUnique({ where: { id }, select: { inspectionId: true } }))?.inspectionId ?? null;
+    case "inspectionPhoto":
+      return (await prisma.inspectionPhoto.findUnique({ where: { id }, select: { inspectionId: true } }))?.inspectionId ?? null;
     case "followUp":
       return (await prisma.followUp.findUnique({ where: { id }, select: { inspectionId: true } }))?.inspectionId ?? null;
     case "report":
@@ -73,6 +75,7 @@ async function fileAllowed(userId: string, key: string): Promise<boolean> {
     case "checklist-photos":
       return inspectionAllowed(userId, await inspectionOf("checklist", owner));
     case "signatures":
+    case "inspection-photos":
     case "reports":
       return inspectionAllowed(userId, owner);
     default:
@@ -102,6 +105,8 @@ async function check(req: Request, userId: string): Promise<boolean> {
       return inspectionAllowed(userId, await inspectionOf(a === "photos" ? "findingPhoto" : "finding", a === "photos" ? b : a));
     case "checklist-responses":
       return inspectionAllowed(userId, await inspectionOf(a === "photos" ? "checklistPhoto" : "checklist", a === "photos" ? b : a));
+    case "inspection-photos":
+      return a ? inspectionAllowed(userId, await inspectionOf("inspectionPhoto", a)) : true;
     case "recommendations":
       return a ? inspectionAllowed(userId, await inspectionOf("recommendation", a)) : true;
     case "followups":
