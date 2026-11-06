@@ -328,6 +328,8 @@ model Inspection {
   completedAt        DateTime?
   generalNotes       String?
   weatherConditions  String?
+  reportEmailedAt    DateTime? // when the signed report was last emailed to the customer
+  reportEmailedTo    String? // the address it went to
   checklistCategories String? // Legacy - free category selection was replaced by the mandatory checklist wizard (shared/src/constants/checklistWizard.ts) + per-property applicability. No longer written by current clients; left populated on old rows only.
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt

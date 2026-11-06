@@ -43,22 +43,38 @@ export function emailAvailable(): boolean {
 }
 
 // Test hook: the last message "sent" in console mode.
-export const lastConsoleEmail: { to: string; subject: string; text: string } = { to: "", subject: "", text: "" };
+export const lastConsoleEmail: { to: string; subject: string; text: string; attachments: { filename: string; bytes: number }[] } = { to: "", subject: "", text: "", attachments: [] };
 
-export async function sendEmail(to: string, subject: string, text: string, html?: string): Promise<void> {
+export interface EmailAttachment {
+  filename: string;
+  content: Buffer;
+}
+
+// EMAIL_REPLY_TO (optional): where a customer's reply goes, since the From
+// address is usually a no-reply sender.
+export async function sendEmail(to: string, subject: string, text: string, html?: string, attachments?: EmailAttachment[]): Promise<void> {
   if (consoleMode()) {
     lastConsoleEmail.to = to;
     lastConsoleEmail.subject = subject;
     lastConsoleEmail.text = text;
+    lastConsoleEmail.attachments = (attachments ?? []).map((a) => ({ filename: a.filename, bytes: a.content.length }));
     // eslint-disable-next-line no-console
-    console.log(`[email:console] to ${to}: ${subject} - ${text}`);
+    console.log(`[email:console] to ${to}: ${subject} - ${text}${attachments?.length ? ` [attachments: ${attachments.map((a) => `${a.filename} ${a.content.length}B`).join(", ")}]` : ""}`);
     return;
   }
   if (resendConfigured()) {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: process.env.EMAIL_FROM, to: [to], subject, text, ...(html ? { html } : {}) }),
+      body: JSON.stringify({
+        from: process.env.EMAIL_FROM,
+        to: [to],
+        subject,
+        text,
+        ...(html ? { html } : {}),
+        ...(process.env.EMAIL_REPLY_TO ? { reply_to: process.env.EMAIL_REPLY_TO } : {}),
+        ...(attachments?.length ? { attachments: attachments.map((a) => ({ filename: a.filename, content: a.content.toString("base64") })) } : {}),
+      }),
     });
     if (!res.ok) {
       // eslint-disable-next-line no-console
@@ -79,7 +95,15 @@ export async function sendEmail(to: string, subject: string, text: string, html?
       socketTimeout: 20000,
     });
     try {
-      await transport.sendMail({ from: process.env.EMAIL_FROM, to, subject, text, ...(html ? { html } : {}) });
+      await transport.sendMail({
+        from: process.env.EMAIL_FROM,
+        to,
+        subject,
+        text,
+        ...(html ? { html } : {}),
+        ...(process.env.EMAIL_REPLY_TO ? { replyTo: process.env.EMAIL_REPLY_TO } : {}),
+        ...(attachments?.length ? { attachments: attachments.map((a) => ({ filename: a.filename, content: a.content })) } : {}),
+      });
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("Email send failed (smtp)", err instanceof Error ? err.message : err);

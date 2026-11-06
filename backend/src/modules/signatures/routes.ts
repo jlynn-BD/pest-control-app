@@ -5,6 +5,7 @@ import { generateId } from "../../lib/id";
 import { storage } from "../../lib/storage";
 import { asyncHandler } from "../../middleware/error-handler";
 import { requireAuth } from "../../middleware/auth";
+import { emailReportInBackground } from "../../lib/customerReport";
 
 const signatureSchema = z.object({
   signerType: z.enum(["CUSTOMER", "TECHNICIAN"]),
@@ -58,5 +59,7 @@ signaturesOnInspectionRouter.post(
       },
     });
     res.status(201).json(signature);
+    // Both parties signed on a finished inspection: the customer's copy goes out.
+    emailReportInBackground(req, req.params.inspectionId);
   })
 );

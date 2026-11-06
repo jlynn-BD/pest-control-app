@@ -56,6 +56,9 @@ export default function SignatureCaptureScreen({ route, navigation }: Props) {
         strokes={pad.strokes}
         onStroke={pad.addStroke}
       />
+      {signerType === "CUSTOMER" ? (
+        <Text style={styles.note}>When the inspection is completed, a copy of the signed report is emailed to the customer at the email address we have on file.</Text>
+      ) : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <PrimaryButton title="Save signature" onPress={handleSave} loading={saving} />
     </ScrollView>
@@ -66,5 +69,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 40 },
   heading: { fontFamily: fonts.display, fontSize: 18, fontWeight: "700", color: colors.text, marginBottom: 16 },
+  note: { color: colors.textMuted, fontSize: 13, marginTop: 12, marginBottom: 4 },
   error: { color: colors.danger, marginVertical: 12, textAlign: "center" },
 });

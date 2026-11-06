@@ -7,6 +7,7 @@ import { requireAuth } from "../../middleware/auth";
 import { storage } from "../../lib/storage";
 import { upload } from "../../middleware/upload";
 import { photoExt } from "../../lib/uploadExt";
+import { emailReportInBackground } from "../../lib/customerReport";
 
 export const inspectionsRouter = Router();
 inspectionsRouter.use(requireAuth);
@@ -118,6 +119,8 @@ inspectionsRouter.post(
       data: { status: "COMPLETED", completedAt: new Date() },
     });
     res.json(inspection);
+    // If both signatures were already in, this is what completes the job.
+    emailReportInBackground(req, inspection.id);
   })
 );
 

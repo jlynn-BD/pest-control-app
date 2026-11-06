@@ -305,6 +305,9 @@ export interface Report extends BaseEntity {
   generatedByUserId: string;
   followUpDate?: string | null;
   version: number;
+  // When the signed report was last emailed to the customer, and where.
+  customerEmailedAt?: string | null;
+  customerEmailedTo?: string | null;
 }
 
 export interface FollowUp extends BaseEntity {

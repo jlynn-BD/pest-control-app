@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { ApiError } from "../api/client";
-import { generateReport, getReport } from "../api/reports";
+import { emailReportToCustomer, generateReport, getReport } from "../api/reports";
 import { downloadAndShareReport } from "../lib/report";
 import { Card, PrimaryButton, colors, fonts } from "./ui";
 
@@ -12,6 +12,7 @@ export function ReportCard({ inspectionId }: { inspectionId: string }) {
   const queryClient = useQueryClient();
   const [reportError, setReportError] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [emailNote, setEmailNote] = useState<string | null>(null);
 
   const { data: report } = useQuery({
     queryKey: ["reports", inspectionId],
@@ -26,6 +27,19 @@ export function ReportCard({ inspectionId }: { inspectionId: string }) {
       queryClient.invalidateQueries({ queryKey: ["reports", inspectionId] });
     },
     onError: (err) => setReportError(err instanceof ApiError ? err.message : "Failed to generate report - check your connection and try again."),
+  });
+
+  const emailMutation = useMutation({
+    mutationFn: () => emailReportToCustomer(inspectionId),
+    onSuccess: (result) => {
+      setReportError(null);
+      setEmailNote(`Sent to ${result.maskedTo}`);
+      queryClient.invalidateQueries({ queryKey: ["reports", inspectionId] });
+    },
+    onError: (err) => {
+      setEmailNote(null);
+      setReportError(err instanceof ApiError ? err.message : "Couldn't send the email - check your connection and try again.");
+    },
   });
 
   async function handleShare(reportId: string) {
@@ -55,6 +69,18 @@ export function ReportCard({ inspectionId }: { inspectionId: string }) {
               <PrimaryButton title="Share PDF" onPress={() => handleShare(report.id)} loading={sharing} variant="cta" />
             </View>
           </View>
+          <Text style={styles.meta}>
+            {emailNote ??
+              (report.customerEmailedAt
+                ? `Emailed to the customer (${report.customerEmailedTo}) on ${new Date(report.customerEmailedAt).toLocaleString()}`
+                : "Not emailed to the customer yet. It is sent automatically once you and the customer have both signed.")}
+          </Text>
+          <PrimaryButton
+            title={report.customerEmailedAt ? "Email to customer again" : "Email to customer"}
+            onPress={() => emailMutation.mutate()}
+            loading={emailMutation.isPending}
+            variant="navy"
+          />
         </>
       ) : (
         <PrimaryButton title="Generate report" onPress={() => generateMutation.mutate()} loading={generateMutation.isPending} variant="cta" />

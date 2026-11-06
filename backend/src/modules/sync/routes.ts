@@ -8,6 +8,7 @@ import { diffRecords, logActivity, snapshot } from "../../lib/audit";
 import { ENTITIES, buildSummary } from "../../lib/auditEntities";
 import { lockedInspectionIds } from "../../lib/inspectionLock";
 import { technicianId, technicianMayUseInspection } from "../../lib/technicianScope";
+import { emailReportInBackground } from "../../lib/customerReport";
 
 export const syncRouter = Router();
 syncRouter.use(requireAuth);
@@ -290,6 +291,14 @@ syncRouter.post(
       results.push(await applyChange(req, changes[i], locked, inspectionIds[i]));
     }
     res.json({ results });
+    // An inspection completed by this batch whose signatures already reached
+    // the server earlier: now it is finished, so the customer's copy goes out.
+    // (Signatures that arrive after this are handled when they are uploaded.)
+    changes.forEach((c, i) => {
+      if (c.entity === "Inspection" && c.op !== "delete" && c.data?.status === "COMPLETED" && results[i]?.result === "applied" && inspectionIds[i]) {
+        emailReportInBackground(req, inspectionIds[i]!);
+      }
+    });
   })
 );
 
