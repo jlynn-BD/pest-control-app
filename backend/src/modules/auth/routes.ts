@@ -27,7 +27,7 @@ import {
 } from "../../lib/jwt";
 import { decryptSecret, encryptSecret, hashCode, randomDigits, randomReadable, safeEqual } from "../../lib/crypto";
 import { generateTotpSecret, otpauthUrl, verifyTotp } from "../../lib/totp";
-import { emailAvailable, maskEmail, sendEmail } from "../../lib/email";
+import { EMAIL_HEADLINE_FONT, brandedEmail, emailAvailable, maskEmail, sendEmail } from "../../lib/email";
 import { maskPhone, normalizePhone, sendSms, smsAvailable } from "../../lib/sms";
 import { clientInfo, recordAuthEvent } from "../../lib/authEvents";
 import { rateLimit } from "../../lib/rateLimit";
@@ -210,7 +210,9 @@ async function sendEmailCode(user: User, challenge: LoginChallenge) {
       user.email,
       "Your Blue Duck PestApp sign-in code",
       `Your sign-in code is ${code}\n\nIt expires in 10 minutes and works once. If you didn't try to sign in, you can ignore this email - nobody can get in without the code. Never share it.`,
-      `<p style="font-family:sans-serif;font-size:15px">Your Blue Duck PestApp sign-in code is</p><p style="font-family:monospace;font-size:28px;letter-spacing:4px;font-weight:700">${code}</p><p style="font-family:sans-serif;font-size:13px;color:#555">It expires in 10 minutes and works once. If you didn't try to sign in, you can ignore this email. Never share this code.</p>`
+      brandedEmail(
+        `<p style="font-size:15px">Your Blue Duck PestApp sign-in code is</p><p style="font-family:${EMAIL_HEADLINE_FONT};font-size:28px;letter-spacing:4px;color:#E67300">${code}</p><p style="font-size:13px;color:#51668A">It expires in 10 minutes and works once. If you didn't try to sign in, you can ignore this email. Never share this code.</p>`
+      )
     );
   } catch {
     throw new HttpError(502, "We couldn't send the email. Please try again in a moment, or use your password.");

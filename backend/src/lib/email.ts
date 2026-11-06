@@ -21,6 +21,23 @@ function smtpConfigured(): boolean {
   return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS && process.env.EMAIL_FROM);
 }
 
+// Blue Duck's typefaces for HTML emails. Mail apps that can load web fonts
+// (Apple Mail, iPhone Mail and others) show Red Hat Text / Krona One from the
+// website's font files; apps that can't (Gmail strips <style>) fall back to
+// Arial, the closest plain match, rather than a random default.
+export const EMAIL_FONT = "'Red Hat Text', Arial, Helvetica, sans-serif";
+export const EMAIL_HEADLINE_FONT = "'Krona One', 'Red Hat Text', Arial, Helvetica, sans-serif";
+
+export function brandedEmail(bodyHtml: string): string {
+  const web = (process.env.CORS_ORIGINS || "https://pestapp-web.onrender.com").split(",")[0].trim().replace(/\/$/, "");
+  return (
+    `<style>` +
+    `@font-face{font-family:'Red Hat Text';font-weight:400 700;src:url(${web}/fonts/RedHatText-400-700.woff2) format('woff2');}` +
+    `@font-face{font-family:'Krona One';font-weight:400;src:url(${web}/fonts/KronaOne-400.woff2) format('woff2');}` +
+    `</style><div style="font-family:${EMAIL_FONT};color:#002255">${bodyHtml}</div>`
+  );
+}
+
 export function emailAvailable(): boolean {
   return consoleMode() || resendConfigured() || smtpConfigured();
 }

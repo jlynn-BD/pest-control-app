@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React, { useEffect, useState } from "react";
 import { Platform, Text, View } from "react-native";
 import { colors } from "./src/components/ui";
+import "./src/lib/brandFont";
 import { UpdateBanner } from "./src/components/UpdateBanner";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
