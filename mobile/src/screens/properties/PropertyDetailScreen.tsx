@@ -11,6 +11,7 @@ import { choosePhoto } from "../../lib/photo";
 import { getCachedProperty } from "../../db/cache";
 import { parseSiteMapSketch } from "../../lib/siteMapSketch";
 import { ApiError } from "../../api/client";
+import { useAuth } from "../../context/AuthContext";
 import { openInspection, startInspectionAt } from "../../lib/openInspection";
 import { CustomersStackParamList } from "../../navigation/navigationTypes";
 import { Badge, Card, ErrorView, LoadingView, PrimaryButton, colors, fonts, wideScreen } from "../../components/ui";
@@ -20,6 +21,7 @@ type Props = NativeStackScreenProps<CustomersStackParamList, "PropertyDetail">;
 export default function PropertyDetailScreen({ route, navigation }: Props) {
   const { propertyId } = route.params;
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [uploading, setUploading] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [confirmingRemoveProperty, setConfirmingRemoveProperty] = useState(false);
@@ -80,12 +82,12 @@ export default function PropertyDetailScreen({ route, navigation }: Props) {
     }
   }
 
-  async function handleOpenInspection(inspection: { id: string; status: string }) {
+  async function handleOpenInspection(inspection: { id: string; status: string; technician: { id: string } }) {
     if (openingId) return;
     setOpeningId(inspection.id);
     setHistoryError(null);
     try {
-      await openInspection(navigation, inspection);
+      await openInspection(navigation, { id: inspection.id, status: inspection.status, technicianId: inspection.technician.id }, user?.role === "TECHNICIAN" ? user.id : undefined);
     } catch {
       setHistoryError("Couldn't open this inspection - check your connection and try again.");
     } finally {
@@ -106,6 +108,8 @@ export default function PropertyDetailScreen({ route, navigation }: Props) {
     return <ErrorView message="Failed to load property" />;
 
   const property = propertyQuery.data;
+  // Inspections at this address done by someone else on the crew.
+  const crewDone = user?.role === "TECHNICIAN" ? (historyQuery.data ?? []).filter((i) => i.technician.id !== user.id) : [];
   // Has anything been drawn on the property's map (walls, labels, shapes)?
   // The copy on this device wins when there is one: it includes drawing that
   // hasn't reached the server yet.
@@ -133,6 +137,11 @@ export default function PropertyDetailScreen({ route, navigation }: Props) {
       ) : null}
 
       <Text style={styles.sectionTitle}>Past inspections</Text>
+      {crewDone.length > 0 ? (
+        <Text style={styles.crewHint}>
+          {crewDone.some((i) => i.status !== "COMPLETED") ? "A crewmate has already started an inspection here" : "A crewmate has already inspected this property"} - open it below to see what was found before starting a new one.
+        </Text>
+      ) : null}
       {historyError ? <Text style={styles.error}>{historyError}</Text> : null}
       {historyQuery.isLoading ? (
         <LoadingView />
@@ -151,7 +160,8 @@ export default function PropertyDetailScreen({ route, navigation }: Props) {
               tone={inspection.status === "COMPLETED" ? "success" : "default"}
             />
             <Text style={styles.meta}>
-              {inspection.findings.length} finding(s) recorded{openingId === inspection.id ? " · Opening…" : " · Tap to open"}
+              {inspection.findings.length} finding(s) recorded
+              {openingId === inspection.id ? " · Opening…" : user?.role === "TECHNICIAN" && inspection.technician.id !== user.id ? " · View only" : inspection.status === "COMPLETED" ? " · Tap to view" : " · Tap to continue"}
             </Text>
           </Card>
           </Pressable>
@@ -213,6 +223,7 @@ export default function PropertyDetailScreen({ route, navigation }: Props) {
 const styles = StyleSheet.create({
   buttonStack: { gap: 10 },
   startButton: { marginTop: 14 },
+  crewHint: { color: colors.textMuted, fontSize: 13, marginBottom: 8 },
   container: { flex: 1, backgroundColor: colors.bg },
   content: { ...wideScreen, padding: 16 },
   title: { fontFamily: fonts.display, fontSize: 22, fontWeight: "700", color: colors.text },

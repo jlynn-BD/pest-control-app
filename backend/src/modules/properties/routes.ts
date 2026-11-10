@@ -5,7 +5,6 @@ import { generateId } from "../../lib/id";
 import { storage } from "../../lib/storage";
 import { asyncHandler, HttpError } from "../../middleware/error-handler";
 import { requireAuth } from "../../middleware/auth";
-import { technicianId } from "../../lib/technicianScope";
 import { upload } from "../../middleware/upload";
 import { photoExt } from "../../lib/uploadExt";
 import { mergeSketches, parseRawSketch, RawSketch } from "@pest-app/shared";
@@ -116,13 +115,14 @@ propertiesRouter.delete(
   })
 );
 
-// Service history: prior inspections at this property.
+// Service history: every inspection at this property, whoever did it. A
+// technician sent to a property can see that a crewmate already inspected it
+// (and open it, read-only unless it is their own unfinished one).
 propertiesRouter.get(
   "/:id/inspections",
   asyncHandler(async (req, res) => {
-    const mine = technicianId(req);
     const inspections = await prisma.inspection.findMany({
-      where: { propertyId: req.params.id, deletedAt: null, ...(mine ? { technicianId: mine } : {}) },
+      where: { propertyId: req.params.id, deletedAt: null },
       include: {
         technician: { select: { id: true, firstName: true, lastName: true } },
         findings: true,

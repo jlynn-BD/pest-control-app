@@ -3,6 +3,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React from "react";
 import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getInspection } from "../../api/inspections";
+import { useAuth } from "../../context/AuthContext";
 import { API_BASE_URL } from "../../api/config";
 import { CHECKLIST_CATEGORY_LABEL, CHECKLIST_STATUS_LABEL, groupChecklistForDisplay } from "../../lib/checklist";
 import { buildSiteMapPanels, parseSiteMapSketch } from "../../lib/siteMapSketch";
@@ -19,6 +20,7 @@ type Props = NativeStackScreenProps<InspectionsStackParamList, "InspectionDetail
 
 export default function InspectionDetailScreen({ route }: Props) {
   const { inspectionId } = route.params;
+  const { user } = useAuth();
 
   const { data: inspection, isLoading, isError } = useQuery({
     queryKey: ["inspections", inspectionId],
@@ -28,6 +30,8 @@ export default function InspectionDetailScreen({ route }: Props) {
   if (isLoading) return <LoadingView />;
   if (isError || !inspection) return <ErrorView message="Failed to load inspection" />;
 
+  // Someone else on the crew did (or is doing) this one: look, don't touch.
+  const notMine = Boolean(user && inspection.technician && inspection.technician.id !== user.id && user.role === "TECHNICIAN");
   const checklistSections = groupChecklistForDisplay(inspection.template?.sections ?? [], inspection.checklistResponses);
   const siteMapSketch = parseSiteMapSketch(inspection.property.siteMapSketch);
   const siteMapPanels = buildSiteMapPanels(inspection.property.siteMapImageUrl ?? null, siteMapSketch, inspection.findings);
@@ -39,9 +43,17 @@ export default function InspectionDetailScreen({ route }: Props) {
         <Badge label={inspection.status.replace(/_/g, " ")} tone={inspection.status === "COMPLETED" ? "success" : "default"} />
       </View>
       <Text style={styles.meta}>{inspection.property.addressLine1}</Text>
+      {notMine ? (
+        <View style={styles.viewOnly}>
+          <Text style={styles.viewOnlyText}>
+            View only - this inspection {inspection.status === "COMPLETED" ? "was done" : "is being done"} by {inspection.technician.firstName} {inspection.technician.lastName}.
+            {inspection.status === "COMPLETED" ? " A completed inspection can't be changed." : ""}
+          </Text>
+        </View>
+      ) : null}
 
       <InspectionHistoryLink inspectionId={inspectionId} title={inspection.customer.name} />
-      {inspection.status === "COMPLETED" ? <ReportCard inspectionId={inspectionId} /> : null}
+      {inspection.status === "COMPLETED" ? <ReportCard inspectionId={inspectionId} readOnly={notMine} /> : null}
 
       {(inspection.photos ?? []).length > 0 ? (
         <>
@@ -126,6 +138,8 @@ export default function InspectionDetailScreen({ route }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, gap: 4 },
+  viewOnly: { backgroundColor: colors.chip, borderRadius: 8, borderWidth: 1, borderColor: colors.border, padding: 10, marginVertical: 8 },
+  viewOnlyText: { color: colors.text, fontSize: 13 },
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   title: { fontFamily: fonts.display, fontSize: 20, fontWeight: "700", color: colors.text },
   meta: { fontSize: 13, color: colors.textMuted, marginTop: 2 },

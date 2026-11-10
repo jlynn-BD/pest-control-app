@@ -8,7 +8,10 @@ import { Card, PrimaryButton, colors, fonts } from "./ui";
 
 // Generate / regenerate / share the PDF report for a completed inspection.
 // Shared by the server-backed and on-device detail screens so both offer it.
-export function ReportCard({ inspectionId }: { inspectionId: string }) {
+//
+// readOnly: someone else's inspection - the report can be opened and shared
+// but not generated, regenerated or emailed from here.
+export function ReportCard({ inspectionId, readOnly = false }: { inspectionId: string; readOnly?: boolean }) {
   const queryClient = useQueryClient();
   const [reportError, setReportError] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
@@ -62,26 +65,32 @@ export function ReportCard({ inspectionId }: { inspectionId: string }) {
             Version {report.version} · generated {new Date(report.generatedAt).toLocaleString()}
           </Text>
           <View style={styles.buttonRow}>
-            <View style={styles.buttonHalf}>
-              <PrimaryButton title="Regenerate" onPress={() => generateMutation.mutate()} loading={generateMutation.isPending} />
-            </View>
+            {readOnly ? null : (
+              <View style={styles.buttonHalf}>
+                <PrimaryButton title="Regenerate" onPress={() => generateMutation.mutate()} loading={generateMutation.isPending} />
+              </View>
+            )}
             <View style={styles.buttonHalf}>
               <PrimaryButton title="Share PDF" onPress={() => handleShare(report.id)} loading={sharing} variant="cta" />
             </View>
           </View>
-          <Text style={styles.meta}>
+          {readOnly ? null : <Text style={styles.meta}>
             {emailNote ??
               (report.customerEmailedAt
                 ? `Emailed to the customer (${report.customerEmailedTo}) on ${new Date(report.customerEmailedAt).toLocaleString()}`
                 : "Not emailed to the customer yet. It is sent automatically once you and the customer have both signed.")}
-          </Text>
-          <PrimaryButton
-            title={report.customerEmailedAt ? "Email to customer again" : "Email to customer"}
-            onPress={() => emailMutation.mutate()}
-            loading={emailMutation.isPending}
-            variant="navy"
-          />
+          </Text>}
+          {readOnly ? null : (
+            <PrimaryButton
+              title={report.customerEmailedAt ? "Email to customer again" : "Email to customer"}
+              onPress={() => emailMutation.mutate()}
+              loading={emailMutation.isPending}
+              variant="navy"
+            />
+          )}
         </>
+      ) : readOnly ? (
+        <Text style={styles.meta}>No report has been generated for this inspection yet.</Text>
       ) : (
         <PrimaryButton title="Generate report" onPress={() => generateMutation.mutate()} loading={generateMutation.isPending} variant="cta" />
       )}

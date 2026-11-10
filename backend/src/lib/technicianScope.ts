@@ -3,10 +3,12 @@ import { prisma } from "./prisma";
 import { HttpError } from "../middleware/error-handler";
 import { requireAuth } from "../middleware/auth";
 
-// Technicians work their own jobs. Admins and office staff see everything;
-// a technician is limited to the inspections assigned to them and what hangs
-// off them (findings, checklist, recommendations, signatures, photos, reports,
-// follow-ups, estimates), and to their own appointments. Customers and
+// Technicians work their own jobs. Admins and office staff see everything.
+// A technician may OPEN (read) any inspection - a crewmate may already have
+// inspected the property they were just sent to - but may only CHANGE the ones
+// assigned to them, and nobody changes a completed one (see inspectionLock).
+// Their own to-do list (the inspections list, appointments) is only their own
+// jobs, and estimates and follow-ups stay with their owner. Customers and
 // properties stay shared on purpose: technicians add and look up clients in
 // the field, so those directories are company-wide.
 //
@@ -83,12 +85,18 @@ async function fileAllowed(userId: string, key: string): Promise<boolean> {
   }
 }
 
+// Parts of an inspection any technician may look at (never change).
+const READABLE_SUBPATHS = new Set(["findings", "checklist-responses", "recommendations", "signatures", "report", "photos"]);
+
 async function check(req: Request, userId: string): Promise<boolean> {
   const parts = req.path.split("/").filter(Boolean);
   const [area, a, b] = parts;
   const method = req.method;
+  const reading = method === "GET" || method === "HEAD";
   switch (area) {
     case "inspections":
+      // Opening one inspection, or a list inside it (findings, checklist, ...).
+      if (reading && a && (!b || READABLE_SUBPATHS.has(b))) return true;
       if (!a) {
         if (method === "GET") {
           req.query.technicianId = userId;
@@ -102,16 +110,21 @@ async function check(req: Request, userId: string): Promise<boolean> {
       }
       return inspectionAllowed(userId, a);
     case "findings":
+      if (reading) return true;
       return inspectionAllowed(userId, await inspectionOf(a === "photos" ? "findingPhoto" : "finding", a === "photos" ? b : a));
     case "checklist-responses":
+      if (reading) return true;
       return inspectionAllowed(userId, await inspectionOf(a === "photos" ? "checklistPhoto" : "checklist", a === "photos" ? b : a));
     case "inspection-photos":
+      if (reading) return true;
       return a ? inspectionAllowed(userId, await inspectionOf("inspectionPhoto", a)) : true;
     case "recommendations":
+      if (reading) return true;
       return a ? inspectionAllowed(userId, await inspectionOf("recommendation", a)) : true;
     case "followups":
       return a ? inspectionAllowed(userId, await inspectionOf("followUp", a)) : true;
     case "reports":
+      if (reading) return true;
       return a ? inspectionAllowed(userId, await inspectionOf("report", a)) : true;
     case "estimates":
       return a ? estimateAllowed(userId, a) : true;
@@ -132,6 +145,9 @@ async function check(req: Request, userId: string): Promise<boolean> {
       return !appt || appt.technicianId === userId;
     }
     case "media":
+      // Looking at a photo, signature or report is allowed for any inspection;
+      // uploading is not (it goes through the inspection's own routes).
+      if (reading && a === "file") return true;
       return a === "file" ? fileAllowed(userId, parts.slice(2).join("/")) : true;
     default:
       return true;
