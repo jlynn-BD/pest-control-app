@@ -21,7 +21,8 @@ export type InspectionsStackParamList = {
   InspectionDetail: { inspectionId: string };
   LocalInspectionDetail: { inspectionId: string };
   // propertyId: arriving from a property's page with that property pre-selected.
-  NewInspection: { propertyId?: string } | undefined;
+  // addNew: open straight to "add a new customer & property", prefillAddress: what was already typed.
+  NewInspection: { propertyId?: string; addNew?: boolean; prefillAddress?: string } | undefined;
   InspectionWorkspace: { inspectionId: string };
   // The mandatory checklist wizard - every step (Exterior, First Floor,
   // Second Floor, Third Floor, Basement, Attic, Crawl Space) must be finished,

@@ -183,10 +183,10 @@ export default function HomeScreen({ navigation }: Props) {
               <Text style={styles.emptyTitle}>No property matches that address</Text>
               <Text style={styles.meta}>
                 {properties.length === 0 ? "Connect to the internet once to download your property list. " : ""}
-                A new property has to be added to its customer first.
+                Add it as a new customer and property to start an inspection there.
               </Text>
-              <Pressable onPress={() => navigation.getParent()?.navigate("Customers", { screen: "CustomerList" })} hitSlop={8}>
-                <Text style={styles.link}>Add a customer or property</Text>
+              <Pressable onPress={() => navigation.navigate("NewInspection", { addNew: true, prefillAddress: search.trim() })} hitSlop={8}>
+                <Text style={styles.link}>Add a new customer & property</Text>
               </Pressable>
             </View>
           ) : (
