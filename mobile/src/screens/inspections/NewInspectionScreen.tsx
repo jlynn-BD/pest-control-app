@@ -13,10 +13,11 @@ import { Card, Field, PrimaryButton, colors, fonts } from "../../components/ui";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "NewInspection">;
 
-export default function NewInspectionScreen({ navigation }: Props) {
+export default function NewInspectionScreen({ navigation, route }: Props) {
   const { user } = useAuth();
   const [search, setSearch] = useState("");
-  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
+  // Coming from a property's page: that property is already chosen.
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(route.params?.propertyId ?? null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [properties, setProperties] = useState<LocalProperty[]>([]);
   const [templates, setTemplates] = useState<LocalTemplate[]>([]);
@@ -126,7 +127,7 @@ export default function NewInspectionScreen({ navigation }: Props) {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.sectionTitle}>Property</Text>
-      <Field label="" placeholder="Search by customer or address" value={search} onChangeText={setSearch} />
+      <Field label="" placeholder="Search property address..." value={search} onChangeText={setSearch} />
       {properties.length === 0 ? (
         <Text style={styles.emptyText}>
           No properties cached yet. Connect to the internet once to download customer &amp; property data for offline use.
@@ -154,6 +155,10 @@ export default function NewInspectionScreen({ navigation }: Props) {
           );
         })
       )}
+
+      <Pressable onPress={() => navigation.getParent()?.navigate("Customers", { screen: "CustomerList" })} hitSlop={8}>
+        <Text style={styles.addLink}>Can't find the property? Add a customer or property</Text>
+      </Pressable>
 
       {existingInspectionId ? null : (
         <>
@@ -210,5 +215,6 @@ const styles = StyleSheet.create({
   meta: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
   startError: { color: colors.danger, fontSize: 13, textAlign: "center", marginTop: 8 },
   emptyText: { color: colors.textMuted, fontStyle: "italic" },
+  addLink: { color: colors.primaryText, fontWeight: "600", fontSize: 14, marginTop: 4, marginBottom: 4 },
   spacer: { height: 8 },
 });

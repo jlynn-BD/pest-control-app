@@ -102,6 +102,14 @@ export default function SettingsScreen() {
         <Text style={styles.meta}>{user?.role}</Text>
       </Card>
 
+      <Text style={styles.sectionTitle}>Customers</Text>
+      <Card>
+        <Text style={styles.meta}>The customer list: add or edit customers and properties, draw site plans, and see estimates.</Text>
+        <View style={{ marginTop: 10 }}>
+          <PrimaryButton title="Open customers" onPress={() => navigation.navigate("Customers", { screen: "CustomerList" })} />
+        </View>
+      </Card>
+
       <EasySignInCard />
 
       <Text style={styles.sectionTitle}>Sync</Text>

@@ -4,7 +4,8 @@ import ChecklistScreen from "../screens/inspections/ChecklistScreen";
 import SiteMapScreen from "../screens/inspections/SiteMapScreen";
 import FindingFormScreen from "../screens/inspections/FindingFormScreen";
 import InspectionDetailScreen from "../screens/inspections/InspectionDetailScreen";
-import InspectionListScreen from "../screens/inspections/InspectionListScreen";
+import HomeScreen from "../screens/inspections/HomeScreen";
+import PropertyDetailScreen from "../screens/properties/PropertyDetailScreen";
 import InspectionWizardScreen from "../screens/inspections/InspectionWizardScreen";
 import InspectionWorkspaceScreen from "../screens/inspections/InspectionWorkspaceScreen";
 import LocalInspectionDetailScreen from "../screens/inspections/LocalInspectionDetailScreen";
@@ -20,7 +21,8 @@ const Stack = createNativeStackNavigator<InspectionsStackParamList>();
 export default function InspectionsNavigator() {
   return (
     <Stack.Navigator screenOptions={headerScreenOptions}>
-      <Stack.Screen name="InspectionList" component={InspectionListScreen} options={{ title: "Inspections" }} />
+      <Stack.Screen name="Home" component={HomeScreen} options={{ title: "Blue Duck Pest Inspection" }} />
+      <Stack.Screen name="PropertyDetail" component={PropertyDetailScreen as React.ComponentType} options={{ title: "Property" }} />
       <Stack.Screen name="InspectionDetail" component={InspectionDetailScreen} options={{ title: "Inspection" }} />
       <Stack.Screen name="LocalInspectionDetail" component={LocalInspectionDetailScreen} options={{ title: "Inspection" }} />
       <Stack.Screen name="NewInspection" component={NewInspectionScreen} options={{ title: "New Inspection" }} />

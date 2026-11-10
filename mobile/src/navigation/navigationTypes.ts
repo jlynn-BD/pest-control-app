@@ -13,10 +13,15 @@ export type CustomersStackParamList = {
 };
 
 export type InspectionsStackParamList = {
-  InspectionList: undefined;
+  // Home: the first screen - New Inspection, work in progress, address search.
+  Home: undefined;
+  // A property's record (site plan + its past inspections), reached by
+  // searching an address on Home.
+  PropertyDetail: { propertyId: string };
   InspectionDetail: { inspectionId: string };
   LocalInspectionDetail: { inspectionId: string };
-  NewInspection: undefined;
+  // propertyId: arriving from a property's page with that property pre-selected.
+  NewInspection: { propertyId?: string } | undefined;
   InspectionWorkspace: { inspectionId: string };
   // The mandatory checklist wizard - every step (Exterior, First Floor,
   // Second Floor, Third Floor, Basement, Attic, Crawl Space) must be finished,

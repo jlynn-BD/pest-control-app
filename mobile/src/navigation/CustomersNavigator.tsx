@@ -10,6 +10,7 @@ import EstimateListScreen from "../screens/estimates/EstimateListScreen";
 import EstimateDetailScreen from "../screens/estimates/EstimateDetailScreen";
 import EstimateFormScreen from "../screens/estimates/EstimateFormScreen";
 import { CustomersStackParamList } from "./navigationTypes";
+import { HomeBackButton } from "../components/HomeBackButton";
 import { headerScreenOptions } from "../components/ui";
 
 const Stack = createNativeStackNavigator<CustomersStackParamList>();
@@ -17,7 +18,7 @@ const Stack = createNativeStackNavigator<CustomersStackParamList>();
 export default function CustomersNavigator() {
   return (
     <Stack.Navigator screenOptions={headerScreenOptions}>
-      <Stack.Screen name="CustomerList" component={CustomerListScreen} options={{ title: "Customers" }} />
+      <Stack.Screen name="CustomerList" component={CustomerListScreen} options={{ title: "Customers", headerLeft: () => <HomeBackButton /> }} />
       <Stack.Screen name="CustomerDetail" component={CustomerDetailScreen} options={{ title: "Customer" }} />
       <Stack.Screen name="CustomerForm" component={CustomerFormScreen} options={{ title: "New Customer" }} />
       <Stack.Screen name="PropertyDetail" component={PropertyDetailScreen} options={{ title: "Property" }} />

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
 import React, { useCallback, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { API_BASE_URL } from "../../api/config";
 import { AuthImage } from "../../components/AuthImage";
 import { deleteProperty, deleteSiteMap, getProperty, getPropertyServiceHistory, uploadSiteMap } from "../../api/properties";
@@ -11,6 +11,7 @@ import { choosePhoto } from "../../lib/photo";
 import { getCachedProperty } from "../../db/cache";
 import { parseSiteMapSketch } from "../../lib/siteMapSketch";
 import { ApiError } from "../../api/client";
+import { openInspection, startInspectionAt } from "../../lib/openInspection";
 import { CustomersStackParamList } from "../../navigation/navigationTypes";
 import { Badge, Card, ErrorView, LoadingView, PrimaryButton, colors, fonts } from "../../components/ui";
 
@@ -25,6 +26,8 @@ export default function PropertyDetailScreen({ route, navigation }: Props) {
   const [removingProperty, setRemovingProperty] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   const propertyQuery = useQuery({ queryKey: ["properties", propertyId], queryFn: () => getProperty(propertyId) });
   // Coming back from drawing the site plan (or from an inspection): reload, and
@@ -77,6 +80,19 @@ export default function PropertyDetailScreen({ route, navigation }: Props) {
     }
   }
 
+  async function handleOpenInspection(inspection: { id: string; status: string }) {
+    if (openingId) return;
+    setOpeningId(inspection.id);
+    setHistoryError(null);
+    try {
+      await openInspection(navigation, inspection);
+    } catch {
+      setHistoryError("Couldn't open this inspection - check your connection and try again.");
+    } finally {
+      setOpeningId(null);
+    }
+  }
+
   async function handleUploadSiteMap() {
     const uri = await choosePhoto();
     if (!uri) return;
@@ -106,12 +122,41 @@ export default function PropertyDetailScreen({ route, navigation }: Props) {
         {property.addressLine1}, {property.city}, {property.state} {property.postalCode}
       </Text>
       <Text style={styles.meta}>{property.customer.name}</Text>
+      <View style={styles.startButton}>
+        <PrimaryButton title="Start inspection here" onPress={() => startInspectionAt(navigation, propertyId)} variant="cta" />
+      </View>
       {property.accessNotes ? (
         <Card style={styles.notesCard}>
           <Text style={styles.notesLabel}>Access notes</Text>
           <Text style={styles.notesText}>{property.accessNotes}</Text>
         </Card>
       ) : null}
+
+      <Text style={styles.sectionTitle}>Past inspections</Text>
+      {historyError ? <Text style={styles.error}>{historyError}</Text> : null}
+      {historyQuery.isLoading ? (
+        <LoadingView />
+      ) : !historyQuery.data || historyQuery.data.length === 0 ? (
+        <Text style={styles.emptyText}>No prior inspections</Text>
+      ) : (
+        historyQuery.data.map((inspection) => (
+          <Pressable key={inspection.id} onPress={() => handleOpenInspection(inspection)} accessibilityRole="button">
+          <Card style={styles.card}>
+            <Text style={styles.cardTitle}>
+              {new Date(inspection.createdAt).toLocaleDateString()} · {inspection.technician.firstName}{" "}
+              {inspection.technician.lastName}
+            </Text>
+            <Badge
+              label={inspection.status}
+              tone={inspection.status === "COMPLETED" ? "success" : "default"}
+            />
+            <Text style={styles.meta}>
+              {inspection.findings.length} finding(s) recorded{openingId === inspection.id ? " · Opening…" : " · Tap to open"}
+            </Text>
+          </Card>
+          </Pressable>
+        ))
+      )}
 
       <Text style={styles.sectionTitle}>Site plan</Text>
       {property.siteMapImageUrl ? (
@@ -150,27 +195,6 @@ export default function PropertyDetailScreen({ route, navigation }: Props) {
       ) : null}
       </View>
 
-      <Text style={styles.sectionTitle}>Service history</Text>
-      {historyQuery.isLoading ? (
-        <LoadingView />
-      ) : !historyQuery.data || historyQuery.data.length === 0 ? (
-        <Text style={styles.emptyText}>No prior inspections</Text>
-      ) : (
-        historyQuery.data.map((inspection) => (
-          <Card key={inspection.id} style={styles.card}>
-            <Text style={styles.cardTitle}>
-              {new Date(inspection.createdAt).toLocaleDateString()} · {inspection.technician.firstName}{" "}
-              {inspection.technician.lastName}
-            </Text>
-            <Badge
-              label={inspection.status}
-              tone={inspection.status === "COMPLETED" ? "success" : "default"}
-            />
-            <Text style={styles.meta}>{inspection.findings.length} finding(s) recorded</Text>
-          </Card>
-        ))
-      )}
-
       <Text style={styles.sectionTitle}>Remove this property</Text>
       {removeError ? <Text style={styles.error}>{removeError}</Text> : null}
       {confirmingRemoveProperty ? (
@@ -188,6 +212,7 @@ export default function PropertyDetailScreen({ route, navigation }: Props) {
 
 const styles = StyleSheet.create({
   buttonStack: { gap: 10 },
+  startButton: { marginTop: 14 },
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16 },
   title: { fontFamily: fonts.display, fontSize: 22, fontWeight: "700", color: colors.text },
