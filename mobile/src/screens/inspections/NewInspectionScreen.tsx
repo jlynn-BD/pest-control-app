@@ -183,7 +183,10 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
     const parsed = parseSingleLineAddress(newAddress);
     if (!newName.trim()) return setAddError("Enter the customer's name.");
     if (!parsed) return setAddError(ADDRESS_FORMAT_ERROR);
-    if (newEmail.trim() && !EMAIL.test(newEmail.trim())) return setAddError("That email address doesn't look right.");
+    // The phone number and email are required: the signed report is emailed to the customer automatically.
+    if (newPhone.replace(/\D/g, "").length < 7) return setAddError("Enter the customer's phone number.");
+    if (!newEmail.trim()) return setAddError("Enter the customer's email - the signed report is sent there.");
+    if (!EMAIL.test(newEmail.trim())) return setAddError("That email address doesn't look right.");
     // Same street and ZIP as a record we already have: use that one, don't duplicate it.
     const sameAddress = properties.find(
       (p) => words(p.addressLine1).join(" ") === words(parsed.addressLine1).join(" ") && p.postalCode.trim() === parsed.postalCode.trim()
@@ -200,8 +203,8 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
       const customer = await createCustomer({
         type: "RESIDENTIAL",
         name: newName.trim(),
-        email: newEmail.trim() || undefined,
-        phone: newPhone.trim() || undefined,
+        email: newEmail.trim(),
+        phone: newPhone.trim(),
         billingAddressLine1: parsed.addressLine1,
         city: parsed.city,
         state: parsed.state,
@@ -297,11 +300,11 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
       {adding ? (
         <Card style={styles.addCard}>
           <Text style={styles.cardTitle}>New customer & property</Text>
-          <Field label="Customer name" value={newName} onChangeText={setNewName} placeholder="e.g. Dana Whitfield" autoFocus={Boolean(newAddress)} />
-          <Field label="Property address" value={newAddress} onChangeText={setNewAddress} placeholder={ADDRESS_PLACEHOLDER} />
-          <Field label="Phone" value={newPhone} onChangeText={setNewPhone} keyboardType="phone-pad" placeholder="(555) 123-4567" />
-          <Field label="Email" value={newEmail} onChangeText={setNewEmail} autoCapitalize="none" keyboardType="email-address" placeholder="name@example.com" />
-          <Text style={styles.meta}>The signed inspection report is emailed to this address automatically.</Text>
+          <Field label="Customer name *" value={newName} onChangeText={setNewName} placeholder="e.g. Dana Whitfield" autoFocus={Boolean(newAddress)} />
+          <Field label="Property address *" value={newAddress} onChangeText={setNewAddress} placeholder={ADDRESS_PLACEHOLDER} />
+          <Field label="Phone *" value={newPhone} onChangeText={setNewPhone} keyboardType="phone-pad" placeholder="(555) 123-4567" />
+          <Field label="Email *" value={newEmail} onChangeText={setNewEmail} autoCapitalize="none" keyboardType="email-address" placeholder="name@example.com" />
+          <Text style={styles.meta}>The signed inspection report is emailed to this address automatically once the inspection is completed.</Text>
           {addError ? <Text style={styles.error}>{addError}</Text> : null}
           <View style={styles.buttonRow}>
             <View style={styles.buttonHalf}>

@@ -33,6 +33,15 @@ export default function CustomerFormScreen({ navigation }: Props) {
       setError("Name is required");
       return;
     }
+    // Both are required: the signed inspection report is emailed to the customer automatically.
+    if (phone.replace(/\D/g, "").length < 7) {
+      setError("Phone number is required");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError("A valid email is required - the signed report is sent there");
+      return;
+    }
     // The billing address is optional, but if one is typed it has to be
     // readable as street, city, state and ZIP.
     const parsed = address.trim() ? parseSingleLineAddress(address) : null;
@@ -44,8 +53,8 @@ export default function CustomerFormScreen({ navigation }: Props) {
     mutation.mutate({
       type,
       name: name.trim(),
-      email: email.trim() || undefined,
-      phone: phone.trim() || undefined,
+      email: email.trim(),
+      phone: phone.trim(),
       ...(parsed ? { billingAddressLine1: parsed.addressLine1, city: parsed.city, state: parsed.state, postalCode: parsed.postalCode } : {}),
     });
   }
@@ -66,9 +75,9 @@ export default function CustomerFormScreen({ navigation }: Props) {
         ))}
       </View>
 
-      <Field label="Customer / Business name" value={name} onChangeText={setName} />
-      <Field label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
-      <Field label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+      <Field label="Customer / Business name *" value={name} onChangeText={setName} />
+      <Field label="Email *" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
+      <Field label="Phone *" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
       <Field label={`${ADDRESS_LABEL} (optional)`} value={address} onChangeText={setAddress} placeholder={ADDRESS_PLACEHOLDER} />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
