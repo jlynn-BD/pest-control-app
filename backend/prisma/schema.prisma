@@ -370,6 +370,9 @@ model InspectionPhoto {
   takenAt      DateTime?
   sortOrder    Int       @default(0)
   createdAt    DateTime  @default(now())
+  // Set when the picture documents why this checklist area couldn't be
+  // inspected ("not accessible"); such pictures are not general property photos.
+  sectionCategory String?
 
   inspection Inspection @relation(fields: [inspectionId], references: [id])
 
@@ -396,6 +399,11 @@ model InspectionSectionSkip {
   initials     String
   confirmedAt  DateTime
   createdAt    DateTime @default(now())
+  // NOT_PRESENT: the property doesn't have this area. NOT_ACCESSIBLE: it has it
+  // but it couldn't be inspected - `reason` says why and the photo(s) on the
+  // inspection with sectionCategory = this category show it.
+  kind         String   @default("NOT_PRESENT")
+  reason       String?
 
   inspection Inspection @relation(fields: [inspectionId], references: [id])
   technician User       @relation(fields: [technicianId], references: [id])

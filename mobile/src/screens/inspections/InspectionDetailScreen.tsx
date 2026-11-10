@@ -13,6 +13,7 @@ import { PhotoThumb } from "../../components/PhotoThumb";
 import { AuthImage } from "../../components/AuthImage";
 import { ReportCard } from "../../components/ReportCard";
 import { FollowUpButton } from "../../components/FollowUpButton";
+import { AreasNotInspected } from "../../components/AreasNotInspected";
 import { InspectionHistoryLink } from "../../components/InspectionHistoryLink";
 import { FindingsAndRecommendations } from "../../components/FindingsAndRecommendations";
 import { Badge, Card, ErrorView, LoadingView, PrimaryButton, colors, fonts } from "../../components/ui";
@@ -57,11 +58,11 @@ export default function InspectionDetailScreen({ route }: Props) {
       {inspection.status === "COMPLETED" ? <ReportCard inspectionId={inspectionId} readOnly={notMine} /> : null}
       {inspection.status === "COMPLETED" ? <FollowUpButton sourceInspectionId={inspectionId} propertyId={inspection.propertyId} /> : null}
 
-      {(inspection.photos ?? []).length > 0 ? (
+      {(inspection.photos ?? []).filter((p) => !p.sectionCategory).length > 0 ? (
         <>
-          <Text style={styles.sectionTitle}>Property photos ({inspection.photos!.length})</Text>
+          <Text style={styles.sectionTitle}>Property photos ({inspection.photos!.filter((p) => !p.sectionCategory).length})</Text>
           <View style={styles.photoRow}>
-            {inspection.photos!.map((p) => (
+            {inspection.photos!.filter((p) => !p.sectionCategory).map((p) => (
               <PhotoThumb key={p.id} uri={`${API_BASE_URL}${p.fileUrl}`} style={styles.photoThumb} />
             ))}
           </View>
@@ -108,6 +109,17 @@ export default function InspectionDetailScreen({ route }: Props) {
           ))}
         </View>
       ))}
+
+      <AreasNotInspected
+        areas={(inspection.sectionSkips ?? []).map((k) => ({
+          category: k.category,
+          kind: k.kind,
+          reason: k.reason,
+          initials: k.initials,
+          confirmedAt: k.confirmedAt,
+          photoUris: (inspection.photos ?? []).filter((p) => p.sectionCategory === k.category).map((p) => `${API_BASE_URL}${p.fileUrl}`),
+        }))}
+      />
 
       <FindingsAndRecommendations
         findings={inspection.findings.map((f) => ({

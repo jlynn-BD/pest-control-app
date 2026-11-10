@@ -165,6 +165,8 @@ export interface LocalInspectionPhoto {
   caption: string | null;
   takenAt: string | null;
   sortOrder: number;
+  // Set when the photo documents why a checklist area couldn't be inspected.
+  sectionCategory: string | null;
   syncStatus: "pending" | "synced";
 }
 
@@ -176,5 +178,9 @@ export interface LocalInspectionSectionSkip {
   initials: string;
   confirmedAt: string;
   createdAt: string;
+  // "NOT_PRESENT" (the property doesn't have it) or "NOT_ACCESSIBLE" (it does,
+  // but it couldn't be inspected - `reason` says why).
+  kind: string;
+  reason: string | null;
   syncStatus: "pending" | "synced";
 }

@@ -158,14 +158,23 @@ export async function buildReportData(inspectionId: string): Promise<ReportData>
     generatedAt: new Date().toISOString(),
     followUpDate: inspection.followUpsFrom[0]?.scheduledDate?.toISOString() ?? null,
     siteMapPanels,
-    propertyPhotos: (await Promise.all(inspection.photos.map((p) => loadReportImage(p.fileUrl)))).filter((img): img is ReportImage => img !== null),
+    // Pictures of why an area couldn't be inspected go with that area below, not here.
+    propertyPhotos: (await Promise.all(inspection.photos.filter((p) => !p.sectionCategory).map((p) => loadReportImage(p.fileUrl)))).filter((img): img is ReportImage => img !== null),
     checklistSections,
-    skippedSections: inspection.sectionSkips.map((s) => ({
-      category: s.category,
-      technicianName: `${s.technician.firstName} ${s.technician.lastName}`,
-      initials: s.initials,
-      confirmedAt: s.confirmedAt.toISOString(),
-    })),
+    skippedSections: await Promise.all(
+      inspection.sectionSkips.map(async (s) => ({
+        category: s.category,
+        technicianName: `${s.technician.firstName} ${s.technician.lastName}`,
+        initials: s.initials,
+        confirmedAt: s.confirmedAt.toISOString(),
+        kind: s.kind,
+        reason: s.reason,
+        photoPaths:
+          s.kind === "NOT_ACCESSIBLE"
+            ? (await Promise.all(inspection.photos.filter((p) => p.sectionCategory === s.category).map((p) => loadReportImage(p.fileUrl)))).filter((img): img is ReportImage => img !== null)
+            : [],
+      }))
+    ),
     findings: await Promise.all(inspection.findings.map(async (f) => {
       const rec = inspection.recommendations.find((r) => r.findingId === f.id);
       return {
@@ -203,6 +212,7 @@ export async function buildReportData(inspectionId: string): Promise<ReportData>
   report.checklistSections.forEach((section) =>
     section.items.forEach((item) => item.photoPaths.forEach((img) => tag(img, `${CHECKLIST_CATEGORY_LABEL[section.category] ?? section.category}: ${item.prompt}`)))
   );
+  report.skippedSections.forEach((s) => (s.photoPaths ?? []).forEach((img) => tag(img, `${CHECKLIST_CATEGORY_LABEL[s.category] ?? s.category}: not accessible`)));
   report.findings.forEach((f) => f.photoPaths.forEach((img) => tag(img, `Finding: ${f.areaLocation}${f.locationDetail ? ` — ${f.locationDetail}` : ""}`)));
   return report;
 }

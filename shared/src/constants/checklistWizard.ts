@@ -98,6 +98,10 @@ export interface PropertyApplicabilityLike {
 // is never enough on its own, see getWizardStepStatus below).
 export interface WizardSectionSkipLike {
   category: string;
+  // "NOT_ACCESSIBLE": the property has this area but it couldn't be inspected
+  // (the technician gave the reason, a photo and their initials). Anything else
+  // (or nothing) means "the property doesn't have this area".
+  kind?: string | null;
 }
 
 export interface WizardStepStatus {
@@ -134,6 +138,7 @@ export function getWizardStepStatus(
 ): WizardStatus {
   const answeredItemIds = new Set(responses.map((r) => r.templateItemId));
   const skippedCategories = new Set((sectionSkips ?? []).map((s) => s.category));
+  const inaccessibleCategories = new Set((sectionSkips ?? []).filter((s) => s.kind === "NOT_ACCESSIBLE").map((s) => s.category));
   const steps: WizardStepStatus[] = [];
 
   WIZARD_STEPS.forEach((def, index) => {
@@ -158,7 +163,11 @@ export function getWizardStepStatus(
     // WizardSectionSkipLike). A property flag carried over from a prior
     // inspection with no skip record yet for this one leaves the step
     // unresolved until re-confirmed.
-    const resolved = def.required ? answeredEnough : (applicable === false && skippedCategories.has(def.category)) || answeredEnough;
+    // An area that exists but couldn't be reached is resolved by that attested
+    // record alone, whatever the property says about having it.
+    const resolved = def.required
+      ? answeredEnough
+      : (applicable === false && skippedCategories.has(def.category)) || inaccessibleCategories.has(def.category) || answeredEnough;
 
     steps.push({ category: def.category, label: def.label, shortLabel: def.shortLabel, required: def.required, applicable, resolved, itemsTotal, itemsAnswered });
   });

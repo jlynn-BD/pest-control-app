@@ -193,16 +193,16 @@ export function hydrateLocalInspectionFromRemote(detail: InspectionDetail): void
     }
     for (const p of detail.photos ?? []) {
       db.runSync(
-        `INSERT INTO inspection_photos (id, inspectionId, localUri, remoteUrl, caption, takenAt, sortOrder, syncStatus)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'synced')`,
-        [p.id, detail.id, `${API_BASE_URL}${p.fileUrl}`, p.fileUrl, p.caption ?? null, iso(p.takenAt), p.sortOrder]
+        `INSERT INTO inspection_photos (id, inspectionId, localUri, remoteUrl, caption, takenAt, sortOrder, sectionCategory, syncStatus)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'synced')`,
+        [p.id, detail.id, `${API_BASE_URL}${p.fileUrl}`, p.fileUrl, p.caption ?? null, iso(p.takenAt), p.sortOrder, p.sectionCategory ?? null]
       );
     }
     for (const k of detail.sectionSkips ?? []) {
       db.runSync(
-        `INSERT INTO inspection_section_skips (id, inspectionId, category, technicianId, initials, confirmedAt, createdAt, syncStatus)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'synced')`,
-        [k.id, detail.id, k.category, k.technicianId, k.initials, iso(k.confirmedAt), iso(k.createdAt)]
+        `INSERT INTO inspection_section_skips (id, inspectionId, category, technicianId, initials, confirmedAt, createdAt, kind, reason, syncStatus)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced')`,
+        [k.id, detail.id, k.category, k.technicianId, k.initials, iso(k.confirmedAt), iso(k.createdAt), k.kind ?? "NOT_PRESENT", k.reason ?? null]
       );
     }
   });
@@ -622,7 +622,10 @@ export function addLocalChecklistResponsePhoto(
 }
 
 // A picture of the property itself, taken before (or apart from) the checklist.
-export function addLocalInspectionPhoto(inspectionId: string, input: { localUri: string; caption?: string | null; sortOrder: number }): LocalInspectionPhoto {
+export function addLocalInspectionPhoto(
+  inspectionId: string,
+  input: { localUri: string; caption?: string | null; sortOrder: number; sectionCategory?: string | null }
+): LocalInspectionPhoto {
   const photo: LocalInspectionPhoto = {
     id: generateId(),
     inspectionId,
@@ -631,12 +634,13 @@ export function addLocalInspectionPhoto(inspectionId: string, input: { localUri:
     caption: input.caption ?? null,
     takenAt: nowIso(),
     sortOrder: input.sortOrder,
+    sectionCategory: input.sectionCategory ?? null,
     syncStatus: "pending",
   };
   getDb().runSync(
-    `INSERT INTO inspection_photos (id, inspectionId, localUri, remoteUrl, caption, takenAt, sortOrder, syncStatus)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [photo.id, photo.inspectionId, photo.localUri, photo.remoteUrl, photo.caption, photo.takenAt, photo.sortOrder, photo.syncStatus]
+    `INSERT INTO inspection_photos (id, inspectionId, localUri, remoteUrl, caption, takenAt, sortOrder, sectionCategory, syncStatus)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [photo.id, photo.inspectionId, photo.localUri, photo.remoteUrl, photo.caption, photo.takenAt, photo.sortOrder, photo.sectionCategory, photo.syncStatus]
   );
   return photo;
 }
@@ -722,7 +726,9 @@ export function createLocalInspectionSectionSkip(
   inspectionId: string,
   category: string,
   technicianId: string,
-  initials: string
+  initials: string,
+  // NOT_ACCESSIBLE: the area exists but couldn't be inspected (with the reason).
+  options: { kind?: "NOT_PRESENT" | "NOT_ACCESSIBLE"; reason?: string | null } = {}
 ): LocalInspectionSectionSkip {
   const db = getDb();
   const now = nowIso();
@@ -735,12 +741,14 @@ export function createLocalInspectionSectionSkip(
     initials,
     confirmedAt: now,
     createdAt: now,
+    kind: options.kind ?? "NOT_PRESENT",
+    reason: options.reason ?? null,
     syncStatus: "pending",
   };
   db.runSync(
-    `INSERT INTO inspection_section_skips (id, inspectionId, category, technicianId, initials, confirmedAt, createdAt, syncStatus)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [skip.id, skip.inspectionId, skip.category, skip.technicianId, skip.initials, skip.confirmedAt, skip.createdAt, skip.syncStatus]
+    `INSERT INTO inspection_section_skips (id, inspectionId, category, technicianId, initials, confirmedAt, createdAt, kind, reason, syncStatus)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [skip.id, skip.inspectionId, skip.category, skip.technicianId, skip.initials, skip.confirmedAt, skip.createdAt, skip.kind, skip.reason, skip.syncStatus]
   );
   touchInspection(inspectionId);
   return skip;
@@ -751,6 +759,10 @@ export function createLocalInspectionSectionSkip(
 // the property flag rather than leaving a stale record) - the technician is
 // asserting the area does exist after all, so there's nothing left to attest.
 export function deleteLocalInspectionSectionSkip(inspectionId: string, category: string): void {
+  // Also drops the pictures taken to show why the area couldn't be inspected.
+  for (const p of getDb().getAllSync<{ id: string }>(`SELECT id FROM inspection_photos WHERE inspectionId = ? AND sectionCategory = ?`, [inspectionId, category])) {
+    deleteLocalInspectionPhoto(p.id);
+  }
   getDb().runSync(`DELETE FROM inspection_section_skips WHERE inspectionId = ? AND category = ?`, [inspectionId, category]);
 }
 

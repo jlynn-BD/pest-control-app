@@ -34,6 +34,9 @@ const styles = StyleSheet.create({
   severityHigh: { color: "#C0392B", fontWeight: 700 },
   severityMedium: { color: "#A85400", fontWeight: 700 },
   severityLow: { color: "#007A66", fontWeight: 700 },
+  areaBlock: { paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: "#E6EDF7" },
+  areaTitle: { fontSize: 9.5, fontWeight: 700 },
+  areaReason: { fontSize: 9, color: "#2C4068", marginTop: 3 },
   checklistRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -347,6 +350,11 @@ export interface ReportSkippedSection {
   technicianName: string;
   initials: string;
   confirmedAt: string;
+  // NOT_ACCESSIBLE: the area exists but couldn't be inspected - why, and the
+  // picture(s) taken of the obstruction. Otherwise the area isn't there.
+  kind?: string;
+  reason?: string | null;
+  photoPaths?: ReportImage[];
 }
 
 export interface ReportSignature {
@@ -671,11 +679,16 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
         ))}
 
         {data.skippedSections.length > 0 ? (
-          <View style={styles.section} wrap={false}>
-            <Text style={styles.sectionTitle}>Skipped Sections</Text>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Areas Not Inspected</Text>
             {data.skippedSections.map((s, i) => (
-              <View key={i} style={styles.checklistRow}>
-                <Text style={styles.checklistPrompt}>{CHECKLIST_CATEGORY_LABEL[s.category] ?? s.category} — not present at this property</Text>
+              <View key={i} style={styles.areaBlock} wrap={false}>
+                <Text style={styles.areaTitle}>
+                  {CHECKLIST_CATEGORY_LABEL[s.category] ?? s.category} —{" "}
+                  {s.kind === "NOT_ACCESSIBLE" ? "not accessible, so it could not be inspected" : "not present at this property"}
+                </Text>
+                {s.kind === "NOT_ACCESSIBLE" && s.reason ? <Text style={styles.areaReason}>{s.reason}</Text> : null}
+                {s.photoPaths && s.photoPaths.length > 0 ? <PhotoRow photos={s.photoPaths} /> : null}
                 <Text style={styles.cardMeta}>
                   Confirmed by {s.technicianName} ({s.initials}) · {new Date(s.confirmedAt).toLocaleString()}
                 </Text>

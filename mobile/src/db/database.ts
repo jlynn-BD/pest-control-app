@@ -56,6 +56,22 @@ function migrateInspections(adapter: LocalDb): void {
   }
 }
 
+// Areas that exist but can't be inspected ("not accessible"): the answer and its
+// reason live on the section-skip row, the pictures on the inspection photos.
+function migrateNotAccessible(adapter: LocalDb): void {
+  for (const sql of [
+    `ALTER TABLE inspection_section_skips ADD COLUMN kind TEXT DEFAULT 'NOT_PRESENT'`,
+    `ALTER TABLE inspection_section_skips ADD COLUMN reason TEXT`,
+    `ALTER TABLE inspection_photos ADD COLUMN sectionCategory TEXT`,
+  ]) {
+    try {
+      adapter.execSync(sql);
+    } catch {
+      // Column already exists - expected on every boot after the first.
+    }
+  }
+}
+
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS local_customers (
   id TEXT PRIMARY KEY, name TEXT, type TEXT, phone TEXT, email TEXT, city TEXT, state TEXT
@@ -118,7 +134,7 @@ CREATE TABLE IF NOT EXISTS checklist_response_photos (
 -- Pictures of the property taken before (or apart from) the checklist.
 CREATE TABLE IF NOT EXISTS inspection_photos (
   id TEXT PRIMARY KEY, inspectionId TEXT, localUri TEXT, remoteUrl TEXT, caption TEXT, takenAt TEXT,
-  sortOrder INTEGER, syncStatus TEXT DEFAULT 'pending'
+  sortOrder INTEGER, sectionCategory TEXT, syncStatus TEXT DEFAULT 'pending'
 );
 -- A photo that was already uploaded and then removed on this device: the server
 -- is told to delete it at the next sync (see syncEngine.ts).
@@ -127,7 +143,7 @@ CREATE TABLE IF NOT EXISTS pending_photo_deletes (
 );
 CREATE TABLE IF NOT EXISTS inspection_section_skips (
   id TEXT PRIMARY KEY, inspectionId TEXT, category TEXT, technicianId TEXT, initials TEXT,
-  confirmedAt TEXT, createdAt TEXT, syncStatus TEXT DEFAULT 'pending'
+  confirmedAt TEXT, createdAt TEXT, kind TEXT DEFAULT 'NOT_PRESENT', reason TEXT, syncStatus TEXT DEFAULT 'pending'
 );
 CREATE TABLE IF NOT EXISTS sync_meta (
   key TEXT PRIMARY KEY, value TEXT
@@ -152,6 +168,7 @@ export function getDb(): LocalDb {
       migrateLocalProperties(db);
       migrateFindings(db);
       migrateInspections(db);
+      migrateNotAccessible(db);
     } else {
       const native = SQLite.openDatabaseSync("pestapp.db");
       // Wrapped rather than assigned directly - expo-sqlite's runSync/
@@ -168,6 +185,7 @@ export function getDb(): LocalDb {
       migrateLocalProperties(adapter);
       migrateFindings(adapter);
       migrateInspections(adapter);
+      migrateNotAccessible(adapter);
       db = adapter;
     }
   }

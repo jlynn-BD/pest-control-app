@@ -6,6 +6,7 @@ import { asyncHandler, HttpError } from "../../middleware/error-handler";
 import { requireAuth } from "../../middleware/auth";
 import { storage } from "../../lib/storage";
 import { upload } from "../../middleware/upload";
+import { WIZARD_STEPS } from "@pest-app/shared";
 import { photoExt } from "../../lib/uploadExt";
 import { emailReportInBackground } from "../../lib/customerReport";
 
@@ -141,7 +142,9 @@ inspectionsRouter.post(
     const key = `inspection-photos/${inspection.id}/${photoId}${photoExt(req.file.originalname)}`;
     await storage.save(req.file.buffer, key);
 
-    const { caption, takenAt, sortOrder } = req.body as Record<string, string | undefined>;
+    const { caption, takenAt, sortOrder, sectionCategory } = req.body as Record<string, string | undefined>;
+    // A picture of why an area couldn't be inspected names that area.
+    const area = sectionCategory && WIZARD_STEPS.some((s) => s.category === sectionCategory && !s.required) ? sectionCategory : null;
     const photo = await prisma.inspectionPhoto.create({
       data: {
         id: photoId,
@@ -150,6 +153,7 @@ inspectionsRouter.post(
         caption: caption || null,
         takenAt: takenAt ? new Date(takenAt) : new Date(),
         sortOrder: sortOrder ? Number(sortOrder) : 0,
+        sectionCategory: area,
       },
     });
     res.status(201).json(photo);

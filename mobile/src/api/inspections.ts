@@ -26,8 +26,8 @@ export type InspectionDetail = InspectionSummary & {
   report: { id: string; pdfUrl: string } | null;
   template: (InspectionTemplate & { sections: (TemplateSection & { items: TemplateItem[] })[] }) | null;
   checklistResponses: (ChecklistResponse & { photos?: { id: string; fileUrl: string; caption: string | null; takenAt: string | null; sortOrder: number }[] })[];
-  photos?: { id: string; fileUrl: string; caption: string | null; takenAt: string | null; sortOrder: number }[];
-  sectionSkips?: { id: string; category: string; technicianId: string; initials: string; confirmedAt: string; createdAt: string }[];
+  photos?: { id: string; fileUrl: string; caption: string | null; takenAt: string | null; sortOrder: number; sectionCategory?: string | null }[];
+  sectionSkips?: { id: string; category: string; technicianId: string; initials: string; confirmedAt: string; createdAt: string; kind?: string; reason?: string | null }[];
 };
 
 export function listInspections(params?: { technicianId?: string; status?: string }): Promise<InspectionSummary[]> {

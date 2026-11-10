@@ -114,7 +114,12 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
         />
       ) : null}
 
-      <PropertyPhotos inspectionId={inspectionId} photos={detail.photos} onChange={(photos) => setDetail((d) => (d ? { ...d, photos } : d))} />
+      {/* Pictures that show why an area couldn't be inspected belong to that checklist step, not here. */}
+      <PropertyPhotos
+        inspectionId={inspectionId}
+        photos={detail.photos.filter((p) => !p.sectionCategory)}
+        onChange={(photos) => setDetail((d) => (d ? { ...d, photos: [...d.photos.filter((p) => p.sectionCategory), ...photos] } : d))}
+      />
 
       <View style={styles.section}>
         <View style={styles.sectionHeaderRow}>

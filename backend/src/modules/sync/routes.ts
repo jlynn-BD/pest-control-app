@@ -56,7 +56,7 @@ const ALLOWED_FIELDS: Record<string, string[]> = {
     "ownerUserId", "ownerContactId", "deadline", "status",
   ],
   ChecklistResponse: ["inspectionId", "templateItemId", "status", "notes"],
-  InspectionSectionSkip: ["inspectionId", "category", "technicianId", "initials", "confirmedAt"],
+  InspectionSectionSkip: ["inspectionId", "category", "technicianId", "initials", "confirmedAt", "kind", "reason"],
 };
 
 function sanitize(entity: string, data: Record<string, unknown>): Record<string, unknown> {
@@ -73,6 +73,11 @@ function sanitize(entity: string, data: Record<string, unknown>): Record<string,
     } else {
       out[key] = value;
     }
+  }
+  if (entity === "InspectionSectionSkip") {
+    // Only the two known answers; the explanation is free text but not unbounded.
+    if (out.kind !== "NOT_ACCESSIBLE") out.kind = "NOT_PRESENT";
+    out.reason = typeof out.reason === "string" ? out.reason.trim().slice(0, 2000) || null : null;
   }
   return out;
 }

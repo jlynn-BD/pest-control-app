@@ -142,6 +142,8 @@ function sectionSkipToChange(s: LocalInspectionSectionSkip): SyncChangePayload {
       technicianId: s.technicianId,
       initials: s.initials,
       confirmedAt: s.confirmedAt,
+      kind: s.kind,
+      reason: s.reason,
     },
   };
 }
@@ -292,6 +294,7 @@ async function runSyncOnce(): Promise<SyncResult> {
         await appendPhotoFile(form, photo.localUri, `photo-${photo.id}.jpg`);
         if (photo.caption) form.append("caption", photo.caption);
         form.append("sortOrder", String(photo.sortOrder));
+        if (photo.sectionCategory) form.append("sectionCategory", photo.sectionCategory);
         const created = await apiRequest<{ fileUrl: string }>(`/api/inspections/${photo.inspectionId}/photos`, {
           method: "POST",
           body: form,

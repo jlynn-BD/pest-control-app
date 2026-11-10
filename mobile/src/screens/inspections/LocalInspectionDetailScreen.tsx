@@ -12,6 +12,7 @@ import { PhotoThumb } from "../../components/PhotoThumb";
 import { AuthImage } from "../../components/AuthImage";
 import { ReportCard } from "../../components/ReportCard";
 import { FollowUpButton } from "../../components/FollowUpButton";
+import { AreasNotInspected } from "../../components/AreasNotInspected";
 import { InspectionHistoryLink } from "../../components/InspectionHistoryLink";
 import { FindingsAndRecommendations } from "../../components/FindingsAndRecommendations";
 import { runSync } from "../../sync/syncEngine";
@@ -99,11 +100,11 @@ export default function LocalInspectionDetailScreen({ route }: Props) {
       ) : null}
       {detail.inspection.status === "COMPLETED" ? <FollowUpButton sourceInspectionId={inspectionId} propertyId={detail.inspection.propertyId} /> : null}
 
-      {detail.photos.length > 0 ? (
+      {detail.photos.filter((p) => !p.sectionCategory).length > 0 ? (
         <>
-          <Text style={styles.sectionTitle}>Property photos ({detail.photos.length})</Text>
+          <Text style={styles.sectionTitle}>Property photos ({detail.photos.filter((p) => !p.sectionCategory).length})</Text>
           <View style={styles.photoRow}>
-            {detail.photos.map((p) => (
+            {detail.photos.filter((p) => !p.sectionCategory).map((p) => (
               <PhotoThumb key={p.id} uri={p.localUri} style={styles.photoThumb} />
             ))}
           </View>
@@ -150,6 +151,17 @@ export default function LocalInspectionDetailScreen({ route }: Props) {
           ))}
         </View>
       ))}
+
+      <AreasNotInspected
+        areas={detail.sectionSkips.map((k) => ({
+          category: k.category,
+          kind: k.kind,
+          reason: k.reason,
+          initials: k.initials,
+          confirmedAt: k.confirmedAt,
+          photoUris: detail.photos.filter((p) => p.sectionCategory === k.category).map((p) => p.localUri),
+        }))}
+      />
 
       <FindingsAndRecommendations
         findings={detail.findings.map((f) => ({
