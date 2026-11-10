@@ -82,7 +82,7 @@ export function ReportCard({ inspectionId, readOnly = false }: { inspectionId: s
           </Text>}
           {readOnly ? null : (
             <Text style={styles.meta}>
-              {report.companyCopiedAt ? `Copy sent to Blue Duck on ${new Date(report.companyCopiedAt).toLocaleString()}` : "A copy goes to Blue Duck automatically once the inspection is signed and completed."}
+              {report.companyCopiedAt ? `Copy sent to the technician and Blue Duck on ${new Date(report.companyCopiedAt).toLocaleString()}` : "A copy goes to the technician and to Blue Duck automatically once the inspection is signed and completed."}
             </Text>
           )}
           {readOnly ? null : (

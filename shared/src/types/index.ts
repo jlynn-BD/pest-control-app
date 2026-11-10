@@ -315,7 +315,7 @@ export interface Report extends BaseEntity {
   // When the signed report was last emailed to the customer, and where.
   customerEmailedAt?: string | null;
   customerEmailedTo?: string | null;
-  // When the Blue Duck office was sent its own copy (the address is not exposed).
+  // When the technician and Blue Duck office were sent their copy (the addresses are not exposed).
   companyCopiedAt?: string | null;
 }
 

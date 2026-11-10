@@ -142,10 +142,11 @@ export async function maybeEmailReportToCustomer(req: Request, inspectionId: str
 }
 
 // ---- The Blue Duck copy ------------------------------------------------------
-// The office gets its own copy of every finished inspection, so the company has
-// the signed report, who did the work and who signed (and when) without relying
-// on the technician or the customer to pass it on. Where it goes is the
-// REPORT_COPY_TO setting (one or more addresses, comma separated). Same trigger
+// Every finished inspection also goes to the technician who did it (the email
+// they sign in with) and to Blue Duck's office (hello@trustblueduck.com, or
+// whatever REPORT_COPY_TO says), so the company has the signed report, who did
+// the work and who signed (and when) without relying on the technician or the
+// customer to pass it on. Same trigger
 // as the customer email (completed + both signatures) but independent of it:
 // it is sent even when the customer has no email on file, and it says whether
 // the customer's copy went out. It attaches the same stored PDF the customer
@@ -155,11 +156,16 @@ export type CompanyCopyOutcome =
   | { sent: true; to: string[] }
   | { sent: false; reason: "not_ready" | "not_configured" | "already_sent" | "failed" };
 
-export function companyCopyAddresses(): string[] {
-  return (process.env.REPORT_COPY_TO ?? "")
-    .split(/[,;\s]+/)
-    .map((a) => a.trim())
-    .filter((a) => EMAIL_RE.test(a));
+export const DEFAULT_OFFICE_COPY = "hello@trustblueduck.com";
+
+// The office address(es) - REPORT_COPY_TO (comma separated) replaces the
+// default - plus the technician's own login address when it is a real mailbox
+// (demo/reserved addresses are skipped, like the customer's). No duplicates.
+export function companyCopyAddresses(technicianEmail?: string | null): string[] {
+  const office = (process.env.REPORT_COPY_TO?.trim() || DEFAULT_OFFICE_COPY).split(/[,;\s]+/).map((a) => a.trim());
+  const all = [...(isRealCustomerEmail(technicianEmail) ? [technicianEmail.trim()] : []), ...office].filter((a) => EMAIL_RE.test(a));
+  const seen = new Set<string>();
+  return all.filter((a) => (seen.has(a.toLowerCase()) ? false : (seen.add(a.toLowerCase()), true)));
 }
 
 function companyTime(d: Date | null | undefined): string {
@@ -173,8 +179,7 @@ function companyTime(d: Date | null | undefined): string {
 }
 
 export async function maybeEmailReportToCompany(req: Request, inspectionId: string): Promise<CompanyCopyOutcome> {
-  const to = companyCopyAddresses();
-  if (to.length === 0 || !emailAvailable()) return { sent: false, reason: "not_configured" };
+  if (!emailAvailable()) return { sent: false, reason: "not_configured" };
 
   const inspection = await prisma.inspection.findFirst({
     where: { id: inspectionId, deletedAt: null },
@@ -189,6 +194,8 @@ export async function maybeEmailReportToCompany(req: Request, inspectionId: stri
     },
   });
   if (!inspection) return { sent: false, reason: "not_ready" };
+  const to = companyCopyAddresses(inspection.technician.email);
+  if (to.length === 0) return { sent: false, reason: "not_configured" };
   const latest = (type: string) => [...inspection.signatures].reverse().find((s) => s.signerType === type);
   const techSig = latest("TECHNICIAN");
   const custSig = latest("CUSTOMER");
