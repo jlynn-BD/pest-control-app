@@ -45,6 +45,7 @@ const ALLOWED_FIELDS: Record<string, string[]> = {
   Inspection: [
     "propertyId", "customerId", "templateId", "technicianId", "appointmentId",
     "status", "scheduledAt", "startedAt", "completedAt", "generalNotes", "weatherConditions", "checklistCategories",
+    "basedOnInspectionId", "carriedIssues",
   ],
   Finding: [
     "inspectionId", "areaLocation", "locationDetail", "severity", "description", "lat", "lng",

@@ -66,6 +66,8 @@ function inspectionToChange(i: LocalInspection): SyncChangePayload {
       generalNotes: i.generalNotes,
       weatherConditions: i.weatherConditions,
       checklistCategories: i.checklistCategories,
+      basedOnInspectionId: i.basedOnInspectionId,
+      carriedIssues: i.carriedIssues,
     },
   };
 }

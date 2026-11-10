@@ -1,5 +1,5 @@
 import { useFocusEffect } from "@react-navigation/native";
-import { Severity } from "@pest-app/shared";
+import { CarriedIssue, CarriedIssues, Severity, parseCarriedIssues } from "@pest-app/shared";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { deleteChecklistResponse } from "../api/inspections";
@@ -16,6 +16,7 @@ import {
 import type { LocalChecklistResponse, LocalChecklistResponsePhoto, LocalFinding, LocalFindingPhoto, LocalTemplateItem } from "../db/types";
 import { CHECKLIST_CATEGORY_DISPLAY_ORDER, CHECKLIST_CATEGORY_LABEL } from "../lib/checklist";
 import { capturePhoto, pickPhotosFromLibrary } from "../lib/photo";
+import { copyCarriedItemIssues, removeItemFindings } from "../lib/followUp";
 import { PhotoThumb } from "./PhotoThumb";
 import { Badge, Card, Field, PrimaryButton, colors } from "./ui";
 
@@ -85,6 +86,8 @@ export function ChecklistPanel({
   const [responses, setResponses] = useState<ResponseWithPhotos[]>([]);
   const [findings, setFindings] = useState<FindingWithPhotos[]>([]);
   const [templateId, setTemplateId] = useState<string | null>(null);
+  // A follow-up inspection: what the earlier inspection found, item by item.
+  const [carried, setCarried] = useState<CarriedIssues | null>(null);
   const [search, setSearch] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
@@ -99,6 +102,7 @@ export function ChecklistPanel({
       setResponses(detail?.checklistResponses ?? []);
       setFindings(detail?.findings ?? []);
       setTemplateId(detail?.inspection.templateId ?? null);
+      setCarried(parseCarriedIssues(detail?.inspection.carriedIssues));
     }, [inspectionId])
   );
 
@@ -180,6 +184,28 @@ export function ChecklistPanel({
     const existingPhotos = responseByItem.get(item.id)?.photos ?? [];
     setResponses((prev) => [...prev.filter((r) => r.templateItemId !== item.id), { ...response, photos: existingPhotos }]);
     onChange?.();
+  }
+
+  // Follow-up inspection: the item had an issue last time. "Still present"
+  // answers it Needs attention and copies last time's issues in to edit;
+  // "Resolved" answers it No visible issues and leaves no issues on it.
+  // Choosing the same answer again clears it.
+  function handleDecide(item: LocalTemplateItem, decision: "STILL_PRESENT" | "RESOLVED", notes: string | null) {
+    const existing = responseByItem.get(item.id);
+    const target = decision === "STILL_PRESENT" ? "NEEDS_ATTENTION" : "SATISFACTORY";
+    if (existing && existing.status === target) {
+      removeItemFindings(inspectionId, existing.id);
+      handleUncheck(item);
+    } else if (decision === "RESOLVED") {
+      if (existing) removeItemFindings(inspectionId, existing.id);
+      handleSetStatus(item, "SATISFACTORY", notes);
+    } else {
+      const response = upsertLocalChecklistResponse(inspectionId, item.id, "NEEDS_ATTENTION", notes);
+      setResponses((prev) => [...prev.filter((r) => r.templateItemId !== item.id), { ...response, photos: existing?.photos ?? [] }]);
+      copyCarriedItemIssues(inspectionId, item.id, response.id);
+      onChange?.();
+    }
+    setFindings(getLocalInspectionDetail(inspectionId)?.findings ?? []);
   }
 
   function handleUncheck(item: LocalTemplateItem) {
@@ -380,6 +406,17 @@ export function ChecklistPanel({
                                 notes={response?.notes ?? null}
                                 photos={response?.photos ?? []}
                                 issues={response ? issuesByResponse.get(response.id) ?? [] : []}
+                                carried={
+                                  carried?.responses[item.id]
+                                    ? {
+                                        status: carried.responses[item.id].status,
+                                        notes: carried.responses[item.id].notes,
+                                        issues: carried.issuesByItem[item.id] ?? [],
+                                        sourceDate: carried.sourceDate,
+                                      }
+                                    : null
+                                }
+                                onDecide={(decision, notes) => handleDecide(item, decision, notes)}
                                 onChoose={(status, notes) => handleSetStatus(item, status, notes)}
                                 onUncheck={() => handleUncheck(item)}
                                 onNotesChange={(notes) => handleNotesChange(item, notes)}
@@ -419,6 +456,8 @@ function ChecklistItemRow({
   notes,
   photos,
   issues,
+  carried,
+  onDecide,
   onChoose,
   onUncheck,
   onNotesChange,
@@ -440,6 +479,9 @@ function ChecklistItemRow({
   // description/photos/site-map marker, instead of only the one shared
   // Notes field above being able to describe a single issue at a time.
   issues: FindingWithPhotos[];
+  // Follow-up inspection: how this item was answered last time (null otherwise).
+  carried: { status: string; notes: string | null; issues: CarriedIssue[]; sourceDate: string | null } | null;
+  onDecide: (decision: "STILL_PRESENT" | "RESOLVED", notes: string | null) => void;
   onChoose: (status: "SATISFACTORY" | "NEEDS_ATTENTION", notes: string | null) => void;
   onUncheck: () => void;
   onNotesChange: (notes: string | null) => void;
@@ -473,6 +515,12 @@ function ChecklistItemRow({
     wasActive.current = active;
   }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const hadIssue = carried?.status === "NEEDS_ATTENTION";
+  function decide(next: "STILL_PRESENT" | "RESOLVED") {
+    onActivate();
+    onDecide(next, localNotes.trim() || null);
+  }
+
   function choose(next: "SATISFACTORY" | "NEEDS_ATTENTION") {
     onActivate();
     if (status === next) onUncheck();
@@ -485,10 +533,32 @@ function ChecklistItemRow({
         {item.prompt}
         {item.required ? " *" : ""}
       </Text>
-      <View style={styles.choiceRow}>
-        <ChoiceButton label="No visible issues" checked={status === "SATISFACTORY"} tone="ok" onPress={() => choose("SATISFACTORY")} />
-        <ChoiceButton label="Issues" checked={hasIssue} tone="issue" onPress={() => choose("NEEDS_ATTENTION")} />
-      </View>
+      {carried ? (
+        <View style={styles.carriedBox}>
+          <Text style={styles.carriedTitle}>
+            Last inspection{carried.sourceDate ? ` (${new Date(carried.sourceDate).toLocaleDateString()})` : ""}:{" "}
+            {carried.status === "NEEDS_ATTENTION" ? "issue found" : carried.status === "SATISFACTORY" ? "no visible issues" : "not applicable"}
+          </Text>
+          {carried.notes && carried.notes.trim() ? <Text style={styles.carriedText}>{carried.notes.trim()}</Text> : null}
+          {carried.issues.map((issue, i) => (
+            <Text key={i} style={styles.carriedText}>
+              • {issue.description?.trim() || issue.areaLocation}
+              {issue.severity ? ` (${issue.severity.toLowerCase()})` : ""}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+      {hadIssue ? (
+        <View style={styles.carriedChoices}>
+          <ChoiceButton label="This issue is still present" checked={hasIssue} tone="issue" onPress={() => decide("STILL_PRESENT")} />
+          <ChoiceButton label="This issue has been resolved" checked={status === "SATISFACTORY"} tone="ok" onPress={() => decide("RESOLVED")} />
+        </View>
+      ) : (
+        <View style={styles.choiceRow}>
+          <ChoiceButton label="No visible issues" checked={status === "SATISFACTORY"} tone="ok" onPress={() => choose("SATISFACTORY")} />
+          <ChoiceButton label="Issues" checked={hasIssue} tone="issue" onPress={() => choose("NEEDS_ATTENTION")} />
+        </View>
+      )}
       {hasIssue && !detailsOpen ? (
         <View>
           <View style={styles.issueSummary}>
@@ -657,7 +727,7 @@ function ChecklistItemRow({
   );
 }
 
-function ChoiceButton({
+export function ChoiceButton({
   label,
   checked,
   tone,
@@ -714,6 +784,10 @@ const styles = StyleSheet.create({
   itemCardIssue: { borderColor: colors.danger },
   itemPrompt: { fontSize: 15, fontWeight: "600", color: colors.text },
   choiceRow: { flexDirection: "row", gap: 10 },
+  carriedChoices: { gap: 8 },
+  carriedBox: { backgroundColor: colors.chip, borderRadius: 8, borderWidth: 1, borderColor: colors.border, padding: 10, gap: 3 },
+  carriedTitle: { fontSize: 13, fontWeight: "700", color: colors.text },
+  carriedText: { fontSize: 13, color: colors.textMuted },
   choice: {
     flex: 1,
     flexDirection: "row",

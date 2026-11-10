@@ -12,6 +12,7 @@ import { getCachedProperty } from "../../db/cache";
 import { parseSiteMapSketch } from "../../lib/siteMapSketch";
 import { ApiError } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
+import { FollowUpButton } from "../../components/FollowUpButton";
 import { openInspection, startInspectionAt } from "../../lib/openInspection";
 import { CustomersStackParamList } from "../../navigation/navigationTypes";
 import { Badge, Card, ErrorView, LoadingView, PrimaryButton, colors, fonts, wideScreen } from "../../components/ui";
@@ -108,6 +109,8 @@ export default function PropertyDetailScreen({ route, navigation }: Props) {
     return <ErrorView message="Failed to load property" />;
 
   const property = propertyQuery.data;
+  // The most recent finished inspection here (by anyone): a follow-up can start from it.
+  const lastCompleted = (historyQuery.data ?? []).find((i) => i.status === "COMPLETED") ?? null;
   // Inspections at this address done by someone else on the crew.
   const crewDone = user?.role === "TECHNICIAN" ? (historyQuery.data ?? []).filter((i) => i.technician.id !== user.id) : [];
   // Has anything been drawn on the property's map (walls, labels, shapes)?
@@ -128,6 +131,13 @@ export default function PropertyDetailScreen({ route, navigation }: Props) {
       <Text style={styles.meta}>{property.customer.name}</Text>
       <View style={styles.startButton}>
         <PrimaryButton title="Start inspection here" onPress={() => startInspectionAt(navigation, propertyId)} variant="cta" />
+        {lastCompleted ? (
+          <FollowUpButton
+            sourceInspectionId={lastCompleted.id}
+            propertyId={propertyId}
+            label={`Follow up on the ${new Date(lastCompleted.completedAt ?? lastCompleted.createdAt).toLocaleDateString()} inspection`}
+          />
+        ) : null}
       </View>
       {property.accessNotes ? (
         <Card style={styles.notesCard}>

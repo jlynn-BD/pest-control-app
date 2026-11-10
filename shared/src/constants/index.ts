@@ -1,6 +1,7 @@
 import { RecommendationPriority, Severity } from "../enums";
 
 export * from "./checklistWizard";
+export * from "./followUp";
 export * from "./siteMapMerge";
 export * from "./siteMapGrid";
 export * from "./siteMapView";

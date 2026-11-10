@@ -11,6 +11,7 @@ import { SiteMapCanvas } from "../../components/ArrowCanvas";
 import { PhotoThumb } from "../../components/PhotoThumb";
 import { AuthImage } from "../../components/AuthImage";
 import { ReportCard } from "../../components/ReportCard";
+import { FollowUpButton } from "../../components/FollowUpButton";
 import { InspectionHistoryLink } from "../../components/InspectionHistoryLink";
 import { FindingsAndRecommendations } from "../../components/FindingsAndRecommendations";
 import { runSync } from "../../sync/syncEngine";
@@ -96,7 +97,7 @@ export default function LocalInspectionDetailScreen({ route }: Props) {
           <Text style={styles.body}>The report can be generated once this inspection has synced. It is syncing now and this page updates by itself, or tap Sync now.</Text>
         )
       ) : null}
-
+      {detail.inspection.status === "COMPLETED" ? <FollowUpButton sourceInspectionId={inspectionId} propertyId={detail.inspection.propertyId} /> : null}
 
       {detail.photos.length > 0 ? (
         <>

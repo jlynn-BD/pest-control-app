@@ -240,6 +240,10 @@ export interface Inspection extends BaseEntity {
   // selection with a forced sequence + per-property applicability. No
   // longer written by current clients; left populated on old rows only.
   checklistCategories?: string | null;
+  // Set on a follow-up inspection: the completed inspection it was started from,
+  // and what was carried over from it (JSON text - see constants/followUp.ts).
+  basedOnInspectionId?: string | null;
+  carriedIssues?: string | null;
 }
 
 // Evidence observed, entry points, and risk factors are described in

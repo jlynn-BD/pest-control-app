@@ -12,6 +12,7 @@ import { SiteMapCanvas } from "../../components/ArrowCanvas";
 import { PhotoThumb } from "../../components/PhotoThumb";
 import { AuthImage } from "../../components/AuthImage";
 import { ReportCard } from "../../components/ReportCard";
+import { FollowUpButton } from "../../components/FollowUpButton";
 import { InspectionHistoryLink } from "../../components/InspectionHistoryLink";
 import { FindingsAndRecommendations } from "../../components/FindingsAndRecommendations";
 import { Badge, Card, ErrorView, LoadingView, PrimaryButton, colors, fonts } from "../../components/ui";
@@ -54,6 +55,7 @@ export default function InspectionDetailScreen({ route }: Props) {
 
       <InspectionHistoryLink inspectionId={inspectionId} title={inspection.customer.name} />
       {inspection.status === "COMPLETED" ? <ReportCard inspectionId={inspectionId} readOnly={notMine} /> : null}
+      {inspection.status === "COMPLETED" ? <FollowUpButton sourceInspectionId={inspectionId} propertyId={inspection.propertyId} /> : null}
 
       {(inspection.photos ?? []).length > 0 ? (
         <>

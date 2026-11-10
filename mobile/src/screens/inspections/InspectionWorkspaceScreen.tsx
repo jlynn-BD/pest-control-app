@@ -2,7 +2,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React, { useCallback, useState } from "react";
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { getWizardStepStatus } from "@pest-app/shared";
+import { getWizardStepStatus, parseCarriedIssues, undecidedStandaloneCount } from "@pest-app/shared";
 import { getCachedCustomer, getCachedProperty, getCachedTemplateSections, getCachedTemplates } from "../../db/cache";
 import {
   completeLocalInspection,
@@ -20,6 +20,7 @@ import { parseSiteMapSketch } from "../../lib/siteMapSketch";
 import type { LocalSignature } from "../../db/types";
 import { PhotoThumb } from "../../components/PhotoThumb";
 import { PropertyPhotos } from "../../components/PropertyPhotos";
+import { FollowUpCard } from "../../components/FollowUpCard";
 import { AuthImage } from "../../components/AuthImage";
 import { Badge, Card, PrimaryButton, colors, fonts } from "../../components/ui";
 
@@ -50,6 +51,10 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
     : null;
   const resolvedStepCount = wizardStatus ? wizardStatus.steps.filter((s) => s.resolved).length : 0;
   const checklistResolved = !detail.inspection.templateId || Boolean(wizardStatus?.canComplete);
+  // Follow-up inspection: earlier issues outside the checklist still need a
+  // "still present / resolved" answer before it can be completed.
+  const carried = parseCarriedIssues(detail.inspection.carriedIssues);
+  const earlierIssuesOpen = undecidedStandaloneCount(carried) > 0;
   const siteMapMarkerCount = detail.findings.filter((f) => f.floorPlanX != null).length;
   const hasSiteMapImage = Boolean(property?.siteMapLocalUri || property?.siteMapImageUrl);
   // A plan can be a photo OR a drawn map (levels with walls, labels, shapes).
@@ -98,6 +103,16 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
         </View>
         <Badge label={isCompleted ? "Completed" : "In progress"} tone={isCompleted ? "success" : "warning"} />
       </View>
+
+      {carried ? (
+        <FollowUpCard
+          carried={carried}
+          inspectionId={inspectionId}
+          responses={detail.checklistResponses}
+          onChange={() => setDetail(getLocalInspectionDetail(inspectionId))}
+          onViewPrevious={() => navigation.navigate("InspectionDetail", { inspectionId: carried.sourceInspectionId })}
+        />
+      ) : null}
 
       <PropertyPhotos inspectionId={inspectionId} photos={detail.photos} onChange={(photos) => setDetail((d) => (d ? { ...d, photos } : d))} />
 
@@ -244,13 +259,15 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
           variant="cta"
           title="Complete inspection"
           onPress={handleComplete}
-          disabled={!hasCustomerSignature || !hasTechnicianSignature || !checklistResolved}
+          disabled={!hasCustomerSignature || !hasTechnicianSignature || !checklistResolved || earlierIssuesOpen}
         />
       ) : (
         <Badge label="Inspection completed" tone="success" />
       )}
       {!isCompleted && !checklistResolved ? (
         <Text style={styles.hint}>Finish the checklist before completing this inspection.</Text>
+      ) : !isCompleted && earlierIssuesOpen ? (
+        <Text style={styles.hint}>Mark each issue from the last inspection as still present or resolved before completing.</Text>
       ) : !isCompleted && (!hasCustomerSignature || !hasTechnicianSignature) ? (
         <Text style={styles.hint}>Both signatures are required to complete the inspection.</Text>
       ) : null}

@@ -1,6 +1,6 @@
 import { renderToBuffer } from "@react-pdf/renderer";
 import React from "react";
-import { CHECKLIST_CATEGORY_DISPLAY_ORDER, CHECKLIST_CATEGORY_LABEL, fitView, getSiteMapLevelRank, levelPoints, parseRawSketch, resolveGrid, visibleSketch } from "@pest-app/shared";
+import { CHECKLIST_CATEGORY_DISPLAY_ORDER, CHECKLIST_CATEGORY_LABEL, carriedIssueItemIds, fitView, parseCarriedIssues, getSiteMapLevelRank, levelPoints, parseRawSketch, resolveGrid, visibleSketch } from "@pest-app/shared";
 import { generateId } from "../../lib/id";
 import { prisma } from "../../lib/prisma";
 import { storage } from "../../lib/storage";
@@ -52,13 +52,28 @@ export async function buildReportData(inspectionId: string): Promise<ReportData>
   });
   if (!inspection) throw new HttpError(404, "Inspection not found");
 
-  const checklistByCategory = new Map<string, { prompt: string; status: string; notes: string | null; photoPaths: ReportImage[] }[]>();
+  // Follow-up inspection: what the earlier inspection found, to say which issues remain.
+  const carried = parseCarriedIssues(inspection.carriedIssues);
+  const carriedItemIds = new Set(carried ? carriedIssueItemIds(carried) : []);
+  const resolvedList: string[] = [];
+  let stillPresent = 0;
+  const checklistByCategory = new Map<string, { prompt: string; status: string; notes: string | null; photoPaths: ReportImage[]; carried?: "STILL_PRESENT" | "RESOLVED" }[]>();
   for (const r of inspection.checklistResponses) {
     const category = r.templateItem.section.category;
     const items = checklistByCategory.get(category) ?? [];
     // The pictures taken on this checklist item, shown under its answer.
     const photoPaths = (await Promise.all(r.photos.map((p) => loadReportImage(p.fileUrl)))).filter((img): img is ReportImage => img !== null);
-    items.push({ prompt: r.templateItem.prompt, status: r.status, notes: r.notes, photoPaths });
+    let carriedState: "STILL_PRESENT" | "RESOLVED" | undefined;
+    if (carriedItemIds.has(r.templateItemId)) {
+      if (r.status === "NEEDS_ATTENTION") {
+        carriedState = "STILL_PRESENT";
+        stillPresent += 1;
+      } else if (r.status === "SATISFACTORY") {
+        carriedState = "RESOLVED";
+        resolvedList.push(r.templateItem.prompt);
+      }
+    }
+    items.push({ prompt: r.templateItem.prompt, status: r.status, notes: r.notes, photoPaths, ...(carriedState ? { carried: carriedState } : {}) });
     checklistByCategory.set(category, items);
   }
   const checklistSections = CHECKLIST_CATEGORY_DISPLAY_ORDER.filter((c) => checklistByCategory.has(c)).map((category) => ({
@@ -120,6 +135,17 @@ export async function buildReportData(inspectionId: string): Promise<ReportData>
       .filter((panel) => panel.lines.length > 0 || panel.labels.length > 0 || panel.annotations.length > 0 || panel.arrows.length > 0);
   }
 
+  const standaloneStill = new Set((carried?.standalone ?? []).map((x) => x.newFindingId).filter((id): id is string => Boolean(id)));
+  const stillItemResponseIds = new Set(
+    inspection.checklistResponses.filter((r) => carriedItemIds.has(r.templateItemId) && r.status === "NEEDS_ATTENTION").map((r) => r.id)
+  );
+  const isCarriedFinding = (f: { id: string; checklistResponseId: string | null }) =>
+    standaloneStill.has(f.id) || (f.checklistResponseId !== null && stillItemResponseIds.has(f.checklistResponseId));
+  for (const x of carried?.standalone ?? []) {
+    if (x.decision === "STILL_PRESENT") stillPresent += 1;
+    else if (x.decision === "RESOLVED") resolvedList.push(`${x.areaLocation}${x.description ? ` - ${x.description}` : ""}`);
+  }
+
   const report: ReportData = {
     inspectionId: inspection.id,
     customerName: inspection.customer.name,
@@ -149,6 +175,7 @@ export async function buildReportData(inspectionId: string): Promise<ReportData>
         description: f.description,
         photoPaths: (await Promise.all(f.photos.map((p) => loadReportImage(p.fileUrl)))).filter((img): img is ReportImage => img !== null),
         recommendation: rec ? toReportRecommendation(rec) : null,
+        ...(isCarriedFinding(f) ? { carried: true } : {}),
       };
     })),
     standaloneRecommendations: inspection.recommendations
@@ -161,6 +188,7 @@ export async function buildReportData(inspectionId: string): Promise<ReportData>
       imagePath: await loadReportImage(s.imageUrl),
     }))),
     gallery: [],
+    previousInspection: carried ? { date: carried.sourceDate, stillPresent, resolved: resolvedList.length, resolvedList } : null,
   };
 
   // Number every photo in the order it appears in the report and list them for

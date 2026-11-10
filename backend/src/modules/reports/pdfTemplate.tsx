@@ -217,6 +217,8 @@ export interface ReportChecklistItem {
   notes: string | null;
   // Pictures taken on this checklist item.
   photoPaths: ReportImage[];
+  // Follow-up inspection: this item had an issue last time - is it still there?
+  carried?: "STILL_PRESENT" | "RESOLVED";
 }
 
 export interface ReportChecklistSection {
@@ -324,6 +326,8 @@ export interface ReportFinding {
   // entry" ask), shown on the finding's own card rather than in a
   // separate section that repeated it.
   recommendation: ReportRecommendation | null;
+  // Follow-up inspection: carried over from the previous inspection (still present).
+  carried?: boolean;
 }
 
 export interface ReportRecommendation {
@@ -375,6 +379,14 @@ export interface ReportData {
   // generated automatically) - the rest live on their finding above.
   standaloneRecommendations: ReportRecommendation[];
   signatures: ReportSignature[];
+  // Follow-up inspection: what happened to the issues found last time.
+  previousInspection?: {
+    date: string | null;
+    stillPresent: number;
+    resolved: number;
+    // The resolved ones, by name (checklist item or location).
+    resolvedList: string[];
+  } | null;
 }
 
 const TAP_HINT = "Tap a photo to see it larger (it opens in the Photo Gallery at the end of this report).";
@@ -409,6 +421,9 @@ function ChecklistItemRow({ item }: { item: ReportChecklistItem }) {
         <Text style={styles.checklistQuestion}>{item.prompt}</Text>
         <Text style={[styles.checklistStatus, checklistStatusStyle(item.status)]}>{item.status.replace(/_/g, " ")}</Text>
       </View>
+      {item.carried ? (
+        <Text style={styles.cardMeta}>{item.carried === "STILL_PRESENT" ? "Still present since the previous inspection" : "Resolved since the previous inspection"}</Text>
+      ) : null}
       {item.notes ? <Text style={styles.checklistNotes}>{item.notes}</Text> : null}
       {item.photoPaths.length > 0 ? <PhotoRow photos={item.photoPaths} /> : null}
     </View>
@@ -455,6 +470,22 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
             </View>
           ) : null}
         </View>
+
+        {data.previousInspection ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Since the Previous Inspection</Text>
+            <Text style={styles.cardBody}>
+              This is a follow-up to the inspection of {data.previousInspection.date ? new Date(data.previousInspection.date).toLocaleDateString() : "an earlier date"}.{" "}
+              {data.previousInspection.stillPresent} issue{data.previousInspection.stillPresent === 1 ? " is" : "s are"} still present and {data.previousInspection.resolved}{" "}
+              {data.previousInspection.resolved === 1 ? "has" : "have"} been resolved.
+            </Text>
+            {data.previousInspection.resolvedList.map((name, i) => (
+              <Text key={i} style={styles.cardMeta}>
+                Resolved: {name}
+              </Text>
+            ))}
+          </View>
+        ) : null}
 
         {data.propertyPhotos.length > 0 ? (
           <View style={styles.section}>
@@ -676,6 +707,7 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
                   {f.recommendation.deadline ? ` · Deadline: ${new Date(f.recommendation.deadline).toLocaleDateString()}` : ""}
                 </Text>
               ) : null}
+              {f.carried ? <Text style={styles.cardMeta}>Still present since the previous inspection</Text> : null}
               {f.description ? <Text style={styles.cardBody}>{f.description}</Text> : null}
               {f.photoPaths.length > 0 ? <PhotoRow photos={f.photoPaths} /> : null}
             </View>

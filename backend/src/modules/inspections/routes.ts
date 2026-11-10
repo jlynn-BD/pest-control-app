@@ -43,6 +43,8 @@ const inspectionSchema = z.object({
   generalNotes: z.string().optional().nullable(),
   weatherConditions: z.string().optional().nullable(),
   checklistCategories: z.string().optional().nullable(),
+  basedOnInspectionId: z.string().optional().nullable(),
+  carriedIssues: z.string().max(200000).optional().nullable(),
 });
 
 inspectionsRouter.get(

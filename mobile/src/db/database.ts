@@ -44,6 +44,18 @@ function migrateFindings(adapter: LocalDb): void {
   }
 }
 
+// A follow-up inspection remembers which inspection it came from and what was
+// carried over; an already-installed device's inspections table predates this.
+function migrateInspections(adapter: LocalDb): void {
+  for (const column of ["basedOnInspectionId", "carriedIssues"]) {
+    try {
+      adapter.execSync(`ALTER TABLE inspections ADD COLUMN ${column} TEXT`);
+    } catch {
+      // Column already exists - expected on every boot after the first.
+    }
+  }
+}
+
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS local_customers (
   id TEXT PRIMARY KEY, name TEXT, type TEXT, phone TEXT, email TEXT, city TEXT, state TEXT
@@ -66,7 +78,7 @@ CREATE TABLE IF NOT EXISTS local_template_items (
 CREATE TABLE IF NOT EXISTS inspections (
   id TEXT PRIMARY KEY, propertyId TEXT, customerId TEXT, templateId TEXT, technicianId TEXT,
   status TEXT, scheduledAt TEXT, startedAt TEXT, completedAt TEXT, generalNotes TEXT, weatherConditions TEXT,
-  checklistCategories TEXT,
+  checklistCategories TEXT, basedOnInspectionId TEXT, carriedIssues TEXT,
   createdAt TEXT, updatedAt TEXT, syncStatus TEXT DEFAULT 'pending'
 );
 -- Evidence/entry points/risk factors and pest type are no longer separate
@@ -139,6 +151,7 @@ export function getDb(): LocalDb {
       db.execSync(SCHEMA_SQL);
       migrateLocalProperties(db);
       migrateFindings(db);
+      migrateInspections(db);
     } else {
       const native = SQLite.openDatabaseSync("pestapp.db");
       // Wrapped rather than assigned directly - expo-sqlite's runSync/
@@ -154,6 +167,7 @@ export function getDb(): LocalDb {
       adapter.execSync(SCHEMA_SQL);
       migrateLocalProperties(adapter);
       migrateFindings(adapter);
+      migrateInspections(adapter);
       db = adapter;
     }
   }

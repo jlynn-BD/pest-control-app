@@ -67,6 +67,10 @@ export interface LocalInspection {
   generalNotes: string | null;
   weatherConditions: string | null;
   checklistCategories: string | null;
+  // Follow-up inspection: the one it was started from, and what was carried
+  // over (JSON text, see shared constants/followUp.ts).
+  basedOnInspectionId: string | null;
+  carriedIssues: string | null;
   createdAt: string;
   updatedAt: string;
   syncStatus: "pending" | "synced";
