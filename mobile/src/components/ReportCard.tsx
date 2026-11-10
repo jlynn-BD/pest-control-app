@@ -81,6 +81,11 @@ export function ReportCard({ inspectionId, readOnly = false }: { inspectionId: s
                 : "Not emailed to the customer yet. It is sent automatically once you and the customer have both signed.")}
           </Text>}
           {readOnly ? null : (
+            <Text style={styles.meta}>
+              {report.companyCopiedAt ? `Copy sent to Blue Duck on ${new Date(report.companyCopiedAt).toLocaleString()}` : "A copy goes to Blue Duck automatically once the inspection is signed and completed."}
+            </Text>
+          )}
+          {readOnly ? null : (
             <PrimaryButton
               title={report.customerEmailedAt ? "Email to customer again" : "Email to customer"}
               onPress={() => emailMutation.mutate()}

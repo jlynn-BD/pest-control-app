@@ -44,8 +44,8 @@ reportsRouter.get(
   asyncHandler(async (req, res) => {
     const report = await prisma.report.findUnique({ where: { inspectionId: req.params.id } });
     if (!report) throw new HttpError(404, "No report generated for this inspection yet");
-    const sent = await prisma.inspection.findUnique({ where: { id: req.params.id }, select: { reportEmailedAt: true, reportEmailedTo: true } });
-    res.json({ ...report, customerEmailedAt: sent?.reportEmailedAt ?? null, customerEmailedTo: sent?.reportEmailedTo ?? null });
+    const sent = await prisma.inspection.findUnique({ where: { id: req.params.id }, select: { reportEmailedAt: true, reportEmailedTo: true, companyCopiedAt: true } });
+    res.json({ ...report, customerEmailedAt: sent?.reportEmailedAt ?? null, customerEmailedTo: sent?.reportEmailedTo ?? null, companyCopiedAt: sent?.companyCopiedAt ?? null });
   })
 );
 

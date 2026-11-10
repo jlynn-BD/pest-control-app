@@ -330,6 +330,8 @@ model Inspection {
   weatherConditions  String?
   reportEmailedAt    DateTime? // when the signed report was last emailed to the customer
   reportEmailedTo    String? // the address it went to
+  companyCopiedAt    DateTime? // when the Blue Duck office copy of the signed report was sent (REPORT_COPY_TO) - independent of the customer email
+  companyCopiedTo    String? // the office address(es) it went to
   measuredAt         DateTime? // when the technician confirmed the property was measured and mapped - the checklist, findings and photos stay locked until this is set
   basedOnInspectionId String? // follow-up inspection: the completed inspection it was started from
   carriedIssues      String? // follow-up inspection: what was carried over (JSON text, see shared constants/followUp.ts)
