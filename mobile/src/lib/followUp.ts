@@ -1,5 +1,4 @@
 import {
-  CarriedDecision,
   CarriedIssue,
   CarriedIssues,
   parseCarriedIssues,
@@ -10,10 +9,8 @@ import {
   createLocalInspection,
   deleteLocalFinding,
   getLocalInspectionDetail,
-  updateLocalCarriedIssues,
 } from "../db/inspectionStore";
 import type { LocalInspection } from "../db/types";
-import { generateId } from "./uuid";
 
 // Follow-up inspections: start a new inspection from a completed one at the
 // same property so the technician doesn't begin from scratch. See
@@ -91,9 +88,9 @@ export function buildCarriedIssues(source: Source): CarriedIssues {
     const response = f.checklistResponseId ? byResponseId.get(f.checklistResponseId) : undefined;
     if (response && response.status === "NEEDS_ATTENTION") {
       (carried.issuesByItem[response.templateItemId] ??= []).push(toIssue(f));
-    } else {
-      carried.standalone.push({ ...toIssue(f), id: generateId(), decision: null, newFindingId: null });
     }
+    // A finding that isn't under a checklist item isn't carried over: the
+    // technician can open the previous inspection to see it.
   }
   return carried;
 }
@@ -157,21 +154,4 @@ export function copyCarriedItemIssues(inspectionId: string, templateItemId: stri
 export function removeItemFindings(inspectionId: string, responseId: string): void {
   const detail = getLocalInspectionDetail(inspectionId);
   for (const f of detail?.findings ?? []) if (f.checklistResponseId === responseId) removeFinding(f.id);
-}
-
-// An earlier issue that wasn't under a checklist item: still present (copied
-// in as a finding) or resolved. Choosing the same answer again clears it.
-export function decideStandaloneIssue(inspectionId: string, standaloneId: string, decision: CarriedDecision): CarriedIssues | null {
-  const carried = getCarriedIssues(inspectionId);
-  const entry = carried?.standalone.find((s) => s.id === standaloneId);
-  if (!carried || !entry) return carried;
-  const next: CarriedDecision | null = entry.decision === decision ? null : decision;
-  if (entry.newFindingId) {
-    removeFinding(entry.newFindingId);
-    entry.newFindingId = null;
-  }
-  if (next === "STILL_PRESENT") entry.newFindingId = newFindingFrom(inspectionId, entry, null).id;
-  entry.decision = next;
-  updateLocalCarriedIssues(inspectionId, JSON.stringify(carried));
-  return carried;
 }
