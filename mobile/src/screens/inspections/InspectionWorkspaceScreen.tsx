@@ -9,6 +9,7 @@ import {
   deleteLocalInspection,
   getLocalInspectionDetail,
   LocalInspectionDetail,
+  markLocalInspectionMeasured,
   setLocalInspectionTemplate,
   signatureImageUri,
 } from "../../db/inspectionStore";
@@ -16,7 +17,7 @@ import { deleteInspection } from "../../api/inspections";
 import { runSync } from "../../sync/syncEngine";
 import { useCompletedLock } from "../../lib/useCompletedLock";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
-import { parseSiteMapSketch } from "../../lib/siteMapSketch";
+import { parseSiteMapSketch, propertyHasPlan } from "../../lib/siteMapSketch";
 import type { LocalSignature } from "../../db/types";
 import { PhotoThumb } from "../../components/PhotoThumb";
 import { PropertyPhotos } from "../../components/PropertyPhotos";
@@ -68,6 +69,18 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
   const hasTechnicianSignature = detail.signatures.some((s) => s.signerType === "TECHNICIAN");
   const isCompleted = detail.inspection.status === "COMPLETED";
   const availableTemplates = !detail.inspection.templateId ? getCachedTemplates() : [];
+  // Step 1 of every inspection: measure and map the property. Until the
+  // technician confirms it, nothing else on this page is open - findings and
+  // photos need an accurate place on the diagram. After that, every section
+  // is open in any order.
+  const measured = Boolean(detail.inspection.measuredAt);
+  const planDrawn = propertyHasPlan(property);
+
+  function handleMeasured() {
+    markLocalInspectionMeasured(inspectionId);
+    setDetail(getLocalInspectionDetail(inspectionId));
+    runSync().catch(() => {});
+  }
 
   function handleComplete() {
     completeLocalInspection(inspectionId);
@@ -110,6 +123,45 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
         />
       ) : null}
 
+      {measured ? (
+        <View style={styles.stepDoneRow}>
+          <View style={[styles.wizardStepCheckbox, styles.wizardStepCheckboxChecked]}>
+            <Text style={styles.wizardStepCheckboxMark}>✓</Text>
+          </View>
+          <Text style={styles.stepDoneText}>Property measured and mapped</Text>
+        </View>
+      ) : (
+        <Card style={styles.measureCard}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Step 1 · Measure & map the property</Text>
+            <Badge label="Required first" tone="warning" />
+          </View>
+          <Text style={styles.itemMeta}>
+            Photos and findings are placed on the property diagram, so the property has to be measured and mapped before the inspection starts. The checklist,
+            findings and photos unlock as soon as you confirm below. After that, do the areas in any order.
+          </Text>
+          <View style={styles.planStatusRow}>
+            <View style={[styles.wizardStepCheckbox, planDrawn && styles.wizardStepCheckboxChecked]}>
+              {planDrawn ? <Text style={styles.wizardStepCheckboxMark}>✓</Text> : null}
+            </View>
+            <Text style={styles.wizardStepLabel}>
+              {planDrawn ? (hasSiteMapImage ? "Site plan photo added" : "Site plan drawn") : "No site plan yet - draw the walls or add a photo of the plan"}
+            </Text>
+          </View>
+          <Text style={styles.addLink} onPress={() => navigation.navigate("SiteMap", { inspectionId })}>
+            {planDrawn ? "Open site map to review or adjust" : "Open site map to measure & map"}
+          </Text>
+          <PrimaryButton variant="cta" title="Confirm property measured" onPress={handleMeasured} disabled={!planDrawn} />
+          {!planDrawn ? <Text style={styles.hint}>Add the site plan first, then confirm here.</Text> : null}
+        </Card>
+      )}
+
+      {!measured ? (
+        <Text style={styles.hint}>The checklist, findings, photos and signatures open once the property is measured.</Text>
+      ) : null}
+
+      {measured ? (
+        <>
       {/* Pictures that show why an area couldn't be inspected belong to that checklist step, not here. */}
       <PropertyPhotos
         inspectionId={inspectionId}
@@ -270,6 +322,8 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
       ) : !isCompleted && (!hasCustomerSignature || !hasTechnicianSignature) ? (
         <Text style={styles.hint}>Both signatures are required to complete the inspection.</Text>
       ) : null}
+        </>
+      ) : null}
 
       {!isCompleted ? (
         confirmingDiscard ? (
@@ -356,6 +410,10 @@ const styles = StyleSheet.create({
   addLink: { color: colors.primaryText, fontWeight: "600", fontSize: 13, paddingVertical: 12 },
   secondaryLink: { color: colors.textMuted, fontWeight: "500", fontSize: 12, marginTop: 4, paddingVertical: 12 },
   itemCard: { marginBottom: 6, gap: 2 },
+  measureCard: { marginTop: 12, gap: 8 },
+  planStatusRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  stepDoneRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
+  stepDoneText: { fontSize: 13, fontWeight: "600", color: colors.textMuted },
   wizardStepList: { gap: 2, marginBottom: 8 },
   wizardStepRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 3 },
   wizardStepCheckbox: {

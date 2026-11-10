@@ -32,7 +32,7 @@ interface PushResult {
 }
 
 const DATE_FIELDS: Record<string, string[]> = {
-  Inspection: ["scheduledAt", "startedAt", "completedAt"],
+  Inspection: ["scheduledAt", "startedAt", "completedAt", "measuredAt"],
   Finding: [],
   Recommendation: ["deadline"],
   ChecklistResponse: [],
@@ -45,7 +45,7 @@ const ALLOWED_FIELDS: Record<string, string[]> = {
   Inspection: [
     "propertyId", "customerId", "templateId", "technicianId", "appointmentId",
     "status", "scheduledAt", "startedAt", "completedAt", "generalNotes", "weatherConditions", "checklistCategories",
-    "basedOnInspectionId", "carriedIssues",
+    "basedOnInspectionId", "carriedIssues", "measuredAt",
   ],
   Finding: [
     "inspectionId", "areaLocation", "locationDetail", "severity", "description", "lat", "lng",

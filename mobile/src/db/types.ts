@@ -71,6 +71,9 @@ export interface LocalInspection {
   // over (JSON text, see shared constants/followUp.ts).
   basedOnInspectionId: string | null;
   carriedIssues: string | null;
+  // When the technician confirmed the property was measured and mapped (the
+  // mandatory first step); null = the checklist, findings and photos are locked.
+  measuredAt: string | null;
   createdAt: string;
   updatedAt: string;
   syncStatus: "pending" | "synced";

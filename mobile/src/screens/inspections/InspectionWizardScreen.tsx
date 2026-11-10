@@ -18,6 +18,7 @@ import {
 } from "../../db/inspectionStore";
 import type { LocalInspectionPhoto, LocalInspectionSectionSkip, LocalProperty } from "../../db/types";
 import { useCompletedLock } from "../../lib/useCompletedLock";
+import { useMeasuredLock } from "../../lib/useMeasuredLock";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "InspectionWizard">;
@@ -32,6 +33,7 @@ type Props = NativeStackScreenProps<InspectionsStackParamList, "InspectionWizard
 export default function InspectionWizardScreen({ route, navigation }: Props) {
   const { inspectionId } = route.params;
   useCompletedLock(inspectionId, navigation);
+  useMeasuredLock(inspectionId, navigation);
   const { user } = useAuth();
   const [property, setProperty] = useState<LocalProperty | null>(null);
   const [propertyId, setPropertyId] = useState<string | null>(null);

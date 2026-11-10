@@ -41,6 +41,7 @@ const inspectionSchema = z.object({
   status: z.enum(["SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELED"]).optional(),
   scheduledAt: z.string().datetime().optional().nullable(),
   startedAt: z.string().datetime().optional().nullable(),
+  measuredAt: z.string().datetime().optional().nullable(),
   generalNotes: z.string().optional().nullable(),
   weatherConditions: z.string().optional().nullable(),
   checklistCategories: z.string().optional().nullable(),
@@ -76,6 +77,7 @@ inspectionsRouter.post(
         ...body,
         scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
         startedAt: body.startedAt ? new Date(body.startedAt) : null,
+        measuredAt: body.measuredAt ? new Date(body.measuredAt) : null,
       },
     });
     res.status(201).json(inspection);
@@ -101,6 +103,7 @@ inspectionsRouter.patch(
     const data: Record<string, unknown> = { ...body };
     if (body.scheduledAt) data.scheduledAt = new Date(body.scheduledAt);
     if (body.startedAt) data.startedAt = new Date(body.startedAt);
+    if (body.measuredAt) data.measuredAt = new Date(body.measuredAt);
     const inspection = await prisma.inspection.update({ where: { id: req.params.id }, data });
     res.json(inspection);
   })

@@ -68,6 +68,7 @@ function inspectionToChange(i: LocalInspection): SyncChangePayload {
       checklistCategories: i.checklistCategories,
       basedOnInspectionId: i.basedOnInspectionId,
       carriedIssues: i.carriedIssues,
+      measuredAt: i.measuredAt,
     },
   };
 }

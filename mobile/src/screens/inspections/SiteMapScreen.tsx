@@ -207,6 +207,10 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // Photo mode is one flat canvas (no levels); sketch mode needs a level
   // selected before anything can be drawn on it.
   const canDraw = isPhotoMode || Boolean(selectedLevel);
+  // Step 1 of an inspection is measuring and mapping the property (confirmed on
+  // the inspection page). Until then this screen is only for building the
+  // diagram: no finding markers, no checklist.
+  const measureFirst = !propertyOnly && !detail?.inspection.measuredAt;
   // The level's layout grid, which is also its ruler (a square = feetPerCell feet).
   const grid = resolveGrid(selectedLevel?.grid);
   // The map is an endless sheet and the screen a window onto it. Until it is
@@ -844,6 +848,15 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           Site plan for {property.addressLine1}. Findings get marked on this map during an inspection.
         </Text>
       ) : null}
+      {measureFirst ? (
+        <Card style={styles.checklistBannerCard}>
+          <Text style={styles.checklistBannerLabel}>Step 1 · Measure and map the property</Text>
+          <Text style={styles.hint}>
+            Draw the walls of each level (or add a photo of the plan) and set the scale with Measure and Grid. When it matches the property, go back and tap
+            "Property measured" - the checklist, findings and photos unlock then.
+          </Text>
+        </Card>
+      ) : null}
       {checklistSummary && !draftArrow ? (
         <Card style={styles.checklistBannerCard}>
           <Text style={styles.checklistBannerLabel}>📋 Placing marker for checklist item:</Text>
@@ -1329,7 +1342,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
 
       {canDraw && !editorOpen ? (
         <View style={styles.toggleRow}>
-          {propertyOnly ? null : (
+          {propertyOnly || measureFirst ? null : (
             <View style={styles.buttonThird}>
               <PrimaryButton title={mode === "arrow" ? "Cancel" : "+ Marker"} onPress={() => toggleMode("arrow")} />
             </View>
@@ -1447,7 +1460,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           checklist item says (or add a marker for it) without losing the
           map. Sits below the map, the editor cards and the drawing tools so
           whatever is being worked on stays right under the map. */}
-      {detail?.inspection.templateId ? (
+      {detail?.inspection.templateId && !measureFirst ? (
         <View style={styles.section}>
           <Pressable style={styles.checklistHeaderRow} onPress={() => setChecklistExpanded((v) => !v)}>
             <Text style={styles.checklistHeaderTitle}>{checklistExpanded ? "▾" : "▸"} Checklist</Text>

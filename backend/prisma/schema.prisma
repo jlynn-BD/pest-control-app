@@ -330,6 +330,7 @@ model Inspection {
   weatherConditions  String?
   reportEmailedAt    DateTime? // when the signed report was last emailed to the customer
   reportEmailedTo    String? // the address it went to
+  measuredAt         DateTime? // when the technician confirmed the property was measured and mapped - the checklist, findings and photos stay locked until this is set
   basedOnInspectionId String? // follow-up inspection: the completed inspection it was started from
   carriedIssues      String? // follow-up inspection: what was carried over (JSON text, see shared constants/followUp.ts)
   checklistCategories String? // Legacy - free category selection was replaced by the mandatory checklist wizard (shared/src/constants/checklistWizard.ts) + per-property applicability. No longer written by current clients; left populated on old rows only.

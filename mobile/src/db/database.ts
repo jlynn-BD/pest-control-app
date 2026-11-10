@@ -54,6 +54,16 @@ function migrateInspections(adapter: LocalDb): void {
       // Column already exists - expected on every boot after the first.
     }
   }
+  // "Property measured" (the mandatory first step). Inspections that already
+  // exist on this device were started before the step was required, so when
+  // the column is first added they count as measured - nothing in progress
+  // gets locked out. (Only runs the one time the column is actually added.)
+  try {
+    adapter.execSync(`ALTER TABLE inspections ADD COLUMN measuredAt TEXT`);
+    adapter.execSync(`UPDATE inspections SET measuredAt = COALESCE(startedAt, createdAt) WHERE measuredAt IS NULL`);
+  } catch {
+    // Column already exists - expected on every boot after the first.
+  }
 }
 
 // Areas that exist but can't be inspected ("not accessible"): the answer and its
@@ -94,7 +104,7 @@ CREATE TABLE IF NOT EXISTS local_template_items (
 CREATE TABLE IF NOT EXISTS inspections (
   id TEXT PRIMARY KEY, propertyId TEXT, customerId TEXT, templateId TEXT, technicianId TEXT,
   status TEXT, scheduledAt TEXT, startedAt TEXT, completedAt TEXT, generalNotes TEXT, weatherConditions TEXT,
-  checklistCategories TEXT, basedOnInspectionId TEXT, carriedIssues TEXT,
+  checklistCategories TEXT, basedOnInspectionId TEXT, carriedIssues TEXT, measuredAt TEXT,
   createdAt TEXT, updatedAt TEXT, syncStatus TEXT DEFAULT 'pending'
 );
 -- Evidence/entry points/risk factors and pest type are no longer separate

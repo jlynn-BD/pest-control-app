@@ -244,6 +244,9 @@ export interface Inspection extends BaseEntity {
   // and what was carried over from it (JSON text - see constants/followUp.ts).
   basedOnInspectionId?: string | null;
   carriedIssues?: string | null;
+  // When the technician confirmed the property was measured and mapped. The
+  // checklist, findings and photos stay locked until this is set.
+  measuredAt?: string | null;
 }
 
 // Evidence observed, entry points, and risk factors are described in

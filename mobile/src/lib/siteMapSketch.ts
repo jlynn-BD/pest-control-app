@@ -76,3 +76,12 @@ export function buildSiteMapPanels(imageUri: string | null, sketch: SiteMapSketc
     })
     .filter((panel) => panel.lines.length > 0 || panel.labels.length > 0 || panel.annotations.length > 0 || panel.arrows.length > 0);
 }
+
+// Is there a property diagram to work from? A photo of the plan, or a drawn map
+// with at least one wall on it. This is what the technician needs before they
+// can confirm "property measured" (the mandatory first inspection step).
+export function propertyHasPlan(property: { siteMapLocalUri?: string | null; siteMapImageUrl?: string | null; siteMapSketchJson?: string | null } | null | undefined): boolean {
+  if (!property) return false;
+  if (property.siteMapLocalUri || property.siteMapImageUrl) return true;
+  return parseSiteMapSketch(property.siteMapSketchJson).levels.some((l) => l.lines.length > 0);
+}

@@ -51,13 +51,14 @@ export function createLocalInspection(input: NewInspectionInput): LocalInspectio
     checklistCategories: null,
     basedOnInspectionId: input.basedOnInspectionId ?? null,
     carriedIssues: input.carriedIssues ?? null,
+    measuredAt: null,
     createdAt: now,
     updatedAt: now,
     syncStatus: "pending",
   };
   db.runSync(
-    `INSERT INTO inspections (id, propertyId, customerId, templateId, technicianId, status, scheduledAt, startedAt, completedAt, generalNotes, weatherConditions, checklistCategories, basedOnInspectionId, carriedIssues, createdAt, updatedAt, syncStatus)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO inspections (id, propertyId, customerId, templateId, technicianId, status, scheduledAt, startedAt, completedAt, generalNotes, weatherConditions, checklistCategories, basedOnInspectionId, carriedIssues, measuredAt, createdAt, updatedAt, syncStatus)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       inspection.id,
       inspection.propertyId,
@@ -73,6 +74,7 @@ export function createLocalInspection(input: NewInspectionInput): LocalInspectio
       inspection.checklistCategories,
       inspection.basedOnInspectionId,
       inspection.carriedIssues,
+      inspection.measuredAt,
       inspection.createdAt,
       inspection.updatedAt,
       inspection.syncStatus,
@@ -133,13 +135,13 @@ export function hydrateLocalInspectionFromRemote(detail: InspectionDetail): void
   const iso = (d: string | Date | null | undefined) => (d ? new Date(d).toISOString() : null);
   db.withTransactionSync(() => {
     db.runSync(
-      `INSERT INTO inspections (id, propertyId, customerId, templateId, technicianId, status, scheduledAt, startedAt, completedAt, generalNotes, weatherConditions, checklistCategories, basedOnInspectionId, carriedIssues, createdAt, updatedAt, syncStatus)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced')`,
+      `INSERT INTO inspections (id, propertyId, customerId, templateId, technicianId, status, scheduledAt, startedAt, completedAt, generalNotes, weatherConditions, checklistCategories, basedOnInspectionId, carriedIssues, measuredAt, createdAt, updatedAt, syncStatus)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced')`,
       [
         detail.id, detail.propertyId, detail.customerId, detail.templateId ?? null, detail.technicianId, detail.status,
         iso(detail.scheduledAt), iso(detail.startedAt), iso(detail.completedAt), detail.generalNotes ?? null,
         detail.weatherConditions ?? null, detail.checklistCategories ?? null, detail.basedOnInspectionId ?? null,
-        detail.carriedIssues ?? null, iso(detail.createdAt), iso(detail.updatedAt),
+        detail.carriedIssues ?? null, iso(detail.measuredAt), iso(detail.createdAt), iso(detail.updatedAt),
       ]
     );
     for (const f of detail.findings) {
@@ -692,6 +694,13 @@ export function setLocalInspectionTemplate(inspectionId: string, templateId: str
     nowIso(),
     inspectionId,
   ]);
+}
+
+// The technician confirms the property has been measured and mapped - this is
+// what unlocks the checklist, findings and photos (see lib/useMeasuredLock.ts).
+export function markLocalInspectionMeasured(inspectionId: string): void {
+  const now = nowIso();
+  getDb().runSync(`UPDATE inspections SET measuredAt = COALESCE(measuredAt, ?), updatedAt = ?, syncStatus = 'pending' WHERE id = ?`, [now, now, inspectionId]);
 }
 
 // Saves the follow-up inspection's carried-over issues (see lib/followUp.ts).

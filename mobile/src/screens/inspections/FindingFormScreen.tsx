@@ -3,6 +3,7 @@ import React, { useLayoutEffect } from "react";
 import { ScrollView, StyleSheet } from "react-native";
 import { getLocalInspectionDetail } from "../../db/inspectionStore";
 import { useCompletedLock } from "../../lib/useCompletedLock";
+import { useMeasuredLock } from "../../lib/useMeasuredLock";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { FindingEditorForm } from "../../components/FindingEditorForm";
 import { colors } from "../../components/ui";
@@ -17,6 +18,7 @@ type Props = NativeStackScreenProps<InspectionsStackParamList, "FindingForm">;
 export default function FindingFormScreen({ route, navigation }: Props) {
   const { inspectionId, editingFindingId } = route.params;
   useCompletedLock(inspectionId, navigation);
+  useMeasuredLock(inspectionId, navigation);
 
   useLayoutEffect(() => {
     if (!editingFindingId) return;

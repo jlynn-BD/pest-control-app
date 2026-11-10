@@ -7,6 +7,7 @@ import { ChecklistPanel } from "../../components/ChecklistPanel";
 import { getCachedProperty, getCachedTemplateSections } from "../../db/cache";
 import { getLocalInspectionDetail } from "../../db/inspectionStore";
 import { useCompletedLock } from "../../lib/useCompletedLock";
+import { useMeasuredLock } from "../../lib/useMeasuredLock";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { colors } from "../../components/ui";
 
@@ -21,6 +22,7 @@ type Props = NativeStackScreenProps<InspectionsStackParamList, "Checklist">;
 export default function ChecklistScreen({ route, navigation }: Props) {
   const { inspectionId } = route.params;
   useCompletedLock(inspectionId, navigation);
+  useMeasuredLock(inspectionId, navigation);
   const [allowedCategories, setAllowedCategories] = useState<string[] | undefined>(undefined);
 
   useFocusEffect(
