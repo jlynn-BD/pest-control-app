@@ -4,7 +4,7 @@ import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getCustomer } from "../../api/customers";
 import { CustomersStackParamList } from "../../navigation/navigationTypes";
-import { Badge, Card, ErrorView, LoadingView, colors, fonts } from "../../components/ui";
+import { Badge, Card, ErrorView, LoadingView, colors, fonts, wideScreen } from "../../components/ui";
 
 type Props = NativeStackScreenProps<CustomersStackParamList, "CustomerDetail">;
 
@@ -68,7 +68,7 @@ export default function CustomerDetailScreen({ route, navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 16, gap: 10 },
+  content: { ...wideScreen, padding: 16, gap: 10 },
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   name: { fontFamily: fonts.display, fontSize: 22, fontWeight: "700", color: colors.text },
   meta: { fontSize: 14, color: colors.textMuted, marginTop: 2 },

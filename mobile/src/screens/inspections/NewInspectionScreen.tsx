@@ -9,7 +9,7 @@ import type { LocalProperty, LocalTemplate } from "../../db/types";
 import { createLocalInspection, listLocalInspections } from "../../db/inspectionStore";
 import { useAuth } from "../../context/AuthContext";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
-import { Card, Field, PrimaryButton, colors, fonts } from "../../components/ui";
+import { Card, Field, PrimaryButton, colors, fonts, wideScreen } from "../../components/ui";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "NewInspection">;
 
@@ -196,7 +196,7 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 16, paddingBottom: 40 },
+  content: { ...wideScreen, padding: 16, paddingBottom: 40 },
   sectionTitle: { fontFamily: fonts.display, fontSize: 15, fontWeight: "700", color: colors.text, marginTop: 12, marginBottom: 8 },
   card: { marginBottom: 8 },
   cardSelected: { borderColor: colors.primary, borderWidth: 2 },

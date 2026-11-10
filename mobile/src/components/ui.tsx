@@ -35,6 +35,11 @@ export const colors = {
   paleYellow: "#FFF3A3",
 };
 
+// On tablets (and any wide window) lists and forms stay a comfortable reading
+// width, centered, instead of stretching card edge to edge. Phones are narrower
+// than this, so they are unaffected.
+export const wideScreen = { width: "100%" as const, maxWidth: 760, alignSelf: "center" as const };
+
 // Brand typefaces. The brand fonts Country Blues / Ronsard Crystal are paid, so
 // the guidelines' free alternates are used: Barlow for display headings, Krona
 // One for the big headline, Red Hat Text for everything else. Loaded by the web

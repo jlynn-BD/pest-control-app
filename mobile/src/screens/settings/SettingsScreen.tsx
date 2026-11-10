@@ -13,7 +13,7 @@ import {
 } from "../../db/inspectionStore";
 import { getPendingSyncCount, runSync, SyncResult } from "../../sync/syncEngine";
 import { EasySignInCard } from "../../components/EasySignInCard";
-import { Badge, Card, Field, PrimaryButton, colors, fonts } from "../../components/ui";
+import { Badge, Card, Field, PrimaryButton, colors, fonts, wideScreen } from "../../components/ui";
 
 export default function SettingsScreen() {
   const { user, logout, logoutEverywhere } = useAuth();
@@ -241,7 +241,7 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: colors.bg },
-  container: { padding: 16, paddingBottom: 40 },
+  container: { ...wideScreen, padding: 16, paddingBottom: 40 },
   name: { fontFamily: fonts.display, fontSize: 18, fontWeight: "700", color: colors.text },
   meta: { fontSize: 14, color: colors.textMuted, marginTop: 2 },
   sectionTitle: { fontFamily: fonts.display, fontSize: 15, fontWeight: "700", color: colors.text, marginTop: 20, marginBottom: 8 },

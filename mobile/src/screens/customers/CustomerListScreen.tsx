@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { listCustomers } from "../../api/customers";
 import { CustomersStackParamList } from "../../navigation/navigationTypes";
-import { Badge, EmptyState, ErrorView, Field, LoadingView, colors, fonts } from "../../components/ui";
+import { Badge, EmptyState, ErrorView, Field, LoadingView, colors, fonts, wideScreen } from "../../components/ui";
 
 type Props = NativeStackScreenProps<CustomersStackParamList, "CustomerList">;
 
@@ -16,6 +16,7 @@ export default function CustomerListScreen({ navigation }: Props) {
   });
 
   return (
+    <View style={styles.page}>
     <View style={styles.container}>
       <View style={styles.searchRow}>
         <Field label="" placeholder="Search customers" value={search} onChangeText={setSearch} />
@@ -55,11 +56,13 @@ export default function CustomerListScreen({ navigation }: Props) {
         />
       )}
     </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 16, paddingTop: 12 },
+  container: { ...wideScreen, flex: 1, paddingHorizontal: 16, paddingTop: 12 },
+  page: { flex: 1, backgroundColor: colors.bg },
   searchRow: { marginBottom: 4 },
   addButton: { alignSelf: "flex-start", paddingVertical: 12, marginBottom: 4 },
   addButtonText: { color: colors.primaryText, fontWeight: "600", fontSize: 15 },

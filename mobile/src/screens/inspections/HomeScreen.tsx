@@ -10,7 +10,7 @@ import type { LocalProperty } from "../../db/types";
 import { deleteLocalInspection, listLocalInspections, LocalInspectionListItem } from "../../db/inspectionStore";
 import { useAuth } from "../../context/AuthContext";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
-import { Badge, colors, fonts } from "../../components/ui";
+import { Badge, colors, fonts, wideScreen } from "../../components/ui";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "Home">;
 
@@ -241,7 +241,7 @@ export default function HomeScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 16, paddingBottom: 32, gap: 10 },
+  content: { ...wideScreen, padding: 16, paddingBottom: 32, gap: 10 },
   searchBox: {
     flexDirection: "row",
     alignItems: "center",

@@ -13,7 +13,7 @@ import { parseSiteMapSketch } from "../../lib/siteMapSketch";
 import { ApiError } from "../../api/client";
 import { openInspection, startInspectionAt } from "../../lib/openInspection";
 import { CustomersStackParamList } from "../../navigation/navigationTypes";
-import { Badge, Card, ErrorView, LoadingView, PrimaryButton, colors, fonts } from "../../components/ui";
+import { Badge, Card, ErrorView, LoadingView, PrimaryButton, colors, fonts, wideScreen } from "../../components/ui";
 
 type Props = NativeStackScreenProps<CustomersStackParamList, "PropertyDetail">;
 
@@ -214,7 +214,7 @@ const styles = StyleSheet.create({
   buttonStack: { gap: 10 },
   startButton: { marginTop: 14 },
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 16 },
+  content: { ...wideScreen, padding: 16 },
   title: { fontFamily: fonts.display, fontSize: 22, fontWeight: "700", color: colors.text },
   meta: { fontSize: 14, color: colors.textMuted, marginTop: 2 },
   notesCard: { marginTop: 14 },

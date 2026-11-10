@@ -10,6 +10,7 @@ export function AppTabBar({ state, navigation }: BottomTabBarProps) {
   const focused = state.routes[state.index]?.name;
   return (
     <View style={styles.bar}>
+      <View style={styles.inner}>
       <Pressable
         style={styles.item}
         onPress={() => navigation.navigate("Inspections", { screen: "NewInspection" })}
@@ -30,14 +31,14 @@ export function AppTabBar({ state, navigation }: BottomTabBarProps) {
         <Text style={[styles.gear, focused === "Settings" && styles.gearActive]}>{"⚙"}</Text>
         <Text style={[styles.label, focused === "Settings" && styles.labelActive]}>Settings</Text>
       </Pressable>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  inner: { flexDirection: "row", justifyContent: "space-around", alignItems: "center", width: "100%", maxWidth: 520 },
   bar: {
-    flexDirection: "row",
-    justifyContent: "space-around",
     alignItems: "center",
     backgroundColor: colors.card,
     borderTopWidth: 1,
