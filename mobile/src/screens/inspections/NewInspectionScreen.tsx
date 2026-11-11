@@ -1,14 +1,14 @@
 import { useFocusEffect } from "@react-navigation/native";
 import { useQueryClient } from "@tanstack/react-query";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { ApiError } from "../../api/client";
 import { createCustomer } from "../../api/customers";
 import { listInspections } from "../../api/inspections";
 import { createProperty } from "../../api/properties";
 import { ensureLocalInspection } from "../../lib/resumeInspection";
-import { ADDRESS_FORMAT_ERROR, ADDRESS_PLACEHOLDER, parseSingleLineAddress } from "../../lib/address";
+import { ADDRESS_PLACEHOLDER, addressHelp, parseSingleLineAddress } from "../../lib/address";
 import { getCachedCustomer, getCachedProperties, getCachedTemplates, primeCache } from "../../db/cache";
 import type { LocalProperty, LocalTemplate } from "../../db/types";
 import { createLocalInspection, listLocalInspections } from "../../db/inspectionStore";
@@ -62,9 +62,14 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [newEmail, setNewEmail] = useState("");
-  const [newAddress, setNewAddress] = useState(route.params?.prefillAddress ?? "");
   const [saving, setSaving] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  // A failed Save must be visible: the message sits just above the buttons, which
+  // can be off-screen on a phone, so bring it into view.
+  const scrollRef = useRef<ScrollView>(null);
+  useEffect(() => {
+    if (addError) setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+  }, [addError]);
   // Local copies win over the server list (they may hold newer edits).
   const inProgressByProperty = useMemo(() => new Map([...remoteInProgress, ...localInProgress]), [remoteInProgress, localInProgress]);
 
@@ -172,17 +177,17 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
   function openAddForm() {
     setAdding(true);
     setAddError(null);
-    // Carry what was typed into the address, so it isn't typed twice.
-    if (!newAddress.trim() && query) setNewAddress(query);
+    // The address typed above IS the new property's address (one field, shown
+    // inside the form below), so it can never be out of step with what was typed.
   }
 
   // Creates the customer and their property, then selects it so the inspection
   // can start. Needs a connection (the records live on the server).
   async function handleCreateRecord() {
     if (saving) return;
-    const parsed = parseSingleLineAddress(newAddress);
+    const parsed = parseSingleLineAddress(search);
     if (!newName.trim()) return setAddError("Enter the customer's name.");
-    if (!parsed) return setAddError(ADDRESS_FORMAT_ERROR);
+    if (!parsed) return setAddError(addressHelp(search));
     // The phone number and email are required: the signed report is emailed to the customer automatically.
     if (newPhone.replace(/\D/g, "").length < 7) return setAddError("Enter the customer's phone number.");
     if (!newEmail.trim()) return setAddError("Enter the customer's email - the signed report is sent there.");
@@ -229,11 +234,19 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
   }
 
   const showResults = query.length > 0 && !adding;
+  // Live feedback in the add form: how the typed address will be saved, or
+  // exactly what is still missing - so Save never fails without warning.
+  const addressPreview = (() => {
+    if (!adding || !query) return null;
+    const parsed = parseSingleLineAddress(search);
+    if (parsed) return { ok: true, text: `Will be saved as: ${parsed.addressLine1} · ${parsed.city}, ${parsed.state} ${parsed.postalCode}` };
+    return { ok: false, text: addressHelp(search) };
+  })();
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <Text style={styles.sectionTitle}>Property address</Text>
-      <Field
+    <ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      {adding ? null : <Text style={styles.sectionTitle}>Property address</Text>}
+      {adding ? null : <Field
         label=""
         placeholder="Type the property's address..."
         value={search}
@@ -246,7 +259,7 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
         autoCapitalize="none"
         autoCorrect={false}
         accessibilityLabel="Property address"
-      />
+      />}
 
       {!query && !selectedProperty && !adding ? (
         <Text style={styles.hint}>
@@ -300,8 +313,11 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
       {adding ? (
         <Card style={styles.addCard}>
           <Text style={styles.cardTitle}>New customer & property</Text>
-          <Field label="Customer name *" value={newName} onChangeText={setNewName} placeholder="e.g. Dana Whitfield" autoFocus={Boolean(newAddress)} />
-          <Field label="Property address *" value={newAddress} onChangeText={setNewAddress} placeholder={ADDRESS_PLACEHOLDER} />
+          <Field label="Customer name *" value={newName} onChangeText={setNewName} placeholder="e.g. Dana Whitfield" autoFocus={Boolean(search)} />
+          <Field label="Property address *" value={search} onChangeText={setSearch} placeholder={ADDRESS_PLACEHOLDER} autoCapitalize="words" autoCorrect={false} />
+          {addressPreview ? (
+            <Text style={addressPreview.ok ? styles.addressOk : styles.addressWarn}>{addressPreview.text}</Text>
+          ) : null}
           <Field label="Phone *" value={newPhone} onChangeText={setNewPhone} keyboardType="phone-pad" placeholder="(555) 123-4567" />
           <Field label="Email *" value={newEmail} onChangeText={setNewEmail} autoCapitalize="none" keyboardType="email-address" placeholder="name@example.com" />
           <Text style={styles.meta}>The signed inspection report is emailed to this address automatically once the inspection is completed.</Text>
@@ -395,6 +411,8 @@ const styles = StyleSheet.create({
   meta: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
   addLink: { color: colors.primaryText, fontWeight: "600", fontSize: 14, marginTop: 4, marginBottom: 4 },
   error: { color: colors.danger, fontSize: 13, marginTop: 4 },
+  addressOk: { color: colors.success, fontSize: 13, marginTop: -4 },
+  addressWarn: { color: colors.danger, fontSize: 13, marginTop: -4 },
   buttonRow: { flexDirection: "row", gap: 10, marginTop: 8 },
   buttonHalf: { flex: 1 },
   startError: { color: colors.danger, fontSize: 13, textAlign: "center", marginTop: 8 },
