@@ -260,6 +260,11 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   const visibleArrows = isPhotoMode ? allArrows : allArrows.filter((a) => findings.find((f) => f.id === a.id)?.siteMapLevel === selectedLevelId);
 
   const wallCount = selectedLevel?.lines.length ?? 0;
+  // Undo is available whenever there is anything on the level to take back -
+  // not only after drawing something in this visit (see handleUndo).
+  const canUndo =
+    undoStack.current.some((u) => u.levelId === selectedLevel?.id) ||
+    (selectedLevel ? selectedLevel.lines.length + selectedLevel.annotations.length + selectedLevel.labels.length > 0 : false);
   // The next step, in plain words, for someone who has not drawn on this map before.
   const drawCoach =
     isPhotoMode || editorOpen
@@ -494,7 +499,28 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     const stack = undoStack.current;
     let i = stack.length - 1;
     while (i >= 0 && stack[i].levelId !== selectedLevel.id) i--;
-    if (i < 0) return;
+    if (i < 0) {
+      // Nothing drawn since this screen was opened (the step-back history isn't
+      // kept between visits), but Undo must still work on what's already there:
+      // take off the newest wall, else the newest shape, else the newest label.
+      if (selectedLevel.lines.length > 0) {
+        persistSelectedLevel((l) => ({ ...l, lines: l.lines.slice(0, -1) }));
+      } else if (selectedLevel.annotations.length > 0) {
+        persistSelectedLevel((l) => ({ ...l, annotations: l.annotations.slice(0, -1) }));
+      } else if (selectedLevel.labels.length > 0) {
+        persistSelectedLevel((l) => ({ ...l, labels: l.labels.slice(0, -1) }));
+      }
+      // persistSelectedLevel logged the pre-removal state as a step; drop it, or the
+      // next Undo would just put this wall back instead of removing the one before it.
+      stack.pop();
+      setUndoCount(stack.length);
+      setChainReset((n) => n + 1);
+      setSelectedWallId(null);
+      setSelectedAnnotationId(null);
+      setShapeLabelText("");
+      setLastAction(null);
+      return;
+    }
     const [{ level }] = stack.splice(i, 1);
     setUndoCount(stack.length);
     setChainReset((n) => n + 1);
@@ -1037,13 +1063,6 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       ) : null}
       {canDraw && !editorOpen ? (
         <View style={styles.toolsRow}>
-          <Pressable
-            onPress={handleUndo}
-            disabled={!undoStack.current.some((u) => u.levelId === selectedLevel?.id)}
-            style={[styles.toolChip, !undoStack.current.some((u) => u.levelId === selectedLevel?.id) && styles.toolChipOff]}
-          >
-            <Text style={styles.toolChipText}>↶ Undo</Text>
-          </Pressable>
           {isPhotoMode ? null : (
             <>
               <Pressable onPress={() => toggleMode("pan")} style={[styles.toolChip, mode === "pan" && styles.toolChipOn]}>
@@ -1068,12 +1087,6 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         </View>
       ) : null}
       {sketchPending ? <Text style={styles.hint}>Saved on this device - will sync when there's a connection</Text> : null}
-      {mode === "wall" && !editorOpen && wallCount > 0 ? (
-        <Text style={styles.dismissLink} onPress={handleDeleteLastWall}>
-          Delete the last wall segment
-        </Text>
-      ) : null}
-
       <View style={wide ? styles.wideRow : null}>
       <View style={wide ? styles.wideMap : null}>
       <SiteMapCanvas
@@ -1126,6 +1139,19 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       />
       </View>
       <View style={wide ? styles.widePanel : null}>
+
+      {canDraw && !editorOpen && !pendingIssue ? (
+        <View style={styles.toggleRow}>
+          <View style={mode === "wall" && wallCount > 0 ? styles.buttonHalf : styles.buttonThird}>
+            <PrimaryButton title="↶ Undo" onPress={handleUndo} disabled={!canUndo} />
+          </View>
+          {mode === "wall" && wallCount > 0 ? (
+            <View style={styles.buttonHalf}>
+              <PrimaryButton title="Delete last wall" onPress={handleDeleteLastWall} />
+            </View>
+          ) : null}
+        </View>
+      ) : null}
 
       {pendingIssue && markerPoint ? (
         <Card style={styles.confirmCard}>
