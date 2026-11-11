@@ -29,7 +29,9 @@ import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } fr
 import { getCachedProperty, getCachedTemplateSections, isSiteMapSketchDirty, primeCache } from "../../db/cache";
 import { pushDirtySketches, saveSketchLocally } from "../../sync/siteMapSync";
 import { generateId } from "../../lib/uuid";
-import { getLocalInspectionDetail, LocalInspectionDetail, markLocalInspectionMeasured } from "../../db/inspectionStore";
+import { addLocalFinding, addLocalFindingPhoto, getLocalInspectionDetail, LocalInspectionDetail, markLocalInspectionMeasured } from "../../db/inspectionStore";
+import { clearPendingIssue, getPendingIssue } from "../../lib/pendingIssue";
+import { PhotoThumb } from "../../components/PhotoThumb";
 import { runSync } from "../../sync/syncEngine";
 import { deleteSiteMap, uploadSiteMap } from "../../api/properties";
 import { parseSiteMapSketch, propertyHasPlan } from "../../lib/siteMapSketch";
@@ -39,7 +41,6 @@ import { ApiError } from "../../api/client";
 import { useCompletedLock } from "../../lib/useCompletedLock";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { Geometry, MEASURE_COLOR, siteMapHintText, SiteMapArrow, SiteMapCanvas, SiteMapMode } from "../../components/ArrowCanvas";
-import { ChecklistPanel } from "../../components/ChecklistPanel";
 import { FindingEditorForm } from "../../components/FindingEditorForm";
 import { Badge, Card, Field, PrimaryButton, colors, fonts } from "../../components/ui";
 import type { LocalProperty } from "../../db/types";
@@ -128,6 +129,10 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // Tap-to-place walls: whether a run of tapped corners is going (changes the hint),
   // and a counter that drops a half-finished run (Undo).
   const [wallRun, setWallRun] = useState(false);
+  // Placing an issue from the checklist: where on the map it was tapped (map
+  // coordinates) before "Yes, place it".
+  const [markerPoint, setMarkerPoint] = useState<Point | null>(null);
+  const [placing, setPlacing] = useState(false);
   const [chainReset, setChainReset] = useState(0);
   // Grid tools: the "each square is N feet" box, and the real length typed in
   // to turn a measured line into the map's scale.
@@ -176,13 +181,12 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   useFocusEffect(
     useCallback(() => {
       refresh();
-      // Arriving here to place a marker for an already-answered checklist
-      // item (see ChecklistScreen's "Add to Site Map") skips the separate
-      // "+Marker" tap and drops straight into drawing mode.
-      setMode(fromChecklistResponseId ? "arrow" : "view");
-      // Only ever auto-*expand* - never collapse a section the technician
-      // may have opened themselves, e.g. after switching tabs and back.
-      if (fromChecklistResponseId) setChecklistExpanded(true);
+      // Arriving from "Add to site map" on a checklist issue: the next thing is
+      // tapping where it is, so go straight to that.
+      const placingIssue = Boolean(inspectionId && fromChecklistResponseId && getPendingIssue(inspectionId, fromChecklistResponseId));
+      setMode(placingIssue ? "marker" : "view");
+      setMarkerPoint(null);
+      if (placingIssue) selectLevelForIssue();
       setPendingLabelPoint(null);
       setAddingLevel(false);
       setEditingLabel(null);
@@ -192,7 +196,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       setDraftArrow(null);
       setEditingFindingId(null);
       setLastAction(null);
-    }, [refresh, fromChecklistResponseId])
+    }, [refresh, fromChecklistResponseId, inspectionId])
   );
 
   if (propertyOnly ? !property : !detail) return null;
@@ -238,6 +242,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       )
     : null;
 
+  const pendingIssue = inspectionId && fromChecklistResponseId ? getPendingIssue(inspectionId, fromChecklistResponseId) : null;
   const findings = detail?.findings ?? [];
   const allArrows: SiteMapArrow[] = findings
     .filter((f) => f.floorPlanX != null && f.floorPlanY != null && f.siteMapArrowStartX != null && f.siteMapArrowStartY != null)
@@ -278,13 +283,80 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   const checklistItemCount = wizardStatus ? wizardStatus.steps.reduce((sum, s) => sum + s.itemsTotal, 0) : 0;
   const checklistAnsweredCount = wizardStatus ? wizardStatus.steps.reduce((sum, s) => sum + s.itemsAnswered, 0) : 0;
 
+  // The floor that matches the checklist area the issue belongs to (Exterior,
+  // 1st Floor, Attic, ...), so the map opens on the right one.
+  function selectLevelForIssue() {
+    if (!inspectionId || !fromChecklistResponseId) return;
+    const d = getLocalInspectionDetail(inspectionId);
+    const prop = d ? getCachedProperty(d.inspection.propertyId) : null;
+    if (!d || !prop || !d.inspection.templateId) return;
+    const response = d.checklistResponses.find((r) => r.id === fromChecklistResponseId);
+    const category = getCachedTemplateSections(d.inspection.templateId).find((s) => s.items.some((i) => i.id === response?.templateItemId))?.category;
+    const pattern: Record<string, RegExp> = {
+      EXTERIOR: /exterior|outside|yard/i,
+      FIRST_FLOOR: /1st|first|main|ground/i,
+      SECOND_FLOOR: /2nd|second/i,
+      THIRD_FLOOR: /3rd|third/i,
+      BASEMENT: /basement|cellar/i,
+      ATTIC: /attic/i,
+      CRAWL_SPACE: /crawl/i,
+    };
+    const re = category ? pattern[category] : undefined;
+    const level = re ? parseSiteMapSketch(prop.siteMapSketchJson).levels.find((l) => re.test(l.name)) : undefined;
+    if (level) setSelectedLevelId(level.id);
+  }
+
+  // The issue is confirmed at the tapped spot: it is saved with its photo,
+  // linked to the checklist item, and the person goes back to the checklist.
+  function handlePlaceIssue() {
+    const pending = inspectionId && fromChecklistResponseId ? getPendingIssue(inspectionId, fromChecklistResponseId) : null;
+    if (!pending || !markerPoint || !inspectionId || placing) return;
+    setPlacing(true);
+    try {
+      // The label sits a little up and to the side of the X.
+      const flip = isPhotoMode && markerPoint.x > 0.9;
+      const tail = {
+        x: isPhotoMode ? Math.min(0.98, Math.max(0.02, markerPoint.x + (flip ? -0.07 : 0.07))) : markerPoint.x + 0.07,
+        y: isPhotoMode ? Math.min(0.98, Math.max(0.02, markerPoint.y - 0.07)) : markerPoint.y - 0.07,
+      };
+      const finding = addLocalFinding(inspectionId, {
+        areaLocation: checklistSummary?.prompt ?? "Checklist issue",
+        locationDetail: null,
+        severity: "MEDIUM",
+        description: pending.description,
+        lat: null,
+        lng: null,
+        floorPlanX: markerPoint.x,
+        floorPlanY: markerPoint.y,
+        siteMapArrowStartX: tail.x,
+        siteMapArrowStartY: tail.y,
+        siteMapLevel: isPhotoMode ? null : selectedLevelId,
+        checklistResponseId: pending.responseId,
+      });
+      addLocalFindingPhoto(finding.id, { localUri: pending.photoUri, caption: null, lat: null, lng: null, sortOrder: 0 });
+      clearPendingIssue();
+      runSync().catch(() => {});
+      navigation.goBack();
+    } finally {
+      setPlacing(false);
+    }
+  }
+
+  function handleCancelPlacing() {
+    clearPendingIssue();
+    navigation.goBack();
+  }
+
   // The map is done: that confirms the property is measured and mapped, which
-  // opens the checklist and findings, and goes back to the inspection.
+  // opens the checklist, and starts it.
   function handleContinueToInspection() {
     if (!inspectionId) return;
     markLocalInspectionMeasured(inspectionId);
     runSync().catch(() => {});
-    navigation.navigate("InspectionWorkspace", { inspectionId });
+    // Straight into the checklist (the first thing to do once the property is
+    // mapped); an inspection with no checklist goes back to its page.
+    if (detail?.inspection.templateId) navigation.replace("InspectionWizard", { inspectionId });
+    else navigation.navigate("InspectionWorkspace", { inspectionId });
   }
 
   function toggleMode(next: SiteMapMode) {
@@ -894,25 +966,18 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           <Text style={styles.checklistBannerPrompt}>{drawCoach}</Text>
         </Card>
       ) : null}
-      {checklistSummary && !draftArrow ? (
+      {pendingIssue ? (
         <Card style={styles.checklistBannerCard}>
-          <Text style={styles.checklistBannerLabel}>📋 Placing marker for checklist item:</Text>
-          <Text style={styles.checklistBannerPrompt}>{checklistSummary.prompt}</Text>
-          <Text style={styles.hint}>
-            {mode === "arrow"
-              ? "Draw an arrow on the map below to mark where this is."
-              : "Add or edit walls, labels and shapes below - tap Place marker when you're ready to mark this item."}
-          </Text>
-          {mode === "arrow" ? (
-            <Text style={styles.dismissLink} onPress={() => toggleMode("arrow")}>
-              Add or edit shapes first
+          <Text style={styles.checklistBannerLabel}>📍 Place this issue on the map</Text>
+          <Text style={styles.checklistBannerPrompt}>{checklistSummary?.prompt ?? "Checklist issue"}</Text>
+          <Text style={styles.hint}>{pendingIssue.description}</Text>
+          <View style={styles.pendingPhotoRow}>
+            <PhotoThumb uri={pendingIssue.photoUri} style={styles.pendingPhoto} />
+            <Text style={styles.pendingPhotoText}>
+              {markerPoint ? "Photo ready." : "Photo ready. Pick the right floor if needed, then tap the map where the issue is."}
             </Text>
-          ) : (
-            <Text style={styles.dismissLink} onPress={() => { setMode("arrow"); setSelectedWallId(null); setSelectedAnnotationId(null); }}>
-              Place marker
-            </Text>
-          )}
-          <Text style={styles.dismissLink} onPress={() => navigation.goBack()}>
+          </View>
+          <Text style={styles.dismissLink} onPress={handleCancelPlacing}>
             Cancel
           </Text>
         </Card>
@@ -1045,6 +1110,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         selectedLabelId={editingLabel?.id ?? null}
         selectedWallId={selectedWallId}
         selectedAnnotationId={selectedAnnotationId}
+        pendingMarker={pendingIssue ? markerPoint : null}
+        onMarkerTap={(point) => setMarkerPoint(point)}
         onArrowDrawn={(start, end) => {
           setMode("view");
           setDraftArrow({ start, end });
@@ -1059,6 +1126,20 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       />
       </View>
       <View style={wide ? styles.widePanel : null}>
+
+      {pendingIssue && markerPoint ? (
+        <Card style={styles.confirmCard}>
+          <Text style={styles.confirmTitle}>Is this where it should go?</Text>
+          <View style={styles.buttonRow}>
+            <View style={styles.buttonHalf}>
+              <PrimaryButton variant="cta" title="Yes, place it" onPress={handlePlaceIssue} loading={placing} />
+            </View>
+            <View style={styles.buttonHalf}>
+              <PrimaryButton title="Move it" onPress={() => setMarkerPoint(null)} disabled={placing} />
+            </View>
+          </View>
+        </Card>
+      ) : null}
 
       {/* Drawing a marker or tapping an existing one opens this editor right
           here, below the still-visible map, instead of navigating to a
@@ -1383,13 +1464,9 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         </Card>
       ) : null}
 
-      {canDraw && !editorOpen ? (
+      {canDraw && !editorOpen && !pendingIssue ? (
         <View style={styles.toggleRow}>
-          {propertyOnly || measureFirst ? null : (
-            <View style={styles.buttonThird}>
-              <PrimaryButton title={mode === "arrow" ? "Cancel" : "+ Marker"} onPress={() => toggleMode("arrow")} />
-            </View>
-          )}
+          {/* No "+ Marker" any more: issues get their X from the checklist ("Add to site map"). */}
           <View style={styles.buttonThird}>
             <PrimaryButton title={mode === "wall" ? "Cancel" : "+ Wall"} onPress={() => toggleMode("wall")} />
           </View>
@@ -1403,7 +1480,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           +Label row above since these don't open any form at all - tap a
           type, tap/drag on the map, done. Tate: "not every annotation needs
           to become a full detailed finding". */}
-      {canDraw && !editorOpen ? (
+      {canDraw && !editorOpen && !pendingIssue ? (
         <View style={styles.toggleRow}>
           {ANNOTATION_TYPES.map(({ type, label }) => (
             <View key={type} style={styles.buttonThird}>
@@ -1416,7 +1493,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         </View>
       ) : null}
 
-      {canDraw && !editorOpen && !isPhotoMode ? (
+      {canDraw && !editorOpen && !isPhotoMode && !pendingIssue ? (
         <View style={styles.toggleRow}>
           <View style={styles.buttonHalf}>
             <PrimaryButton title={mode === "measure" ? "Cancel" : "📏 Measure"} onPress={() => toggleMode("measure")} />
@@ -1497,32 +1574,6 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         </Card>
       ) : null}
 
-      {/* Embedded here rather than behind a separate "Checklist" screen -
-          Tate's eventual ask was "Site Map + Checklist + Finding Editor, all
-          visible within the same workspace" so a technician can check what a
-          checklist item says (or add a marker for it) without losing the
-          map. Sits below the map, the editor cards and the drawing tools so
-          whatever is being worked on stays right under the map. */}
-      {detail?.inspection.templateId && !measureFirst ? (
-        <View style={styles.section}>
-          <Pressable style={styles.checklistHeaderRow} onPress={() => setChecklistExpanded((v) => !v)}>
-            <Text style={styles.checklistHeaderTitle}>{checklistExpanded ? "▾" : "▸"} Checklist</Text>
-            <Badge
-              label={`${checklistAnsweredCount}/${checklistItemCount}`}
-              tone={checklistAnsweredCount >= checklistItemCount && checklistItemCount > 0 ? "success" : "default"}
-            />
-          </Pressable>
-          {checklistExpanded ? (
-            <ChecklistPanel
-              inspectionId={inspectionId!}
-              allowedCategories={unlockedCategories}
-              onAddToSiteMap={(responseId) => navigation.setParams({ fromChecklistResponseId: responseId })}
-              onEditFinding={(findingId) => setEditingFindingId(findingId)}
-              refreshSignal={detail.inspection.updatedAt}
-            />
-          ) : null}
-        </View>
-      ) : null}
       </View>
       </View>
 
@@ -1539,6 +1590,11 @@ export default function SiteMapScreen({ route, navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   continueBlock: { marginTop: 24, gap: 4 },
+  pendingPhotoRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 4 },
+  pendingPhoto: { width: 64, height: 64, borderRadius: 8 },
+  pendingPhotoText: { flex: 1, fontSize: 13, color: colors.textMuted },
+  confirmCard: { marginTop: 12, marginBottom: 4, gap: 10, borderColor: colors.danger, borderWidth: 2 },
+  confirmTitle: { fontFamily: fonts.display, fontSize: 16, fontWeight: "700", color: colors.text },
   wideRow: { flexDirection: "row", gap: 16, alignItems: "flex-start" },
   wideMap: { flex: 5 },
   widePanel: { flex: 4 },

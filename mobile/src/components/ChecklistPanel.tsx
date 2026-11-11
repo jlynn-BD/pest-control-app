@@ -1,21 +1,14 @@
 import { useFocusEffect } from "@react-navigation/native";
-import { CarriedIssue, CarriedIssues, Severity, parseCarriedIssues } from "@pest-app/shared";
+import { CarriedIssue, CarriedIssues, parseCarriedIssues } from "@pest-app/shared";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { deleteChecklistResponse } from "../api/inspections";
 import { getCachedTemplateSections } from "../db/cache";
-import {
-  addLocalChecklistResponsePhoto,
-  deleteLocalChecklistResponsePhoto,
-  addLocalFinding,
-  addLocalFindingPhoto,
-  deleteLocalChecklistResponse,
-  getLocalInspectionDetail,
-  upsertLocalChecklistResponse,
-} from "../db/inspectionStore";
+import { deleteLocalChecklistResponse, getLocalInspectionDetail, upsertLocalChecklistResponse } from "../db/inspectionStore";
 import type { LocalChecklistResponse, LocalChecklistResponsePhoto, LocalFinding, LocalFindingPhoto, LocalTemplateItem } from "../db/types";
 import { CHECKLIST_CATEGORY_DISPLAY_ORDER, CHECKLIST_CATEGORY_LABEL } from "../lib/checklist";
-import { capturePhoto, pickPhotosFromLibrary } from "../lib/photo";
+import { capturePhoto } from "../lib/photo";
+import { setPendingIssue } from "../lib/pendingIssue";
 import { copyCarriedItemIssues, removeItemFindings } from "../lib/followUp";
 import { PhotoThumb } from "./PhotoThumb";
 import { Badge, Card, Field, PrimaryButton, colors } from "./ui";
@@ -91,10 +84,6 @@ export function ChecklistPanel({
   const [search, setSearch] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
-  const [confirmingCheckAll, setConfirmingCheckAll] = useState<string | null>(null);
-  // The item the technician is working on. An "Issues" item with notes or
-  // photos folds shut once they move on to a different item.
-  const [activeItemId, setActiveItemId] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -217,78 +206,14 @@ export function ChecklistPanel({
     onChange?.();
   }
 
-  function handleNotesChange(item: LocalTemplateItem, notes: string | null) {
-    const existing = responseByItem.get(item.id);
-    if (!existing) return;
-    const response = upsertLocalChecklistResponse(inspectionId, item.id, existing.status, notes);
-    setResponses((prev) => [...prev.filter((r) => r.templateItemId !== item.id), { ...response, photos: existing.photos }]);
-    onChange?.();
-  }
-
-  function commitResponse(item: LocalTemplateItem, notes: string | null): ResponseWithPhotos {
-    const existing = responseByItem.get(item.id);
-    const status = existing?.status ?? "SATISFACTORY";
-    const updated = upsertLocalChecklistResponse(inspectionId, item.id, status, notes);
-    const response = { ...updated, photos: existing?.photos ?? [] };
-    setResponses((prev) => [...prev.filter((r) => r.templateItemId !== item.id), response]);
-    onChange?.();
-    return response;
-  }
-
-  // Adds one picture from the camera, or any number chosen from the photo library.
-  async function handleAddPhoto(item: LocalTemplateItem, notes: string | null, source: "camera" | "library") {
-    const uris = source === "camera" ? [await capturePhoto()].filter((u): u is string => Boolean(u)) : await pickPhotosFromLibrary();
-    if (uris.length === 0) return;
-    const response = commitResponse(item, notes);
-    const added = uris.map((uri, i) => addLocalChecklistResponsePhoto(response.id, { localUri: uri, caption: null, sortOrder: response.photos.length + i }));
-    setResponses((prev) => [
-      ...prev.filter((r) => r.templateItemId !== item.id),
-      { ...response, photos: [...response.photos, ...added] },
-    ]);
-  }
-
-  // Deletes one photo from a checklist item, leaving the item and its other photos alone.
-  function handleDeletePhoto(item: LocalTemplateItem, photoId: string) {
-    deleteLocalChecklistResponsePhoto(photoId);
-    setResponses((prev) => prev.map((r) => (r.templateItemId === item.id ? { ...r, photos: r.photos.filter((p) => p.id !== photoId) } : r)));
-    onChange?.();
-  }
-
-  // Another issue under the same checklist item, typed right here: its own
-  // description, severity and photos, no trip to the site map or the finding
-  // form. It's a regular finding linked to this checklist answer, so it shows
-  // in the inspection's findings, the report and the "Issue N" list below.
-  function handleAddIssue(item: LocalTemplateItem, notes: string | null, issue: { description: string; severity: string; photos: string[] }) {
-    const response = commitResponse(item, notes);
-    const finding = addLocalFinding(inspectionId, {
-      areaLocation: item.prompt,
-      locationDetail: null,
-      severity: issue.severity,
-      description: issue.description.trim() || null,
-      lat: null,
-      lng: null,
-      checklistResponseId: response.id,
-    });
-    issue.photos.forEach((uri, index) => {
-      addLocalFindingPhoto(finding.id, { localUri: uri, caption: null, lat: null, lng: null, sortOrder: index });
-    });
-    setFindings(getLocalInspectionDetail(inspectionId)?.findings ?? []);
-  }
-
-  function handleAddToSiteMap(item: LocalTemplateItem, notes: string | null) {
-    const response = commitResponse(item, notes);
+  // "Add to site map" on an issue: the description is typed and the photo taken
+  // (the item row does both), then the map opens so the person can tap where it
+  // is; the issue is saved there, with the photo attached to it.
+  function handleAddToSiteMap(item: LocalTemplateItem, description: string, photoUri: string) {
+    const response = responseByItem.get(item.id);
+    if (!response) return;
+    setPendingIssue({ inspectionId, responseId: response.id, description, photoUri });
     onAddToSiteMap(response.id);
-  }
-
-  function handleCheckAllInCategory(items: LocalTemplateItem[]) {
-    const unanswered = items.filter((i) => !responseByItem.has(i.id));
-    const newResponses = unanswered.map((item) => ({
-      ...upsertLocalChecklistResponse(inspectionId, item.id, "SATISFACTORY", null),
-      photos: [] as LocalChecklistResponsePhoto[],
-    }));
-    setResponses((prev) => [...prev, ...newResponses]);
-    setConfirmingCheckAll(null);
-    onChange?.();
   }
 
   if (!templateId) {
@@ -298,45 +223,11 @@ export function ChecklistPanel({
   const visibleCategories = CHECKLIST_CATEGORY_DISPLAY_ORDER.filter((c) => sectionsByCategory.has(c));
   let anyMatches = false;
 
-  // Unanswered items the technician can currently see in a category (a
-  // search narrows this, so "check all" never touches hidden items).
-  function visibleUnchecked(category: string): LocalTemplateItem[] {
-    return (sectionsByCategory.get(category) ?? [])
-      .flatMap((section) => (isSearching ? section.items.filter((i) => itemMatches(i, section, category)) : section.items))
-      .filter((i) => !responseByItem.has(i.id));
-  }
-
-  // The bulk "check all" control with its inline confirm step - see
-  // handleCheckAllInCategory. Rendered once at the very top when the panel
-  // is scoped to a single category (the wizard step), otherwise under each
-  // category.
-  function renderCheckAll(category: string, items: LocalTemplateItem[], atTop: boolean) {
-    if (items.length === 0) return null;
-    const spacing = atTop ? styles.checkAllTop : null;
-    return confirmingCheckAll === category ? (
-      <View style={[styles.checkAllConfirmRow, spacing]}>
-        <Text style={styles.checkAllConfirmText}>
-          Mark {items.length} item{items.length === 1 ? "" : "s"} satisfactory?
-        </Text>
-        <Text style={styles.checkAllConfirmAction} onPress={() => handleCheckAllInCategory(items)}>
-          Confirm
-        </Text>
-        <Text style={styles.checkAllCancelAction} onPress={() => setConfirmingCheckAll(null)}>
-          Cancel
-        </Text>
-      </View>
-    ) : (
-      <Text style={[styles.checkAllLink, spacing]} onPress={() => setConfirmingCheckAll(category)}>
-        ✓ Check all as satisfactory ({items.length} remaining)
-      </Text>
-    );
-  }
-
   return (
     <View>
-      {categoryFilter ? renderCheckAll(categoryFilter, visibleUnchecked(categoryFilter), true) : null}
       {topExtra}
-      <Field label="" placeholder="Search checklist (e.g. door, weep hole, foundation)" value={search} onChangeText={setSearch} />
+      {/* The step-by-step walk-through just takes you down the area, item by item; search is for the full list. */}
+      {categoryFilter ? null : <Field label="" placeholder="Search checklist (e.g. door, weep hole, foundation)" value={search} onChangeText={setSearch} />}
 
       {visibleCategories.map((category) => {
         const categorySections = sectionsByCategory.get(category)!;
@@ -357,9 +248,6 @@ export function ChecklistPanel({
         if (isSearching) anyMatches = true;
 
         const categoryExpanded = hideCategoryHeader || isSearching || expandedCategories.has(category);
-        const visibleUncheckedItems = visibleSections
-          .flatMap(({ items }) => items)
-          .filter((i) => !responseByItem.has(i.id));
 
         return (
           <View key={category} style={styles.categoryBlock}>
@@ -401,8 +289,6 @@ export function ChecklistPanel({
                                 key={item.id}
                                 item={item}
                                 status={response?.status ?? null}
-                                active={activeItemId === item.id}
-                                onActivate={() => setActiveItemId(item.id)}
                                 notes={response?.notes ?? null}
                                 photos={response?.photos ?? []}
                                 issues={response ? issuesByResponse.get(response.id) ?? [] : []}
@@ -419,11 +305,7 @@ export function ChecklistPanel({
                                 onDecide={(decision, notes) => handleDecide(item, decision, notes)}
                                 onChoose={(status, notes) => handleSetStatus(item, status, notes)}
                                 onUncheck={() => handleUncheck(item)}
-                                onNotesChange={(notes) => handleNotesChange(item, notes)}
-                                onAddPhoto={(notes, source) => handleAddPhoto(item, notes, source)}
-                                onDeletePhoto={(photoId) => handleDeletePhoto(item, photoId)}
-                                onAddToSiteMap={(notes) => handleAddToSiteMap(item, notes)}
-                                onAddIssue={(notes, issue) => handleAddIssue(item, notes, issue)}
+                                onAddToSiteMap={(description, photoUri) => handleAddToSiteMap(item, description, photoUri)}
                                 onEditFinding={onEditFinding}
                               />
                             );
@@ -433,7 +315,6 @@ export function ChecklistPanel({
                   );
                 })
               : null}
-            {!categoryFilter && categoryExpanded ? renderCheckAll(category, visibleUncheckedItems, false) : null}
           </View>
         );
       })}
@@ -443,16 +324,15 @@ export function ChecklistPanel({
   );
 }
 
-// One tap per item for the normal case. "No visible issues" records a
-// satisfactory answer and that's it - the technician just moves to the next
-// item. "Issues" records a needs-attention answer and opens the details
-// (notes, photo, add to site map) right there, no extra taps to reveal them.
-// Tapping the chosen option again clears the answer.
+// One tap per item for the normal case: "No visible issues" records a
+// satisfactory answer and that's it - on to the next item. "Issues" asks for
+// two things only: say what the issue is, then "Add to site map". That takes a
+// photo, then the person taps the map where it is, and the photo stays with the
+// issue. An item can have several issues (the same one may turn up 3 or 4
+// times); each goes in the same way. Tapping the chosen option again clears it.
 function ChecklistItemRow({
   item,
   status,
-  active,
-  onActivate,
   notes,
   photos,
   issues,
@@ -460,71 +340,63 @@ function ChecklistItemRow({
   onDecide,
   onChoose,
   onUncheck,
-  onNotesChange,
-  onAddPhoto,
-  onDeletePhoto,
   onAddToSiteMap,
-  onAddIssue,
   onEditFinding,
 }: {
   item: LocalTemplateItem;
   status: string | null;
-  active: boolean;
-  onActivate: () => void;
+  // Older inspections kept one note and photos straight on the item; they are
+  // still shown, but new issues are added through "Add to site map".
   notes: string | null;
   photos: LocalChecklistResponsePhoto[];
-  // Every issue (Finding) already raised from this item - Matt's ask: three
-  // separate foundation cracks shouldn't have to be combined into one
-  // description, so each gets listed here on its own with its own
-  // description/photos/site-map marker, instead of only the one shared
-  // Notes field above being able to describe a single issue at a time.
+  // Every issue (Finding) already raised from this item, each with its own
+  // description, photo and place on the site map.
   issues: FindingWithPhotos[];
   // Follow-up inspection: how this item was answered last time (null otherwise).
   carried: { status: string; notes: string | null; issues: CarriedIssue[]; sourceDate: string | null } | null;
   onDecide: (decision: "STILL_PRESENT" | "RESOLVED", notes: string | null) => void;
   onChoose: (status: "SATISFACTORY" | "NEEDS_ATTENTION", notes: string | null) => void;
   onUncheck: () => void;
-  onNotesChange: (notes: string | null) => void;
-  onAddPhoto: (notes: string | null, source: "camera" | "library") => void;
-  // Removes just this one photo (the others on the item stay).
-  onDeletePhoto: (photoId: string) => void;
-  onAddToSiteMap: (notes: string | null) => void;
-  onAddIssue: (notes: string | null, issue: { description: string; severity: string; photos: string[] }) => void;
+  onAddToSiteMap: (description: string, photoUri: string) => void;
   onEditFinding: (findingId: string) => void;
 }) {
-  // The inline "add another issue" mini-form.
-  const [addingIssue, setAddingIssue] = useState(false);
   const [issueText, setIssueText] = useState("");
-  const [issueSeverity, setIssueSeverity] = useState<string>(Severity.MEDIUM);
-  const [issuePhotos, setIssuePhotos] = useState<string[]>([]);
-  const [localNotes, setLocalNotes] = useState(notes ?? "");
+  const [hint, setHint] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const hasIssue = status === "NEEDS_ATTENTION";
-  const hasDetails = !!(notes && notes.trim()) || photos.length > 0;
-  // Open while it's being filled in; once notes/photos exist and the
-  // technician has moved on, fold down to a one-line summary.
-  const detailsOpen = hasIssue && (active || !hasDetails);
-
-  // Some phone browsers don't fire the field's "lost focus" event when a
-  // button elsewhere is tapped, so save any typed note the moment the
-  // technician moves on to another item instead of relying on that.
-  const wasActive = useRef(active);
-  useEffect(() => {
-    if (wasActive.current && !active && hasIssue && (localNotes.trim() || null) !== ((notes ?? "").trim() || null)) {
-      onNotesChange(localNotes.trim() || null);
-    }
-    wasActive.current = active;
-  }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
+  const legacyDetail = !!(notes && notes.trim()) || photos.length > 0;
+  // Marked "Issues" but nothing says what or where: not finished yet.
+  const needsIssue = hasIssue && issues.length === 0 && !legacyDetail;
 
   const hadIssue = carried?.status === "NEEDS_ATTENTION";
   function decide(next: "STILL_PRESENT" | "RESOLVED") {
-    onActivate();
-    onDecide(next, localNotes.trim() || null);
+    onDecide(next, null);
   }
 
   function choose(next: "SATISFACTORY" | "NEEDS_ATTENTION") {
-    onActivate();
     if (status === next) onUncheck();
-    else onChoose(next, localNotes.trim() || null);
+    else onChoose(next, null);
+  }
+
+  async function addToMap() {
+    if (busy) return;
+    if (!issueText.trim()) {
+      setHint("First write what the issue is.");
+      return;
+    }
+    setBusy(true);
+    setHint(null);
+    try {
+      const uri = await capturePhoto();
+      if (!uri) {
+        setHint("A photo of the issue is needed - tap Add to site map again and take one.");
+        return;
+      }
+      onAddToSiteMap(issueText.trim(), uri);
+      setIssueText("");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -559,26 +431,12 @@ function ChecklistItemRow({
           <ChoiceButton label="Issues" checked={hasIssue} tone="issue" onPress={() => choose("NEEDS_ATTENTION")} />
         </View>
       )}
-      {hasIssue && !detailsOpen ? (
-        <View>
-          <View style={styles.issueSummary}>
-            <Text style={styles.issueSummaryText} numberOfLines={2}>
-              {notes && notes.trim() ? notes.trim() : "Photo added"}
-              {photos.length > 0 ? `  ·  ${photos.length} photo${photos.length === 1 ? "" : "s"}` : ""}
-            </Text>
-            <Text style={styles.addPhotoLink} onPress={onActivate}>
-              Edit
-            </Text>
-          </View>
-          {/* The photos are right there on the item (tap one to see it full
-              size, e.g. to show the customer) - no need to open Edit first. */}
-          {photos.length > 0 ? (
-            <View style={styles.summaryPhotos}>
-              {photos.map((p) => (
-                <PhotoThumb key={p.id} uri={p.localUri} style={styles.summaryThumb} />
-              ))}
-            </View>
-          ) : null}
+      {hasIssue && legacyDetail ? (
+        <View style={styles.issueSummary}>
+          <Text style={styles.issueSummaryText} numberOfLines={3}>
+            {notes && notes.trim() ? notes.trim() : "Photo added"}
+            {photos.length > 0 ? `  ·  ${photos.length} photo${photos.length === 1 ? "" : "s"}` : ""}
+          </Text>
         </View>
       ) : null}
       {hasIssue && issues.length > 0 ? (
@@ -587,9 +445,8 @@ function ChecklistItemRow({
             <View key={issue.id} style={styles.issueListRow}>
               <View style={styles.issueListText}>
                 <Text style={styles.issueListTitle}>Issue {index + 1}</Text>
-                <Text style={styles.issueListDescription} numberOfLines={2}>
+                <Text style={styles.issueListDescription} numberOfLines={3}>
                   {issue.description?.trim() || issue.areaLocation}
-                  {issue.photos.length > 0 ? `  ·  ${issue.photos.length} photo${issue.photos.length === 1 ? "" : "s"}` : ""}
                   {issue.siteMapArrowStartX != null ? "  ·  📍 on site map" : ""}
                 </Text>
                 {issue.photos.length > 0 ? (
@@ -607,120 +464,22 @@ function ChecklistItemRow({
           ))}
         </View>
       ) : null}
-      {hasIssue && !addingIssue ? (
-        <View style={styles.issueActionRow}>
-          <Text
-            style={styles.addAnotherIssueLink}
-            onPress={() => {
-              onActivate();
-              setAddingIssue(true);
-            }}
-          >
-            + Add another issue
-          </Text>
-          <Text
-            style={styles.addAnotherIssueLink}
-            onPress={() => {
-              onActivate();
-              onAddToSiteMap(localNotes.trim() || null);
-            }}
-          >
-            {issues.length > 0 ? "📍 Another on site map" : "📍 Add to Site Map"}
-          </Text>
-        </View>
-      ) : null}
-      {hasIssue && addingIssue ? (
-        <View style={styles.newIssueBox}>
-          <Text style={styles.issueListTitle}>New issue</Text>
-          <Field label="Describe the issue" placeholder="What did you find?" value={issueText} onChangeText={setIssueText} multiline />
-          <View style={styles.severityRow}>
-            {[Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL].map((sev) => (
-              <Pressable
-                key={sev}
-                onPress={() => setIssueSeverity(sev)}
-                style={[styles.severityChip, issueSeverity === sev && styles.severityChipOn]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: issueSeverity === sev }}
-              >
-                <Text style={[styles.severityText, issueSeverity === sev && styles.severityTextOn]}>{String(sev).charAt(0) + String(sev).slice(1).toLowerCase()}</Text>
-              </Pressable>
-            ))}
-          </View>
-          <View style={styles.photoRow}>
-            {issuePhotos.map((uri) => (
-              <PhotoThumb key={uri} uri={uri} style={styles.photoThumb} onDelete={() => setIssuePhotos((prev) => prev.filter((u) => u !== uri))} />
-            ))}
-            <Text
-              style={styles.addPhotoLink}
-              onPress={async () => {
-                const uri = await capturePhoto();
-                if (uri) setIssuePhotos((prev) => [...prev, uri]);
-              }}
-            >
-              📷 Take photo
-            </Text>
-            <Text
-              style={styles.addPhotoLink}
-              onPress={async () => {
-                const uris = await pickPhotosFromLibrary();
-                if (uris.length > 0) setIssuePhotos((prev) => [...prev, ...uris]);
-              }}
-            >
-              🖼 From library
-            </Text>
-          </View>
-          <View style={styles.newIssueButtons}>
-            <View style={styles.newIssueButtonHalf}>
-              <PrimaryButton
-                title="Save issue"
-                disabled={!issueText.trim() && issuePhotos.length === 0}
-                onPress={() => {
-                  onAddIssue(localNotes.trim() || null, { description: issueText, severity: issueSeverity, photos: issuePhotos });
-                  setIssueText("");
-                  setIssuePhotos([]);
-                  setIssueSeverity(Severity.MEDIUM);
-                  setAddingIssue(false);
-                }}
-              />
-            </View>
-            <View style={styles.newIssueButtonHalf}>
-              <PrimaryButton title="Cancel" onPress={() => { setAddingIssue(false); setIssueText(""); setIssuePhotos([]); }} />
-            </View>
-          </View>
-        </View>
-      ) : null}
-      {detailsOpen ? (
+      {hasIssue ? (
         <View style={styles.issueDetails}>
+          {needsIssue ? <Text style={styles.needsIssueText}>Write what the issue is, then add it to the site map to finish this item.</Text> : null}
           <Field
-            label="Notes"
-            placeholder="Describe the issue"
-            value={localNotes}
-            onChangeText={setLocalNotes}
-            onBlur={() => onNotesChange(localNotes.trim() || null)}
+            label={issues.length > 0 || legacyDetail ? "Another issue here? Describe it" : "What is the issue?"}
+            placeholder="e.g. Door sweep is worn out"
+            value={issueText}
+            onChangeText={(t) => {
+              setIssueText(t);
+              if (hint) setHint(null);
+            }}
+            multiline
           />
-          <View style={styles.photoRow}>
-            {photos.map((p) => (
-              <PhotoThumb key={p.id} uri={p.localUri} style={styles.photoThumb} onDelete={() => onDeletePhoto(p.id)} />
-            ))}
-            <Text
-              style={styles.addPhotoLink}
-              onPress={() => {
-                onActivate();
-                onAddPhoto(localNotes.trim() || null, "camera");
-              }}
-            >
-              📷 Take photo
-            </Text>
-            <Text
-              style={styles.addPhotoLink}
-              onPress={() => {
-                onActivate();
-                onAddPhoto(localNotes.trim() || null, "library");
-              }}
-            >
-              🖼 From library
-            </Text>
-          </View>
+          <Text style={styles.issueNextHint}>Next you'll take a photo, then tap the map to show where it is.</Text>
+          {hint ? <Text style={styles.needsIssueText}>{hint}</Text> : null}
+          <PrimaryButton variant="cta" title="📍 Add to site map" onPress={addToMap} loading={busy} />
         </View>
       ) : null}
     </Card>
@@ -803,7 +562,9 @@ const styles = StyleSheet.create({
   choiceBox: { width: 24, height: 24, borderRadius: 6, borderWidth: 2, alignItems: "center", justifyContent: "center", backgroundColor: "#fff" },
   choiceMark: { color: "#fff", fontSize: 15, fontWeight: "800", lineHeight: 16 },
   choiceLabel: { flexShrink: 1, fontSize: 14, fontWeight: "600", color: colors.text },
-  issueDetails: { gap: 4 },
+  issueDetails: { gap: 6 },
+  needsIssueText: { fontSize: 13, color: colors.danger, fontWeight: "600" },
+  issueNextHint: { fontSize: 12, color: colors.textMuted },
   issueSummary: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   issueSummaryText: { flex: 1, fontSize: 13, color: colors.textMuted },
   issueListBlock: { gap: 8, marginTop: 4 },

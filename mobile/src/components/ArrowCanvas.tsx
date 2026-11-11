@@ -9,7 +9,8 @@ import { AuthImage } from "./AuthImage";
 import { MapScrollbar, SCROLLBAR_THICKNESS } from "./MapScrollbars";
 import { colors } from "./ui";
 
-export type SiteMapMode = "view" | "arrow" | "wall" | "label" | "annotate" | "measure" | "grid" | "pan";
+// "marker": tap the map to say where an issue is (the issue's X goes there).
+export type SiteMapMode = "view" | "arrow" | "wall" | "label" | "annotate" | "measure" | "grid" | "pan" | "marker";
 
 // Was previously rendered as an absolutely-positioned overlay INSIDE the
 // canvas (bottom edge, full width) - a technician found that box sitting
@@ -26,6 +27,8 @@ export function siteMapHintText(mode: SiteMapMode, annotationType?: SiteMapAnnot
       return chaining
         ? "Tap the next corner. Tap the last corner again when this run of walls is done"
         : "Tap where a wall starts, then tap each corner after it - or press and drag one wall";
+    case "marker":
+      return "Tap the map where the issue is - an X goes there";
     case "label":
       return "Tap to place a label (tap inside a shape to name it)";
     case "measure":
@@ -516,6 +519,8 @@ function SiteMapCanvasInner({
   onArrowDrawn,
   onWallDrawn,
   onLabelTap,
+  onMarkerTap,
+  pendingMarker = null,
   onAnnotationDrawn,
   onArrowPress,
   onLabelPress,
@@ -555,6 +560,10 @@ function SiteMapCanvasInner({
   chainStart?: Point | null;
   onChainChange?: (p: Point | null) => void;
   onLabelTap?: (point: Point) => void;
+  // "marker" mode: where the issue was tapped (0-1 within the current view), and
+  // the spot already tapped but not yet confirmed (shown as an X).
+  onMarkerTap?: (point: Point) => void;
+  pendingMarker?: Point | null;
   onAnnotationDrawn?: (type: SiteMapAnnotationType, color: string, start: Point, end: Point) => void;
   onArrowPress?: (arrowId: string) => void;
   onLabelPress?: (labelId: string) => void;
@@ -695,7 +704,7 @@ function SiteMapCanvasInner({
     setSize({ width, height: h });
   }
 
-  const completesOnTap = mode === "label" || (mode === "annotate" && annotationType === "x");
+  const completesOnTap = mode === "label" || mode === "marker" || (mode === "annotate" && annotationType === "x");
 
   // With nothing selected for drawing, dragging empty space moves the sheet
   // (grid and drawing together), like dragging a map. Taps on walls and shapes
@@ -725,6 +734,7 @@ function SiteMapCanvasInner({
       if (size.width === 0 || size.height === 0) return;
       const norm = { x: point.x / size.width, y: point.y / size.height };
       if (mode === "label") onLabelTap?.(norm);
+      else if (mode === "marker") onMarkerTap?.(norm);
       else if (mode === "annotate" && annotationType === "x" && annotationColor) onAnnotationDrawn?.("x", annotationColor, norm, norm);
     },
     snapPixels,
@@ -1035,8 +1045,11 @@ function SiteMapCanvasInner({
             const color = SEVERITY_COLOR[a.severity] ?? colors.text;
             return (
               <React.Fragment key={a.id}>
-                <SvgLine x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke={color} strokeWidth={2.5} />
-                <Polygon points={arrowHeadPoints(start, end)} fill={color} />
+                <SvgLine x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke={color} strokeWidth={2} />
+                {/* The issue itself: an X right where it is. */}
+                <Circle cx={end.x} cy={end.y} r={10} fill="#ffffff" fillOpacity={0.9} stroke={color} strokeWidth={1.5} />
+                <SvgLine x1={end.x - 5.5} y1={end.y - 5.5} x2={end.x + 5.5} y2={end.y + 5.5} stroke={color} strokeWidth={3} strokeLinecap="round" />
+                <SvgLine x1={end.x - 5.5} y1={end.y + 5.5} x2={end.x + 5.5} y2={end.y - 5.5} stroke={color} strokeWidth={3} strokeLinecap="round" />
               </React.Fragment>
             );
           })}
@@ -1148,6 +1161,14 @@ function SiteMapCanvasInner({
               <SvgLine x1={pointer.x} y1={0} x2={pointer.x} y2={size.height} stroke={AIM_COLOR} strokeWidth={1} strokeDasharray="5,4" opacity={0.7} />
               <Circle cx={pointer.x} cy={pointer.y} r={10} stroke={AIM_COLOR} strokeWidth={2} fill="none" />
               <Circle cx={pointer.x} cy={pointer.y} r={2.5} fill={AIM_COLOR} />
+            </>
+          ) : null}
+          {/* The spot just tapped for an issue, waiting to be confirmed. */}
+          {pendingMarker && size.width > 0 ? (
+            <>
+              <Circle cx={pendingMarker.x * size.width} cy={pendingMarker.y * size.height} r={16} fill="#ffffff" fillOpacity={0.92} stroke={colors.danger} strokeWidth={2.5} />
+              <SvgLine x1={pendingMarker.x * size.width - 8} y1={pendingMarker.y * size.height - 8} x2={pendingMarker.x * size.width + 8} y2={pendingMarker.y * size.height + 8} stroke={colors.danger} strokeWidth={4} strokeLinecap="round" />
+              <SvgLine x1={pendingMarker.x * size.width - 8} y1={pendingMarker.y * size.height + 8} x2={pendingMarker.x * size.width + 8} y2={pendingMarker.y * size.height - 8} stroke={colors.danger} strokeWidth={4} strokeLinecap="round" />
             </>
           ) : null}
           {/* Tap-to-place walls: the corner the next wall starts from, and (with a
@@ -1479,6 +1500,8 @@ export function SiteMapCanvas(
       onMeasureDrawn={rest.onMeasureDrawn ? (s, e) => rest.onMeasureDrawn!(toWorld(s), toWorld(e)) : undefined}
       onAnnotationDrawn={rest.onAnnotationDrawn ? (t, c, s, e) => rest.onAnnotationDrawn!(t, c, toWorld(s), toWorld(e)) : undefined}
       onLabelTap={rest.onLabelTap ? (p) => rest.onLabelTap!(toWorld(p)) : undefined}
+      onMarkerTap={rest.onMarkerTap ? (p) => rest.onMarkerTap!(toWorld(p)) : undefined}
+      pendingMarker={rest.pendingMarker ? { x: tx(rest.pendingMarker.x), y: ty(rest.pendingMarker.y) } : null}
       onAnnotationChange={rest.onAnnotationChange ? (id, g) => rest.onAnnotationChange!(id, worldGeometry(g)) : undefined}
       onWallChange={rest.onWallChange ? (id, g) => rest.onWallChange!(id, worldGeometry(g) as Required<Geometry>) : undefined}
       onWallsChange={

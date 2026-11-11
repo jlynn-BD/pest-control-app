@@ -18,6 +18,7 @@ import {
 } from "../../db/inspectionStore";
 import type { LocalInspectionPhoto, LocalInspectionSectionSkip, LocalProperty } from "../../db/types";
 import { useCompletedLock } from "../../lib/useCompletedLock";
+import { countOpenIssues } from "../../lib/openIssues";
 import { useMeasuredLock } from "../../lib/useMeasuredLock";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 
@@ -48,6 +49,8 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
   const [naReason, setNaReason] = useState("");
   const [naPhotos, setNaPhotos] = useState<string[]>([]);
   const [sectionPhotos, setSectionPhotos] = useState<LocalInspectionPhoto[]>([]);
+  // The list of all areas is tucked away; the screen just walks down the current one.
+  const [showAreas, setShowAreas] = useState(false);
 
   const refresh = useCallback(() => {
     const detail = getLocalInspectionDetail(inspectionId);
@@ -109,6 +112,14 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
   const previouslyMarkedElsewhere = step.applicable === false && !mySkip;
   const notAccessible = mySkip?.kind === "NOT_ACCESSIBLE";
   const myAreaPhotos = sectionPhotos.filter((p) => p.sectionCategory === step.category);
+  // Items in this area marked "Issues" with no issue recorded yet.
+  const liveDetail = getLocalInspectionDetail(inspectionId);
+  const stepItemIds = new Set(
+    (liveDetail?.inspection.templateId ? getCachedTemplateSections(liveDetail.inspection.templateId) : [])
+      .filter((s) => s.category === step.category)
+      .flatMap((s) => s.items.map((i) => i.id))
+  );
+  const openIssues = countOpenIssues(liveDetail, stepItemIds);
   const naMissing = [!naReason.trim() ? "describe why" : null, naPhotos.length === 0 ? "add a photo" : null, !initials.trim() ? "enter your initials" : null].filter(Boolean);
 
   function resetNotAccessibleForm() {
@@ -142,6 +153,7 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
 
   function goToStep(index: number) {
     if (index > status!.furthestUnlockedIndex) return;
+    setShowAreas(false);
     resetNotAccessibleForm();
     setConfirmingNotApplicable(false);
     setInitials("");
@@ -183,30 +195,38 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.progressList}>
-        {status.steps.map((s, index) => {
-          const reachable = index <= status.furthestUnlockedIndex;
-          const active = index === stepIndex;
-          return (
-            <Pressable
-              key={s.category}
-              disabled={!reachable}
-              onPress={() => goToStep(index)}
-              style={[styles.stepRow, active && styles.stepRowActive, !reachable && styles.stepRowLocked]}
-            >
-              <View style={[styles.stepCheckbox, s.resolved && styles.stepCheckboxChecked]}>
-                {s.resolved ? <Text style={styles.stepCheckboxMark}>✓</Text> : null}
-              </View>
-              <Text style={[styles.stepRowLabel, active && styles.stepRowLabelActive, !reachable && styles.stepRowLabelLocked]}>
-                {s.shortLabel}
-                {!s.required ? " (if applicable)" : ""}
-              </Text>
-            </Pressable>
-          );
-        })}
+      <View style={styles.areaHeader}>
+        <Text style={styles.areaCount}>
+          Area {stepIndex + 1} of {status.steps.length}
+        </Text>
+        <Text style={styles.areasToggle} onPress={() => setShowAreas((v) => !v)} accessibilityRole="button">
+          {showAreas ? "Hide areas ▴" : "All areas ▾"}
+        </Text>
       </View>
-
-      <Text style={styles.orderHint}>Start with whichever step fits the visit - they can be done in any order. All of them need to be finished to complete the inspection.</Text>
+      {showAreas ? (
+        <View style={styles.progressList}>
+          {status.steps.map((s, index) => {
+            const reachable = index <= status.furthestUnlockedIndex;
+            const active = index === stepIndex;
+            return (
+              <Pressable
+                key={s.category}
+                disabled={!reachable}
+                onPress={() => goToStep(index)}
+                style={[styles.stepRow, active && styles.stepRowActive, !reachable && styles.stepRowLocked]}
+              >
+                <View style={[styles.stepCheckbox, s.resolved && styles.stepCheckboxChecked]}>
+                  {s.resolved ? <Text style={styles.stepCheckboxMark}>✓</Text> : null}
+                </View>
+                <Text style={[styles.stepRowLabel, active && styles.stepRowLabelActive, !reachable && styles.stepRowLabelLocked]}>
+                  {s.shortLabel}
+                  {!s.required ? " (if applicable)" : ""}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
 
       <Text style={styles.stepTitle}>{step.label}</Text>
       {!step.required ? (
@@ -332,6 +352,11 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
         </>
       )}
 
+      {openIssues > 0 ? (
+        <Text style={styles.openIssueHint}>
+          {openIssues} item{openIssues === 1 ? "" : "s"} marked Issues still need the issue written and added to the site map.
+        </Text>
+      ) : null}
       {!step.resolved ? (
         <Text style={styles.blockedHint}>
           {step.itemsTotal - step.itemsAnswered} of {step.itemsTotal} required item(s) in this step still need an answer.
@@ -343,7 +368,7 @@ export default function InspectionWizardScreen({ route, navigation }: Props) {
           <PrimaryButton title="Back" onPress={() => goToStep(stepIndex - 1)} disabled={stepIndex === 0} />
         </View>
         <View style={styles.buttonHalf}>
-          <PrimaryButton title={isLastStep ? "Finish" : "Next step"} onPress={handleNext} />
+          <PrimaryButton title={isLastStep ? "Finish" : "Next area"} onPress={handleNext} disabled={openIssues > 0} />
         </View>
       </View>
     </ScrollView>
@@ -381,7 +406,10 @@ const styles = StyleSheet.create({
   stepRowLabelLocked: { color: colors.textMuted },
   stepTitle: { fontSize: 18, fontWeight: "700", color: colors.text, marginBottom: 4 },
   stepHint: { fontSize: 12, color: colors.textMuted, marginBottom: 12 },
-  orderHint: { fontSize: 12, color: colors.textMuted, marginBottom: 14 },
+  areaHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 },
+  areaCount: { fontSize: 12, fontWeight: "700", color: colors.textMuted, textTransform: "uppercase" },
+  areasToggle: { fontSize: 13, fontWeight: "600", color: colors.primaryText, paddingVertical: 8 },
+  openIssueHint: { color: colors.danger, fontSize: 13, fontWeight: "600", textAlign: "center", marginTop: 16 },
   naCard: { gap: 8, marginBottom: 16 },
   naText: { fontSize: 14, color: colors.text },
   naMeta: { fontSize: 12, color: colors.textMuted },

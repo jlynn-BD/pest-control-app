@@ -17,6 +17,7 @@ import { runSync } from "../../sync/syncEngine";
 import { useCompletedLock } from "../../lib/useCompletedLock";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { parseSiteMapSketch, propertyHasPlan } from "../../lib/siteMapSketch";
+import { countOpenIssues } from "../../lib/openIssues";
 import type { LocalSignature } from "../../db/types";
 import { PhotoThumb } from "../../components/PhotoThumb";
 import { FollowUpCard } from "../../components/FollowUpCard";
@@ -50,6 +51,8 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
     : null;
   const resolvedStepCount = wizardStatus ? wizardStatus.steps.filter((s) => s.resolved).length : 0;
   const checklistResolved = !detail.inspection.templateId || Boolean(wizardStatus?.canComplete);
+  // Every area finished, and every item marked "Issues" has its issue recorded.
+  const checklistDone = checklistResolved && countOpenIssues(detail) === 0;
   // Follow-up inspection: what the earlier inspection found (see FollowUpCard).
   const carried = parseCarriedIssues(detail.inspection.carriedIssues);
   const siteMapMarkerCount = detail.findings.filter((f) => f.floorPlanX != null).length;
@@ -130,7 +133,7 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
           </View>
           <Text style={styles.itemMeta}>
             Photos and findings are placed on the property diagram, so the property is measured and mapped first. Create the site map, then tap Continue at the
-            bottom of it - the checklist and findings open then, and the areas can be done in any order.
+            bottom of it - the checklist starts, and the areas can be done in any order.
           </Text>
           <View style={styles.planStatusRow}>
             <View style={[styles.wizardStepCheckbox, planDrawn && styles.wizardStepCheckboxChecked]}>
@@ -151,38 +154,19 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
       {measured ? (
         <>
       <View style={styles.section}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Checklist</Text>
-          {wizardStatus ? (
-            <Badge
-              label={`${resolvedStepCount}/${wizardStatus.steps.length} steps`}
-              tone={wizardStatus.canComplete ? "success" : "warning"}
-            />
-          ) : null}
-        </View>
         {detail.inspection.templateId && wizardStatus ? (
           <Card style={styles.itemCard}>
-            <View style={styles.wizardStepList}>
-              {wizardStatus.steps.map((s) => (
-                <View key={s.category} style={styles.wizardStepRow}>
-                  <View style={[styles.wizardStepCheckbox, s.resolved && styles.wizardStepCheckboxChecked]}>
-                    {s.resolved ? <Text style={styles.wizardStepCheckboxMark}>✓</Text> : null}
-                  </View>
-                  <Text style={styles.wizardStepLabel}>
-                    {s.shortLabel}
-                    {!s.required ? " (if applicable)" : ""}
-                  </Text>
-                </View>
-              ))}
-            </View>
-            <Text style={styles.addLink} onPress={() => navigation.navigate("InspectionWizard", { inspectionId })}>
-              {resolvedStepCount === 0 ? "Start checklist" : wizardStatus.canComplete ? "Review checklist" : "Continue checklist"}
+            <Text style={styles.sectionTitle}>Inspection checklist</Text>
+            <Text style={styles.itemMeta}>
+              {resolvedStepCount === 0
+                ? "Go through each area of the property, one item at a time."
+                : `${resolvedStepCount} of ${wizardStatus.steps.length} areas finished.`}
             </Text>
-            {resolvedStepCount > 0 ? (
-              <Text style={styles.secondaryLink} onPress={() => navigation.navigate("Checklist", { inspectionId })}>
-                View full checklist
-              </Text>
-            ) : null}
+            <PrimaryButton
+              variant="cta"
+              title={resolvedStepCount === 0 ? "Start checklist" : checklistDone ? "Review checklist" : "Continue checklist"}
+              onPress={() => navigation.navigate("InspectionWizard", { inspectionId })}
+            />
           </Card>
         ) : availableTemplates.length === 0 ? (
           <Text style={styles.itemMeta}>No checklist templates available offline yet.</Text>
@@ -204,34 +188,16 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
         )}
       </View>
 
-      <View style={styles.section}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Site Map</Text>
-          {hasSiteMapPlan ? (
-            <Badge label={`${siteMapMarkerCount} marker(s)${!hasSiteMapImage && drawnItemCount > 0 ? ` · ${drawnItemCount} drawn item(s)` : ""}`} />
-          ) : null}
-        </View>
-        <Card style={styles.itemCard}>
-          <Text style={styles.addLink} onPress={() => navigation.navigate("SiteMap", { inspectionId })}>
-            {hasSiteMapPlan ? "Open site map" : "Set up property site plan"}
-          </Text>
-        </Card>
-      </View>
-
       {/* One list, not two: every finding automatically becomes its
           recommendation (Matt's "no second entry" ask), so showing a Findings
           card and a Recommendations card for the same item was pure
           repetition. Each card is the finding plus the recommendation it
           generated; tap to edit or delete the finding. */}
+      {detail.findings.length > 0 || detail.recommendations.length > 0 ? (
       <WorkspaceSection
-        title="Findings & Recommendations"
+        title="Issues found"
         count={detail.findings.length + detail.recommendations.filter((r) => !r.findingId || !detail.findings.some((f) => f.id === r.findingId)).length}
-        onAdd={() => navigation.navigate("FindingForm", { inspectionId })}
-        addLabel="+ Add finding"
       >
-        {detail.findings.length === 0 && detail.recommendations.length === 0 ? (
-          <Text style={[styles.itemMeta, { marginBottom: 12 }]}>Add a finding - its recommendation is created automatically, nothing to enter twice.</Text>
-        ) : null}
         {detail.findings.map((f) => {
           const rec = detail.recommendations.find((r) => r.findingId === f.id);
           return (
@@ -272,7 +238,16 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
             </Card>
           ))}
       </WorkspaceSection>
+      ) : null}
 
+      {hasSiteMapPlan ? (
+        <Text style={styles.siteMapLink} onPress={() => navigation.navigate("SiteMap", { inspectionId })}>
+          🗺 View or adjust the site map
+        </Text>
+      ) : null}
+
+      {checklistDone ? (
+        <>
       <Text style={styles.sectionTitle}>Signatures</Text>
       <View style={styles.signatureRow}>
         <SignatureSlot
@@ -293,16 +268,18 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
           variant="cta"
           title="Complete inspection"
           onPress={handleComplete}
-          disabled={!hasCustomerSignature || !hasTechnicianSignature || !checklistResolved}
+          disabled={!hasCustomerSignature || !hasTechnicianSignature || !checklistDone}
         />
       ) : (
         <Badge label="Inspection completed" tone="success" />
       )}
-      {!isCompleted && !checklistResolved ? (
-        <Text style={styles.hint}>Finish the checklist before completing this inspection.</Text>
-      ) : !isCompleted && (!hasCustomerSignature || !hasTechnicianSignature) ? (
+      {!isCompleted && (!hasCustomerSignature || !hasTechnicianSignature) ? (
         <Text style={styles.hint}>Both signatures are required to complete the inspection.</Text>
       ) : null}
+        </>
+      ) : (
+        <Text style={styles.hint}>Finish the checklist to sign and complete the inspection.</Text>
+      )}
         </>
       ) : null}
 
@@ -329,30 +306,13 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
   );
 }
 
-function WorkspaceSection({
-  title,
-  count,
-  addLabel,
-  onAdd,
-  children,
-}: {
-  title: string;
-  count: number;
-  addLabel?: string;
-  onAdd?: () => void;
-  children: React.ReactNode;
-}) {
+function WorkspaceSection({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeaderRow}>
         <Text style={styles.sectionTitle}>
           {title} ({count})
         </Text>
-        {onAdd && addLabel ? (
-          <Text style={styles.addLink} onPress={onAdd}>
-            {addLabel}
-          </Text>
-        ) : null}
       </View>
       {children}
     </View>
@@ -391,6 +351,7 @@ const styles = StyleSheet.create({
   addLink: { color: colors.primaryText, fontWeight: "600", fontSize: 13, paddingVertical: 12 },
   secondaryLink: { color: colors.textMuted, fontWeight: "500", fontSize: 12, marginTop: 4, paddingVertical: 12 },
   itemCard: { marginBottom: 6, gap: 2 },
+  siteMapLink: { color: colors.primaryText, fontWeight: "600", fontSize: 13, textAlign: "center", marginTop: 16, paddingVertical: 12 },
   measureCard: { marginTop: 12, gap: 8 },
   planStatusRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   stepDoneRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
