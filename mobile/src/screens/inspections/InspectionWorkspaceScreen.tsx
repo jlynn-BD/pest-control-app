@@ -19,7 +19,6 @@ import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { parseSiteMapSketch, propertyHasPlan } from "../../lib/siteMapSketch";
 import type { LocalSignature } from "../../db/types";
 import { PhotoThumb } from "../../components/PhotoThumb";
-import { PropertyPhotos } from "../../components/PropertyPhotos";
 import { FollowUpCard } from "../../components/FollowUpCard";
 import { AuthImage } from "../../components/AuthImage";
 import { Badge, Card, PrimaryButton, colors, fonts } from "../../components/ui";
@@ -131,7 +130,7 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
           </View>
           <Text style={styles.itemMeta}>
             Photos and findings are placed on the property diagram, so the property is measured and mapped first. Create the site map, then tap Continue at the
-            bottom of it - the checklist, findings and photos open then, and the areas can be done in any order.
+            bottom of it - the checklist and findings open then, and the areas can be done in any order.
           </Text>
           <View style={styles.planStatusRow}>
             <View style={[styles.wizardStepCheckbox, planDrawn && styles.wizardStepCheckboxChecked]}>
@@ -146,18 +145,11 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
       )}
 
       {!measured ? (
-        <Text style={styles.hint}>The checklist, findings, photos and signatures open once the property is measured.</Text>
+        <Text style={styles.hint}>The checklist, findings and signatures open once the property is measured.</Text>
       ) : null}
 
       {measured ? (
         <>
-      {/* Pictures that show why an area couldn't be inspected belong to that checklist step, not here. */}
-      <PropertyPhotos
-        inspectionId={inspectionId}
-        photos={detail.photos.filter((p) => !p.sectionCategory)}
-        onChange={(photos) => setDetail((d) => (d ? { ...d, photos: [...d.photos.filter((p) => p.sectionCategory), ...photos] } : d))}
-      />
-
       <View style={styles.section}>
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Checklist</Text>

@@ -279,7 +279,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   const checklistAnsweredCount = wizardStatus ? wizardStatus.steps.reduce((sum, s) => sum + s.itemsAnswered, 0) : 0;
 
   // The map is done: that confirms the property is measured and mapped, which
-  // opens the checklist, findings and photos, and goes back to the inspection.
+  // opens the checklist and findings, and goes back to the inspection.
   function handleContinueToInspection() {
     if (!inspectionId) return;
     markLocalInspectionMeasured(inspectionId);
@@ -883,8 +883,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           {drawCoach ? <Text style={styles.checklistBannerPrompt}>{drawCoach}</Text> : null}
           {drawCoach ? null : (
             <Text style={styles.hint}>
-              Draw the walls of each level (or add a photo of the plan). When it matches the property, tap Continue at the bottom of this page - the checklist,
-              findings and photos open then.
+              Draw the walls of each level (or add a photo of the plan). When it matches the property, tap Continue at the bottom of this page - the checklist
+              and findings open then.
             </Text>
           )}
         </Card>
