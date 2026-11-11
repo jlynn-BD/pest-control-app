@@ -29,9 +29,10 @@ import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } fr
 import { getCachedProperty, getCachedTemplateSections, isSiteMapSketchDirty, primeCache } from "../../db/cache";
 import { pushDirtySketches, saveSketchLocally } from "../../sync/siteMapSync";
 import { generateId } from "../../lib/uuid";
-import { getLocalInspectionDetail, LocalInspectionDetail } from "../../db/inspectionStore";
+import { getLocalInspectionDetail, LocalInspectionDetail, markLocalInspectionMeasured } from "../../db/inspectionStore";
+import { runSync } from "../../sync/syncEngine";
 import { deleteSiteMap, uploadSiteMap } from "../../api/properties";
-import { parseSiteMapSketch } from "../../lib/siteMapSketch";
+import { parseSiteMapSketch, propertyHasPlan } from "../../lib/siteMapSketch";
 import { findChecklistResponseSummary } from "../../lib/checklist";
 import { choosePhoto } from "../../lib/photo";
 import { ApiError } from "../../api/client";
@@ -261,6 +262,15 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   const unlockedCategories = wizardStatus ? wizardStatus.steps.slice(0, wizardStatus.furthestUnlockedIndex + 1).map((s) => s.category) : [];
   const checklistItemCount = wizardStatus ? wizardStatus.steps.reduce((sum, s) => sum + s.itemsTotal, 0) : 0;
   const checklistAnsweredCount = wizardStatus ? wizardStatus.steps.reduce((sum, s) => sum + s.itemsAnswered, 0) : 0;
+
+  // The map is done: that confirms the property is measured and mapped, which
+  // opens the checklist, findings and photos, and goes back to the inspection.
+  function handleContinueToInspection() {
+    if (!inspectionId) return;
+    markLocalInspectionMeasured(inspectionId);
+    runSync().catch(() => {});
+    navigation.navigate("InspectionWorkspace", { inspectionId });
+  }
 
   function toggleMode(next: SiteMapMode) {
     setMode((current) => (current === next ? "view" : next));
@@ -852,8 +862,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         <Card style={styles.checklistBannerCard}>
           <Text style={styles.checklistBannerLabel}>Step 1 · Measure and map the property</Text>
           <Text style={styles.hint}>
-            Draw the walls of each level (or add a photo of the plan) and set the scale with Measure and Grid. When it matches the property, go back and tap
-            "Property measured" - the checklist, findings and photos unlock then.
+            Draw the walls of each level (or add a photo of the plan) and set the scale with Measure and Grid. When it matches the property, tap Continue at the
+            bottom of this page - the checklist, findings and photos open then.
           </Text>
         </Card>
       ) : null}
@@ -1482,12 +1492,20 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       ) : null}
       </View>
       </View>
+
+      {measureFirst ? (
+        <View style={styles.continueBlock}>
+          <PrimaryButton variant="cta" title="Continue to inspection" onPress={handleContinueToInspection} disabled={!propertyHasPlan(property)} />
+          {!propertyHasPlan(property) ? <Text style={styles.hint}>Draw the walls (or add a photo of the plan) first, then continue.</Text> : null}
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  continueBlock: { marginTop: 24, gap: 4 },
   wideRow: { flexDirection: "row", gap: 16, alignItems: "flex-start" },
   wideMap: { flex: 5 },
   widePanel: { flex: 4 },

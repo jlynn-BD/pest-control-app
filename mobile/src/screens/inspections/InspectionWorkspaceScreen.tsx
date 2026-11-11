@@ -9,7 +9,6 @@ import {
   deleteLocalInspection,
   getLocalInspectionDetail,
   LocalInspectionDetail,
-  markLocalInspectionMeasured,
   setLocalInspectionTemplate,
   signatureImageUri,
 } from "../../db/inspectionStore";
@@ -76,12 +75,6 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
   const measured = Boolean(detail.inspection.measuredAt);
   const planDrawn = propertyHasPlan(property);
 
-  function handleMeasured() {
-    markLocalInspectionMeasured(inspectionId);
-    setDetail(getLocalInspectionDetail(inspectionId));
-    runSync().catch(() => {});
-  }
-
   function handleComplete() {
     completeLocalInspection(inspectionId);
     // Send it up right away (the finished inspection's page keeps trying too)
@@ -137,8 +130,8 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
             <Badge label="Required first" tone="warning" />
           </View>
           <Text style={styles.itemMeta}>
-            Photos and findings are placed on the property diagram, so the property has to be measured and mapped before the inspection starts. The checklist,
-            findings and photos unlock as soon as you confirm below. After that, do the areas in any order.
+            Photos and findings are placed on the property diagram, so the property is measured and mapped first. Create the site map, then tap Continue at the
+            bottom of it - the checklist, findings and photos open then, and the areas can be done in any order.
           </Text>
           <View style={styles.planStatusRow}>
             <View style={[styles.wizardStepCheckbox, planDrawn && styles.wizardStepCheckboxChecked]}>
@@ -148,11 +141,7 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
               {planDrawn ? (hasSiteMapImage ? "Site plan photo added" : "Site plan drawn") : "No site plan yet - draw the walls or add a photo of the plan"}
             </Text>
           </View>
-          <Text style={styles.addLink} onPress={() => navigation.navigate("SiteMap", { inspectionId })}>
-            {planDrawn ? "Open site map to review or adjust" : "Open site map to measure & map"}
-          </Text>
-          <PrimaryButton variant="cta" title="Confirm property measured" onPress={handleMeasured} disabled={!planDrawn} />
-          {!planDrawn ? <Text style={styles.hint}>Add the site plan first, then confirm here.</Text> : null}
+          <PrimaryButton variant="cta" title={planDrawn ? "Review site map" : "Create site map"} onPress={() => navigation.navigate("SiteMap", { inspectionId })} />
         </Card>
       )}
 
