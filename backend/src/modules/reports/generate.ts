@@ -57,7 +57,23 @@ export async function buildReportData(inspectionId: string): Promise<ReportData>
   const carriedItemIds = new Set(carried ? carriedIssueItemIds(carried) : []);
   const resolvedList: string[] = [];
   let stillPresent = 0;
-  const checklistByCategory = new Map<string, { prompt: string; status: string; notes: string | null; photoPaths: ReportImage[]; carried?: "STILL_PRESENT" | "RESOLVED" }[]>();
+  // Each finding's pictures, loaded once: the same images are shown under the checklist
+  // item the issue belongs to AND in the findings list, and are one entry in the gallery.
+  const findingPhotos = new Map<string, ReportImage[]>();
+  for (const f of inspection.findings) {
+    findingPhotos.set(f.id, (await Promise.all(f.photos.map((p) => loadReportImage(p.fileUrl)))).filter((img): img is ReportImage => img !== null));
+  }
+  const checklistByCategory = new Map<
+    string,
+    {
+      prompt: string;
+      status: string;
+      notes: string | null;
+      photoPaths: ReportImage[];
+      issues: { description: string | null; onSiteMap: boolean; photoPaths: ReportImage[] }[];
+      carried?: "STILL_PRESENT" | "RESOLVED";
+    }[]
+  >();
   for (const r of inspection.checklistResponses) {
     const category = r.templateItem.section.category;
     const items = checklistByCategory.get(category) ?? [];
@@ -73,7 +89,11 @@ export async function buildReportData(inspectionId: string): Promise<ReportData>
         resolvedList.push(r.templateItem.prompt);
       }
     }
-    items.push({ prompt: r.templateItem.prompt, status: r.status, notes: r.notes, photoPaths, ...(carriedState ? { carried: carriedState } : {}) });
+    // The issues written up on this item (each with its own description and pictures).
+    const issues = inspection.findings
+      .filter((f) => f.checklistResponseId === r.id)
+      .map((f) => ({ description: f.description, onSiteMap: f.floorPlanX != null && f.floorPlanY != null, photoPaths: findingPhotos.get(f.id) ?? [] }));
+    items.push({ prompt: r.templateItem.prompt, status: r.status, notes: r.notes, photoPaths, issues, ...(carriedState ? { carried: carriedState } : {}) });
     checklistByCategory.set(category, items);
   }
   const checklistSections = CHECKLIST_CATEGORY_DISPLAY_ORDER.filter((c) => checklistByCategory.has(c)).map((category) => ({
@@ -182,7 +202,7 @@ export async function buildReportData(inspectionId: string): Promise<ReportData>
         locationDetail: f.locationDetail,
         severity: f.severity,
         description: f.description,
-        photoPaths: (await Promise.all(f.photos.map((p) => loadReportImage(p.fileUrl)))).filter((img): img is ReportImage => img !== null),
+        photoPaths: findingPhotos.get(f.id) ?? [],
         recommendation: rec ? toReportRecommendation(rec) : null,
         ...(isCarriedFinding(f) ? { carried: true } : {}),
       };
@@ -210,17 +230,33 @@ export async function buildReportData(inspectionId: string): Promise<ReportData>
   };
   report.propertyPhotos.forEach((img) => tag(img, "Property photo"));
   report.checklistSections.forEach((section) =>
-    section.items.forEach((item) => item.photoPaths.forEach((img) => tag(img, `${CHECKLIST_CATEGORY_LABEL[section.category] ?? section.category}: ${item.prompt}`)))
+    section.items.forEach((item) => {
+      const where = `${CHECKLIST_CATEGORY_LABEL[section.category] ?? section.category}: ${item.prompt}`;
+      item.photoPaths.forEach((img) => tag(img, where));
+      (item.issues ?? []).forEach((issue, n) => issue.photoPaths.forEach((img) => tag(img, `${where} (issue ${n + 1})`)));
+    })
   );
   report.skippedSections.forEach((s) => (s.photoPaths ?? []).forEach((img) => tag(img, `${CHECKLIST_CATEGORY_LABEL[s.category] ?? s.category}: not accessible`)));
-  report.findings.forEach((f) => f.photoPaths.forEach((img) => tag(img, `Finding: ${f.areaLocation}${f.locationDetail ? ` — ${f.locationDetail}` : ""}`)));
+  // Pictures already placed under their checklist item keep that gallery entry.
+  report.findings.forEach((f) => f.photoPaths.forEach((img) => (img.id ? undefined : tag(img, `Finding: ${f.areaLocation}${f.locationDetail ? ` — ${f.locationDetail}` : ""}`))));
   return report;
 }
 
 // Builds the PDF for a completed, signed inspection, stores it as the next
 // version and records it. Used by the Generate / Regenerate button and by the
 // automatic email to the customer.
-export async function generateReportFor(inspectionId: string, generatedByUserId: string) {
+// The PDF engine cannot build two documents at the same moment (it fails with a
+// "Expected null or instance of Config" error). Completing an inspection starts one
+// in the background for the customer email, so someone pressing "Generate report"
+// right then used to hit that. Builds now take their turn.
+let reportQueue: Promise<unknown> = Promise.resolve();
+export function generateReportFor(inspectionId: string, generatedByUserId: string) {
+  const run = reportQueue.then(() => generateReportNow(inspectionId, generatedByUserId));
+  reportQueue = run.catch(() => undefined);
+  return run;
+}
+
+async function generateReportNow(inspectionId: string, generatedByUserId: string) {
   const inspection = await prisma.inspection.findFirst({
     where: { id: inspectionId, deletedAt: null },
     include: { signatures: true, report: true },

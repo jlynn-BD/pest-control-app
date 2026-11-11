@@ -220,6 +220,9 @@ export interface ReportChecklistItem {
   notes: string | null;
   // Pictures taken on this checklist item.
   photoPaths: ReportImage[];
+  // Issues written up on this item (the inspector's description, where it is on
+  // the site map, and its pictures).
+  issues?: { description: string | null; onSiteMap: boolean; photoPaths: ReportImage[] }[];
   // Follow-up inspection: this item had an issue last time - is it still there?
   carried?: "STILL_PRESENT" | "RESOLVED";
 }
@@ -434,6 +437,15 @@ function ChecklistItemRow({ item }: { item: ReportChecklistItem }) {
       ) : null}
       {item.notes ? <Text style={styles.checklistNotes}>{item.notes}</Text> : null}
       {item.photoPaths.length > 0 ? <PhotoRow photos={item.photoPaths} /> : null}
+      {(item.issues ?? []).map((issue, n) => (
+        <View key={n}>
+          <Text style={styles.checklistNotes}>
+            Issue {n + 1}: {issue.description?.trim() || "(no description)"}
+            {issue.onSiteMap ? "  (marked on the site map)" : ""}
+          </Text>
+          {issue.photoPaths.length > 0 ? <PhotoRow photos={issue.photoPaths} /> : null}
+        </View>
+      ))}
     </View>
   );
 }
@@ -665,7 +677,7 @@ export function InspectionReportDocument({ data }: { data: ReportData }) {
             {/* The heading travels with the first item (which can now carry photos), so it is never left alone at the foot of a page. */}
             <View wrap={false}>
               <Text style={styles.sectionTitle}>{CHECKLIST_CATEGORY_LABEL[section.category] ?? section.category}</Text>
-              {si === 0 && data.checklistSections.some((sec) => sec.items.some((i) => i.photoPaths.length > 0)) ? (
+              {si === 0 && data.checklistSections.some((sec) => sec.items.some((i) => i.photoPaths.length > 0 || (i.issues ?? []).some((x) => x.photoPaths.length > 0))) ? (
                 <Text style={[styles.cardMeta, { marginBottom: 4 }]}>{TAP_HINT}</Text>
               ) : null}
               {section.items.slice(0, 1).map((item, ii) => (
