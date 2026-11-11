@@ -251,6 +251,17 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   const visibleArrows = isPhotoMode ? allArrows : allArrows.filter((a) => findings.find((f) => f.id === a.id)?.siteMapLevel === selectedLevelId);
 
   const wallCount = selectedLevel?.lines.length ?? 0;
+  // The next step, in plain words, for someone who has not drawn on this map before.
+  const drawCoach =
+    isPhotoMode || editorOpen
+      ? null
+      : levels.length === 0
+        ? "Start by adding a floor: tap + Add level and choose Exterior (the outside of the building), or the floor you are drawing."
+        : wallCount === 0
+          ? "Draw the first wall: press on the map where it starts, drag to where it ends, then let go. Its length shows beside it. Do the same for each wall."
+          : wallCount < 4
+            ? "Keep going - one drag for each wall. Tap a wall to see its length or change it. Corners snap together."
+            : null;
   const annotationCount = selectedLevel?.annotations.length ?? 0;
 
   // Every checklist step is open (they can be done in any order), so every
@@ -367,6 +378,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     setAddingLevel(false);
     setNewLevelName("");
     setSelectedLevelId(newLevel.id);
+    // A floor with nothing on it yet: the next thing to do is draw a wall, so start there.
+    setMode("wall");
   }
 
   // Shared by every action that adds/edits/deletes a wall, label or shape:
@@ -841,7 +854,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   function handleSelectLevel(levelId: string) {
     if (editorOpen) return; // avoid silently dropping an in-progress finding edit
     setSelectedLevelId(levelId);
-    setMode("view");
+    // Same for an existing floor that is still empty.
+    setMode(!isPhotoMode && (levels.find((l) => l.id === levelId)?.lines.length ?? 1) === 0 ? "wall" : "view");
     setEditingLabel(null);
     setSelectedWallId(null);
     setSelectedAnnotationId(null);
@@ -861,10 +875,18 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       {measureFirst ? (
         <Card style={styles.checklistBannerCard}>
           <Text style={styles.checklistBannerLabel}>Step 1 · Measure and map the property</Text>
-          <Text style={styles.hint}>
-            Draw the walls of each level (or add a photo of the plan) and set the scale with Measure and Grid. When it matches the property, tap Continue at the
-            bottom of this page - the checklist, findings and photos open then.
-          </Text>
+          {drawCoach ? <Text style={styles.checklistBannerPrompt}>{drawCoach}</Text> : null}
+          {drawCoach ? null : (
+            <Text style={styles.hint}>
+              Draw the walls of each level (or add a photo of the plan). When it matches the property, tap Continue at the bottom of this page - the checklist,
+              findings and photos open then.
+            </Text>
+          )}
+        </Card>
+      ) : drawCoach && wallCount === 0 ? (
+        <Card style={styles.checklistBannerCard}>
+          <Text style={styles.checklistBannerLabel}>How to draw</Text>
+          <Text style={styles.checklistBannerPrompt}>{drawCoach}</Text>
         </Card>
       ) : null}
       {checklistSummary && !draftArrow ? (
@@ -1189,6 +1211,10 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       {selectedWallId ? (
         <Card style={styles.labelPromptCard}>
           <Text style={styles.editorTitle}>Wall segment</Text>
+          {(() => {
+            const w = selectedLevel?.lines.find((l) => l.id === selectedWallId);
+            return w ? <Text style={styles.measureReadout}>{formatFeet(gridFeet(grid, w.x2 - w.x1, w.y2 - w.y1))} long</Text> : null;
+          })()}
           <Text style={styles.editHint}>Drag the wall to move it, or drag a dot to change its length or angle. Walls joined to a dot move with it.</Text>
           <View style={styles.nudgeRow}>
             <Text style={styles.nudgeLabel}>Nudge</Text>

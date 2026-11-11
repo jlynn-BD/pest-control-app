@@ -23,7 +23,7 @@ export function siteMapHintText(mode: SiteMapMode, annotationType?: SiteMapAnnot
     case "arrow":
       return "Drag on the image to draw an arrow to the issue";
     case "wall":
-      return "Drag to draw a wall segment";
+      return "Press where the wall starts, drag to where it ends, then let go";
     case "label":
       return "Tap to place a label (tap inside a shape to name it)";
     case "measure":
@@ -866,7 +866,7 @@ function SiteMapCanvasInner({
 
   // A small length tag sitting beside a line, nudged to the side of it and
   // kept inside the map.
-  const lengthTag = (key: string, x1: number, y1: number, x2: number, y2: number, color: string, text = lengthText(x1, y1, x2, y2)) => {
+  const lengthTag = (key: string, x1: number, y1: number, x2: number, y2: number, color: string, text = lengthText(x1, y1, x2, y2), emphasis = false) => {
     const W = size.width;
     const H = size.height;
     const px1 = x1 * W;
@@ -875,7 +875,10 @@ function SiteMapCanvasInner({
     const py2 = y2 * H;
     const len = Math.hypot(px2 - px1, py2 - py1);
     if (len < 24) return null; // too short to label legibly
-    const w = text.length * 6.6 + 12;
+    // Big enough to read on a phone; the selected wall's is larger still.
+    const fs = emphasis ? 15 : 13;
+    const w = text.length * fs * 0.62 + 16;
+    const h = fs + 10;
     // Perpendicular, always towards the top of the screen.
     let nx = -(py2 - py1) / len;
     let ny = (px2 - px1) / len;
@@ -884,13 +887,13 @@ function SiteMapCanvasInner({
       ny = -ny;
     }
     // Far enough to the side that the tag clears the line, whichever way it runs.
-    const d = 6 + (w / 2) * Math.abs(nx) + 9 * Math.abs(ny);
+    const d = 6 + (w / 2) * Math.abs(nx) + (h / 2) * Math.abs(ny);
     const cx = Math.min(Math.max((px1 + px2) / 2 + nx * d, w / 2 + 2), W - w / 2 - 2);
-    const cy = Math.min(Math.max((py1 + py2) / 2 + ny * d, 11), H - 11);
+    const cy = Math.min(Math.max((py1 + py2) / 2 + ny * d, h / 2 + 2), H - h / 2 - 2);
     return (
       <React.Fragment key={key}>
-        <Rect x={cx - w / 2} y={cy - 9} width={w} height={18} rx={9} fill="#ffffff" fillOpacity={0.93} stroke={color} strokeWidth={1} />
-        <SvgText x={cx} y={cy + 4} fontSize={11} fontWeight="700" fontFamily={Platform.OS === "web" ? "-apple-system, system-ui, Helvetica, Arial, sans-serif" : undefined} fill={color} textAnchor="middle">
+        <Rect x={cx - w / 2} y={cy - h / 2} width={w} height={h} rx={h / 2} fill="#ffffff" fillOpacity={0.95} stroke={color} strokeWidth={emphasis ? 2 : 1} />
+        <SvgText x={cx} y={cy + fs * 0.36} fontSize={fs} fontWeight="700" fontFamily={Platform.OS === "web" ? "-apple-system, system-ui, Helvetica, Arial, sans-serif" : undefined} fill={color} textAnchor="middle">
           {text}
         </SvgText>
       </React.Fragment>
@@ -950,8 +953,12 @@ function SiteMapCanvasInner({
             />
           ))}
           {[...shownWalls, ...pendingLines]
-            .filter((l) => grid.showLengths || (draft?.kind === "wall" && (draft.id === l.id || draft.also?.some((o) => o.id === l.id))))
-            .map((l) => lengthTag(`wall-len-${l.id}`, l.x1, l.y1, l.x2, l.y2, colors.text))}
+            .filter((l) => grid.showLengths || l.id === selectedWallId || (draft?.kind === "wall" && (draft.id === l.id || draft.also?.some((o) => o.id === l.id))))
+            .map((l) =>
+              l.id === selectedWallId
+                ? lengthTag(`wall-len-${l.id}`, l.x1, l.y1, l.x2, l.y2, colors.danger, undefined, true)
+                : lengthTag(`wall-len-${l.id}`, l.x1, l.y1, l.x2, l.y2, colors.text)
+            )}
           {arrows.map((a) => {
             const start = { x: a.startX * size.width, y: a.startY * size.height };
             const end = { x: a.endX * size.width, y: a.endY * size.height };

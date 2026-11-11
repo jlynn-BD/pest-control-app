@@ -1,8 +1,9 @@
 import type { SiteMapGrid } from "../types";
 
+// Wall lengths are labelled by default (switch them off with "Wall lengths: On").
 // The grid every level starts with: 40 squares across (the same graph-paper
 // proportions the report prints), each standing for 2 feet.
-export const DEFAULT_SITE_MAP_GRID: SiteMapGrid = { cell: 1 / 40, ox: 0, oy: 0, feetPerCell: 2, showLengths: false };
+export const DEFAULT_SITE_MAP_GRID: SiteMapGrid = { cell: 1 / 40, ox: 0, oy: 0, feetPerCell: 2, showLengths: true };
 
 export const MIN_GRID_CELL = 1 / 120;
 export const MAX_GRID_CELL = 1 / 8;
@@ -17,7 +18,7 @@ export function resolveGrid(g: Partial<SiteMapGrid> | null | undefined): SiteMap
     return ((n % cell) + cell) % cell;
   };
   const feet = typeof g?.feetPerCell === "number" && g.feetPerCell > 0 && Number.isFinite(g.feetPerCell) ? g.feetPerCell : d.feetPerCell;
-  return { cell, ox: wrap(g?.ox), oy: wrap(g?.oy), feetPerCell: feet, showLengths: Boolean(g?.showLengths), updatedAt: g?.updatedAt };
+  return { cell, ox: wrap(g?.ox), oy: wrap(g?.oy), feetPerCell: feet, showLengths: g?.showLengths ?? true, updatedAt: g?.updatedAt };
 }
 
 // Real-world length, in feet, of a line whose ends differ by (dx, dy) - both
