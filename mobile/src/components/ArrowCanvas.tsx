@@ -18,12 +18,14 @@ export type SiteMapMode = "view" | "arrow" | "wall" | "label" | "annotate" | "me
 // function SiteMapScreen calls to render a normal line of text above the
 // canvas, entirely outside its bounds, so there is no overlay left to
 // intercept a touch at all.
-export function siteMapHintText(mode: SiteMapMode, annotationType?: SiteMapAnnotationType): string | null {
+export function siteMapHintText(mode: SiteMapMode, annotationType?: SiteMapAnnotationType, chaining = false): string | null {
   switch (mode) {
     case "arrow":
       return "Drag on the image to draw an arrow to the issue";
     case "wall":
-      return "Press where the wall starts, drag to where it ends, then let go";
+      return chaining
+        ? "Tap the next corner. Tap the last corner again when this run of walls is done"
+        : "Tap where a wall starts, then tap each corner after it - or press and drag one wall";
     case "label":
       return "Tap to place a label (tap inside a shape to name it)";
     case "measure":
@@ -57,7 +59,10 @@ function useSiteMapGesture(
   // Pulls a point (pixels) onto the grid / a nearby wall end while drawing
   // walls and shapes; `from` is the already-placed start of the line.
   snapPoint?: (p: Point, from?: Point) => Point,
-  minLineLength = 12
+  minLineLength = 12,
+  // Tap-to-place walls: the corner the next wall starts from (pixels), and how to change it.
+  chain: Point | null = null,
+  onChain?: (p: Point | null) => void
 ) {
   const snapRef = useRef(snapPoint);
   snapRef.current = snapPoint;
@@ -71,6 +76,21 @@ function useSiteMapGesture(
   const onTapRef = useRef(onTap);
   onTapRef.current = onTap;
   const startRef = useRef<Point | null>(null);
+  // Tap-to-place walls: the corner the next wall will start from. A tap puts the
+  // first corner down, each further tap places a wall from the last corner to the
+  // tap and carries on from there; tapping the last corner again ends the run. A
+  // press-and-drag still draws one wall on its own, as it always did.
+  // The corner lives with the owner of the map view (so zooming or moving the map
+  // keeps it on the right spot); this mirrors it for the gesture handlers.
+  const chainRef = useRef<Point | null>(chain);
+  chainRef.current = chain;
+  const onChainRef = useRef(onChain);
+  onChainRef.current = onChain;
+  const pressRawRef = useRef<Point | null>(null);
+  const setChain = (p: Point | null) => {
+    chainRef.current = p;
+    onChainRef.current?.(p);
+  };
   const [live, setLive] = useState<{ start: Point; end: Point } | null>(null);
   // Exactly where the pointer is right now (finger or mouse), so the canvas
   // can draw a crosshair there - a fingertip hides the spot it is pointing at.
@@ -82,13 +102,28 @@ function useSiteMapGesture(
         onStartShouldSetPanResponder: () => modeRef.current !== "view",
         onMoveShouldSetPanResponder: () => modeRef.current !== "view",
         onPanResponderGrant: (evt) => {
-          const p = snap({ x: evt.nativeEvent.locationX, y: evt.nativeEvent.locationY });
+          const raw = { x: evt.nativeEvent.locationX, y: evt.nativeEvent.locationY };
+          const p = snap(raw);
           startRef.current = p;
-          setPointer(p);
-          if (!completesOnTapRef.current) setLive({ start: p, end: p });
+          pressRawRef.current = raw;
+          const chain = modeRef.current === "wall" ? chainRef.current : null;
+          // While a run is going, holding the finger down aims the next wall from the last corner.
+          const aim = chain ? snap(raw, chain) : p;
+          setPointer(aim);
+          if (!completesOnTapRef.current) setLive(chain ? { start: chain, end: aim } : { start: p, end: p });
         },
         onPanResponderMove: (evt) => {
           const raw = { x: evt.nativeEvent.locationX, y: evt.nativeEvent.locationY };
+          const chain = modeRef.current === "wall" ? chainRef.current : null;
+          const press = pressRawRef.current;
+          // Moved far enough that it is a drag (a new wall of its own), not a tap that continues the run.
+          const dragging = !chain || !press || Math.hypot(raw.x - press.x, raw.y - press.y) >= minLineLength;
+          if (!dragging && chain) {
+            const aim = snap(raw, chain);
+            setPointer(aim);
+            setLive({ start: chain, end: aim });
+            return;
+          }
           const here = startRef.current && !completesOnTapRef.current ? snap(raw, startRef.current) : raw;
           setPointer(here);
           if (!startRef.current || completesOnTapRef.current) return;
@@ -101,6 +136,29 @@ function useSiteMapGesture(
           setPointer(null);
           if (!start) return;
           const rawEnd = { x: evt.nativeEvent.locationX, y: evt.nativeEvent.locationY };
+          if (modeRef.current === "wall") {
+            const press = pressRawRef.current ?? rawEnd;
+            const chain = chainRef.current;
+            if (Math.hypot(rawEnd.x - press.x, rawEnd.y - press.y) < minLineLength) {
+              // A tap.
+              if (!chain) {
+                setChain(snap(press));
+                return;
+              }
+              const corner = snap(press, chain);
+              if (Math.hypot(corner.x - chain.x, corner.y - chain.y) < 20) {
+                setChain(null); // tapped the last corner again: this run is finished
+                return;
+              }
+              onLineCompleteRef.current(chain, corner);
+              setChain(corner);
+              return;
+            }
+            // A drag: one wall from where the finger went down to where it came up.
+            setChain(null);
+            onLineCompleteRef.current(start, snap(rawEnd, start));
+            return;
+          }
           const end = completesOnTapRef.current ? rawEnd : snap(rawEnd, start);
           const dist = Math.hypot(end.x - start.x, end.y - start.y);
           if (completesOnTapRef.current) {
@@ -120,6 +178,7 @@ function useSiteMapGesture(
         onPanResponderTerminationRequest: () => false,
         onPanResponderTerminate: () => {
           startRef.current = null;
+          pressRawRef.current = null;
           setLive(null);
           setPointer(null);
         },
@@ -135,7 +194,8 @@ function useSiteMapGesture(
           onMouseMove: (e: { clientX: number; clientY: number; currentTarget: { getBoundingClientRect: () => DOMRect } }) => {
             if (modeRef.current === "view" || modeRef.current === "pan" || startRef.current) return;
             const r = e.currentTarget.getBoundingClientRect();
-            setPointer(snap({ x: e.clientX - r.left, y: e.clientY - r.top }));
+            const raw = { x: e.clientX - r.left, y: e.clientY - r.top };
+            setPointer(snap(raw, modeRef.current === "wall" ? chainRef.current ?? undefined : undefined));
           },
           onMouseLeave: () => {
             if (!startRef.current) setPointer(null);
@@ -476,6 +536,8 @@ function SiteMapCanvasInner({
   selectedLabelId = null,
   selectedWallId = null,
   selectedAnnotationId = null,
+  chainStart = null,
+  onChainChange,
 }: {
   imageUri: string | null;
   arrows: SiteMapArrow[];
@@ -488,6 +550,10 @@ function SiteMapCanvasInner({
   annotationColor?: string;
   onArrowDrawn?: (start: Point, end: Point) => void;
   onWallDrawn?: (start: Point, end: Point) => void;
+  // Tap-to-place walls: the corner the next wall will start from (0-1 within the
+  // current view), and a request to change it (null = the run is over).
+  chainStart?: Point | null;
+  onChainChange?: (p: Point | null) => void;
   onLabelTap?: (point: Point) => void;
   onAnnotationDrawn?: (type: SiteMapAnnotationType, color: string, start: Point, end: Point) => void;
   onArrowPress?: (arrowId: string) => void;
@@ -661,8 +727,12 @@ function SiteMapCanvasInner({
       if (mode === "label") onLabelTap?.(norm);
       else if (mode === "annotate" && annotationType === "x" && annotationColor) onAnnotationDrawn?.("x", annotationColor, norm, norm);
     },
-    snapPixels
+    snapPixels,
+    12,
+    chainStart && size.width > 0 ? { x: chainStart.x * size.width, y: chainStart.y * size.height } : null,
+    (p) => onChainChange?.(p && size.width > 0 ? { x: p.x / size.width, y: p.y / size.height } : null)
   );
+  const chainPx = mode === "wall" && chainStart && size.width > 0 ? { x: chainStart.x * size.width, y: chainStart.y * size.height } : null;
 
   // While the grid is being dragged it follows the finger; the new position
   // is only saved on release.
@@ -1080,6 +1150,20 @@ function SiteMapCanvasInner({
               <Circle cx={pointer.x} cy={pointer.y} r={2.5} fill={AIM_COLOR} />
             </>
           ) : null}
+          {/* Tap-to-place walls: the corner the next wall starts from, and (with a
+              mouse) the wall that tapping at the cursor would place. */}
+          {chainPx ? (
+            <>
+              {!live && pointer ? (
+                <>
+                  <SvgLine x1={chainPx.x} y1={chainPx.y} x2={pointer.x} y2={pointer.y} stroke={colors.primary} strokeWidth={2.5} strokeDasharray="6,4" />
+                  {lengthTag("chain-len", chainPx.x / size.width, chainPx.y / size.height, pointer.x / size.width, pointer.y / size.height, colors.primary)}
+                </>
+              ) : null}
+              <Circle cx={chainPx.x} cy={chainPx.y} r={12} stroke={AIM_COLOR} strokeWidth={2.5} fill="#ffffff" fillOpacity={0.95} />
+              <Circle cx={chainPx.x} cy={chainPx.y} r={4} fill={AIM_COLOR} />
+            </>
+          ) : null}
           {/* Where the line/shape/arrow started. */}
           {mode !== "view" && mode !== "grid" && mode !== "pan" && live && (Math.abs(live.end.x - live.start.x) > 1 || Math.abs(live.end.y - live.start.y) > 1) ? (
             <>
@@ -1290,10 +1374,30 @@ function SiteMapCanvasInner({
 // back to sheet coordinates on the way out. A sketch that never leaves the
 // original square with the default view passes through unchanged.
 export function SiteMapCanvas(
-  props: React.ComponentProps<typeof SiteMapCanvasInner> & { view?: SiteMapView; onViewChange?: (view: SiteMapView) => void; showScrollbars?: boolean }
+  props: React.ComponentProps<typeof SiteMapCanvasInner> & {
+    view?: SiteMapView;
+    onViewChange?: (view: SiteMapView) => void;
+    showScrollbars?: boolean;
+    // Changes when a half-finished run of tapped walls should be dropped (e.g. Undo).
+    resetChainSignal?: number;
+    onChainActiveChange?: (active: boolean) => void;
+  }
 ) {
-  const { view: viewProp, onViewChange, showScrollbars = false, ...rest } = props;
+  const { view: viewProp, onViewChange, showScrollbars = false, resetChainSignal = 0, onChainActiveChange, ...rest } = props;
   const [panLive, setPanLive] = useState<{ dx: number; dy: number } | null>(null);
+  // Tap-to-place walls: the corner the next wall starts from, in map coordinates
+  // so it stays put when the map is zoomed or moved.
+  const [chainWorld, setChainWorld] = useState<Point | null>(null);
+  useEffect(() => {
+    if (rest.mode !== "wall") setChainWorld(null);
+  }, [rest.mode]);
+  useEffect(() => {
+    setChainWorld(null);
+  }, [resetChainSignal]);
+  useEffect(() => {
+    onChainActiveChange?.(chainWorld !== null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chainWorld !== null]);
   const base = viewProp ?? DEFAULT_SITE_MAP_VIEW;
   const k = base.zoom;
   // While a drag is moving the map, the view follows the finger.
@@ -1344,6 +1448,8 @@ export function SiteMapCanvas(
   const canvas = (
     <SiteMapCanvasInner
       {...rest}
+      chainStart={chainWorld ? { x: tx(chainWorld.x), y: ty(chainWorld.y) } : null}
+      onChainChange={(p) => setChainWorld(p ? toWorld(p) : null)}
       arrows={(rest.arrows ?? [])
         .map((a) => ({ ...a, startX: tx(a.startX), startY: ty(a.startY), endX: tx(a.endX), endY: ty(a.endY) }))
         .filter((a) => near(a.startX, a.startY) || near(a.endX, a.endY))}

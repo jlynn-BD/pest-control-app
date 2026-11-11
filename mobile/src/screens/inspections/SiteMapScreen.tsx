@@ -125,6 +125,10 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // through. `undoCount` is just so the button re-renders when it changes.
   const undoStack = useRef<{ levelId: string; level: SiteMapLevel }[]>([]);
   const [undoCount, setUndoCount] = useState(0);
+  // Tap-to-place walls: whether a run of tapped corners is going (changes the hint),
+  // and a counter that drops a half-finished run (Undo).
+  const [wallRun, setWallRun] = useState(false);
+  const [chainReset, setChainReset] = useState(0);
   // Grid tools: the "each square is N feet" box, and the real length typed in
   // to turn a measured line into the map's scale.
   const [feetText, setFeetText] = useState("");
@@ -258,9 +262,9 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       : levels.length === 0
         ? "Start by adding a floor: tap + Add level and choose Exterior (the outside of the building), or the floor you are drawing."
         : wallCount === 0
-          ? "Draw the first wall: press on the map where it starts, drag to where it ends, then let go. Its length shows beside it. Do the same for each wall."
+          ? "Draw the first wall: tap the map where it starts, then tap where it ends (or press and drag). Its length shows beside it. Tap the next corner to keep going."
           : wallCount < 4
-            ? "Keep going - one drag for each wall. Tap a wall to see its length or change it. Corners snap together."
+            ? "Keep tapping corners - each tap adds a wall. Tap the last corner again to stop. Tap a wall to see its length or change it."
             : null;
   const annotationCount = selectedLevel?.annotations.length ?? 0;
 
@@ -421,6 +425,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     if (i < 0) return;
     const [{ level }] = stack.splice(i, 1);
     setUndoCount(stack.length);
+    setChainReset((n) => n + 1);
     const raw = currentRawSketch();
     const rawLevel = raw.levels.find((l) => l.id === selectedLevel.id);
     if (!rawLevel) return;
@@ -961,8 +966,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           spot on screen - it used to appear only while a drawing tool was
           active, which shoved the whole map down and back up each time. */}
       {canDraw && !editorOpen ? (
-        <Text style={[styles.drawHint, !siteMapHintText(mode, annotationType) && styles.drawHintIdle]}>
-          {siteMapHintText(mode, annotationType) ?? (wideEnoughToDrag && !isPhotoMode ? "Tap a shape or wall to edit it. Drag the grid to move around" : "Tap a shape or wall to edit it")}
+        <Text style={[styles.drawHint, !siteMapHintText(mode, annotationType, wallRun) && styles.drawHintIdle]}>
+          {siteMapHintText(mode, annotationType, wallRun) ?? (wideEnoughToDrag && !isPhotoMode ? "Tap a shape or wall to edit it. Drag the grid to move around" : "Tap a shape or wall to edit it")}
         </Text>
       ) : null}
       {canDraw && !editorOpen ? (
@@ -1008,6 +1013,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       <View style={wide ? styles.wideMap : null}>
       <SiteMapCanvas
         imageUri={imageUri}
+        resetChainSignal={chainReset}
+        onChainActiveChange={setWallRun}
         arrows={visibleArrows}
         savedLines={selectedLevel?.lines ?? []}
         labels={selectedLevel?.labels ?? []}
