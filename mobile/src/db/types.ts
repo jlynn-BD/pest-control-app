@@ -29,6 +29,8 @@ export interface LocalProperty {
   hasBasement: number | null;
   hasCrawlspace: number | null;
   hasAttic: number | null;
+  // The verified address's Google place id (null for addresses typed in by hand).
+  googlePlaceId: string | null;
 }
 
 export interface LocalTemplate {

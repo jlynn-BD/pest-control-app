@@ -185,6 +185,7 @@ model Property {
   country        String    @default("US")
   lat            Float?
   lng            Float?
+  googlePlaceId  String? // Google Places id of the verified address (see modules/places) - the same place always has the same id, however it was typed
   propertyType   String // RESIDENTIAL_SINGLE | RESIDENTIAL_MULTI | COMMERCIAL | INDUSTRIAL | OTHER
   squareFootage  Int?
   yearBuilt      Int?
@@ -214,6 +215,7 @@ model Property {
   estimates         Estimate[]
 
   @@index([customerId])
+  @@index([googlePlaceId])
 }
 
 model InspectionTemplate {

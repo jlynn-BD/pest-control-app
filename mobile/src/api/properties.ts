@@ -22,6 +22,9 @@ export interface CreatePropertyInput {
   state: string;
   postalCode: string;
   country?: string;
+  lat?: number | null;
+  lng?: number | null;
+  googlePlaceId?: string | null;
   propertyType: "RESIDENTIAL_SINGLE" | "RESIDENTIAL_MULTI" | "COMMERCIAL" | "INDUSTRIAL" | "OTHER";
   accessNotes?: string;
   notes?: string;

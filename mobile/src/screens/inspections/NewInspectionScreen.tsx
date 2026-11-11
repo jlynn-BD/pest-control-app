@@ -9,6 +9,8 @@ import { listInspections } from "../../api/inspections";
 import { createProperty } from "../../api/properties";
 import { ensureLocalInspection } from "../../lib/resumeInspection";
 import { ADDRESS_PLACEHOLDER, addressHelp, parseSingleLineAddress } from "../../lib/address";
+import { getPlaceDetails, PlaceSuggestion, ResolvedPlace, searchPlaces } from "../../api/places";
+import { generateId } from "../../lib/uuid";
 import { getCachedCustomer, getCachedProperties, getCachedTemplates, primeCache } from "../../db/cache";
 import type { LocalProperty, LocalTemplate } from "../../db/types";
 import { createLocalInspection, listLocalInspections } from "../../db/inspectionStore";
@@ -64,6 +66,13 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
   const [newEmail, setNewEmail] = useState("");
   const [saving, setSaving] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  // Address lookup (Google, through our server): suggestions while typing, and the
+  // verified address once one is picked. The session ties the typing to the pick.
+  const placeSession = useRef(generateId());
+  const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [pickingPlaceId, setPickingPlaceId] = useState<string | null>(null);
+  const [resolved, setResolved] = useState<ResolvedPlace | null>(null);
+  const [lookupNote, setLookupNote] = useState<string | null>(null);
   // A failed Save must be visible: the message sits just above the buttons, which
   // can be off-screen on a phone, so bring it into view.
   const scrollRef = useRef<ScrollView>(null);
@@ -136,6 +145,73 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
   const selectedProperty = selectedPropertyId ? properties.find((p) => p.id === selectedPropertyId) ?? null : null;
   const existingInspectionId = selectedPropertyId ? inProgressByProperty.get(selectedPropertyId) ?? null : null;
 
+  // The picked address, as the one line shown in the field. If the person edits
+  // the text afterwards it is no longer the verified address.
+  const resolvedLine = resolved ? `${resolved.addressLine1}, ${resolved.city}, ${resolved.state} ${resolved.postalCode}` : null;
+  const usableResolved = resolved && resolvedLine === search.trim() ? resolved : null;
+
+  // Suggestions while typing: a house number and a few letters, then a short pause.
+  // Nothing is asked when a property is already chosen or the form is open.
+  useEffect(() => {
+    const canLookUp = !adding && !selectedPropertyId && query.length >= 5 && /\d/.test(query);
+    if (!canLookUp) {
+      setSuggestions([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      searchPlaces(query, placeSession.current)
+        .then((r) => {
+          if (!cancelled) setSuggestions(r.suggestions);
+        })
+        .catch(() => {
+          if (!cancelled) setSuggestions([]); // offline or not set up: typing the address in still works
+        });
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query, adding, selectedPropertyId]);
+
+  // Same place as a record we already have: by Google's place id, or the same
+  // street and ZIP however it was abbreviated.
+  function findExisting(parts: { addressLine1: string; postalCode: string }, placeId?: string | null): LocalProperty | undefined {
+    return properties.find(
+      (p) =>
+        (placeId && p.googlePlaceId === placeId) ||
+        (words(p.addressLine1).join(" ") === words(parts.addressLine1).join(" ") && p.postalCode.trim() === parts.postalCode.trim())
+    );
+  }
+
+  async function pickSuggestion(s: PlaceSuggestion) {
+    if (pickingPlaceId) return;
+    setPickingPlaceId(s.placeId);
+    setLookupNote(null);
+    try {
+      const place = await getPlaceDetails(s.placeId, placeSession.current);
+      placeSession.current = generateId(); // that lookup is finished
+      const existing = findExisting(place, place.placeId);
+      if (existing) {
+        // Already on file - use that record instead of making a second one.
+        setSuggestions([]);
+        setSelectedPropertyId(existing.id);
+        setSearch(existing.addressLine1);
+        setLookupNote("We already have this property on file - selected it.");
+        return;
+      }
+      setResolved(place);
+      setSearch(`${place.addressLine1}, ${place.city}, ${place.state} ${place.postalCode}`);
+      setSuggestions([]);
+      setAdding(true);
+      setAddError(null);
+    } catch (err) {
+      setLookupNote(err instanceof ApiError ? err.message : "Couldn't look that address up - type it in yourself.");
+    } finally {
+      setPickingPlaceId(null);
+    }
+  }
+
   async function handleStart() {
     if (!selectedPropertyId || !user || starting) return;
     setStarting(true);
@@ -185,7 +261,9 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
   // can start. Needs a connection (the records live on the server).
   async function handleCreateRecord() {
     if (saving) return;
-    const parsed = parseSingleLineAddress(search);
+    const parsed = usableResolved
+      ? { addressLine1: usableResolved.addressLine1, city: usableResolved.city, state: usableResolved.state, postalCode: usableResolved.postalCode }
+      : parseSingleLineAddress(search);
     if (!newName.trim()) return setAddError("Enter the customer's name.");
     if (!parsed) return setAddError(addressHelp(search));
     // The phone number and email are required: the signed report is emailed to the customer automatically.
@@ -193,9 +271,7 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
     if (!newEmail.trim()) return setAddError("Enter the customer's email - the signed report is sent there.");
     if (!EMAIL.test(newEmail.trim())) return setAddError("That email address doesn't look right.");
     // Same street and ZIP as a record we already have: use that one, don't duplicate it.
-    const sameAddress = properties.find(
-      (p) => words(p.addressLine1).join(" ") === words(parsed.addressLine1).join(" ") && p.postalCode.trim() === parsed.postalCode.trim()
-    );
+    const sameAddress = findExisting(parsed, usableResolved?.placeId);
     if (sameAddress) {
       setAdding(false);
       setSelectedPropertyId(sameAddress.id);
@@ -215,7 +291,12 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
         state: parsed.state,
         postalCode: parsed.postalCode,
       });
-      const property = await createProperty({ customerId: customer.id, ...parsed, propertyType: "RESIDENTIAL_SINGLE" });
+      const property = await createProperty({
+        customerId: customer.id,
+        ...parsed,
+        ...(usableResolved ? { googlePlaceId: usableResolved.placeId, lat: usableResolved.lat, lng: usableResolved.lng, country: usableResolved.country } : {}),
+        propertyType: "RESIDENTIAL_SINGLE",
+      });
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       await primeCache().catch(() => {});
       setProperties(getCachedProperties());
@@ -238,6 +319,7 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
   // exactly what is still missing - so Save never fails without warning.
   const addressPreview = (() => {
     if (!adding || !query) return null;
+    if (usableResolved) return { ok: true, text: "✓ Verified address - saved exactly like this, so it is found again next time." };
     const parsed = parseSingleLineAddress(search);
     if (parsed) return { ok: true, text: `Will be saved as: ${parsed.addressLine1} · ${parsed.city}, ${parsed.state} ${parsed.postalCode}` };
     return { ok: false, text: addressHelp(search) };
@@ -308,6 +390,22 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
         <Pressable onPress={openAddForm} hitSlop={8}>
           <Text style={styles.addLink}>Not listed? Add a new customer & property</Text>
         </Pressable>
+      ) : null}
+
+      {lookupNote ? <Text style={styles.hint}>{lookupNote}</Text> : null}
+
+      {suggestions.length > 0 && !adding && !selectedProperty ? (
+        <>
+          <Text style={styles.resultsLabel}>{matches.length > 0 ? "Not one of those? Add a new address" : "Not on file yet - tap the address to add it"}</Text>
+          {suggestions.map((s) => (
+            <Pressable key={s.placeId} onPress={() => pickSuggestion(s)} accessibilityRole="button" disabled={Boolean(pickingPlaceId)}>
+              <Card style={styles.card}>
+                <Text style={styles.cardTitle}>{s.primary}</Text>
+                <Text style={styles.meta}>{pickingPlaceId === s.placeId ? "Checking the address…" : s.secondary}</Text>
+              </Card>
+            </Pressable>
+          ))}
+        </>
       ) : null}
 
       {adding ? (

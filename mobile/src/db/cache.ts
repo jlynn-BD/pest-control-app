@@ -34,6 +34,7 @@ interface RemoteProperty {
   hasBasement: boolean | null;
   hasCrawlspace: boolean | null;
   hasAttic: boolean | null;
+  googlePlaceId?: string | null;
 }
 interface RemoteTemplate {
   id: string;
@@ -115,7 +116,7 @@ export async function primeCache(): Promise<void> {
       );
       for (const p of c.properties) {
         db.runSync(
-          `INSERT OR REPLACE INTO local_properties (id, customerId, label, addressLine1, city, state, postalCode, propertyType, accessNotes, siteMapImageUrl, siteMapLocalUri, siteMapSketchJson, siteMapUpdatedAt, hasSecondFloor, hasThirdFloor, hasBasement, hasCrawlspace, hasAttic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT OR REPLACE INTO local_properties (id, customerId, label, addressLine1, city, state, postalCode, propertyType, accessNotes, siteMapImageUrl, siteMapLocalUri, siteMapSketchJson, siteMapUpdatedAt, hasSecondFloor, hasThirdFloor, hasBasement, hasCrawlspace, hasAttic, googlePlaceId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             p.id,
             p.customerId,
@@ -140,6 +141,7 @@ export async function primeCache(): Promise<void> {
             p.hasBasement == null ? null : p.hasBasement ? 1 : 0,
             p.hasCrawlspace == null ? null : p.hasCrawlspace ? 1 : 0,
             p.hasAttic == null ? null : p.hasAttic ? 1 : 0,
+            p.googlePlaceId ?? null,
           ]
         );
       }

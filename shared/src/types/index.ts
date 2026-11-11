@@ -76,6 +76,8 @@ export interface Property extends BaseEntity {
   country: string;
   lat?: number | null;
   lng?: number | null;
+  // Google Places id of the verified address; the same place always has the same one.
+  googlePlaceId?: string | null;
   propertyType: PropertyType;
   squareFootage?: number | null;
   yearBuilt?: number | null;

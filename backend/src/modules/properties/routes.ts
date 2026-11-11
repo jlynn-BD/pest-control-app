@@ -23,6 +23,7 @@ const propertySchema = z.object({
   country: z.string().optional(),
   lat: z.number().optional().nullable(),
   lng: z.number().optional().nullable(),
+  googlePlaceId: z.string().max(300).optional().nullable(),
   propertyType: z.enum(["RESIDENTIAL_SINGLE", "RESIDENTIAL_MULTI", "COMMERCIAL", "INDUSTRIAL", "OTHER"]),
   squareFootage: z.number().int().optional().nullable(),
   yearBuilt: z.number().int().optional().nullable(),

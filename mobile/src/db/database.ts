@@ -23,6 +23,7 @@ let db: LocalDb | null = null;
 // COLUMN is wrapped since "already exists" is the expected outcome on
 // every subsequent boot, not an error.
 const LOCAL_PROPERTIES_MIGRATION_COLUMNS = ["hasSecondFloor", "hasThirdFloor", "hasBasement", "hasCrawlspace", "hasAttic"];
+// Text column added later: the verified address's Google place id.
 function migrateLocalProperties(adapter: LocalDb): void {
   for (const column of LOCAL_PROPERTIES_MIGRATION_COLUMNS) {
     try {
@@ -30,6 +31,11 @@ function migrateLocalProperties(adapter: LocalDb): void {
     } catch {
       // Column already exists - expected on every boot after the first.
     }
+  }
+  try {
+    adapter.execSync(`ALTER TABLE local_properties ADD COLUMN googlePlaceId TEXT`);
+  } catch {
+    // Column already exists - expected on every boot after the first.
   }
 }
 
@@ -90,7 +96,8 @@ CREATE TABLE IF NOT EXISTS local_properties (
   id TEXT PRIMARY KEY, customerId TEXT, label TEXT, addressLine1 TEXT, city TEXT, state TEXT,
   postalCode TEXT, propertyType TEXT, accessNotes TEXT,
   siteMapImageUrl TEXT, siteMapLocalUri TEXT, siteMapSketchJson TEXT, siteMapUpdatedAt TEXT,
-  hasSecondFloor INTEGER, hasThirdFloor INTEGER, hasBasement INTEGER, hasCrawlspace INTEGER, hasAttic INTEGER
+  hasSecondFloor INTEGER, hasThirdFloor INTEGER, hasBasement INTEGER, hasCrawlspace INTEGER, hasAttic INTEGER,
+  googlePlaceId TEXT
 );
 CREATE TABLE IF NOT EXISTS local_templates (
   id TEXT PRIMARY KEY, name TEXT, description TEXT
