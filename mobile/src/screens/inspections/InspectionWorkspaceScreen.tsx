@@ -118,37 +118,21 @@ export default function InspectionWorkspaceScreen({ route, navigation }: Props) 
         />
       ) : null}
 
-      {measured ? (
-        <View style={styles.stepDoneRow}>
-          <View style={[styles.wizardStepCheckbox, styles.wizardStepCheckboxChecked]}>
-            <Text style={styles.wizardStepCheckboxMark}>✓</Text>
-          </View>
-          <Text style={styles.stepDoneText}>Property measured and mapped</Text>
-        </View>
-      ) : (
+      {measured ? null : (
         <Card style={styles.measureCard}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Step 1 · Measure & map the property</Text>
+            <Text style={styles.sectionTitle}>Step 1 · Map the property</Text>
             <Badge label="Required first" tone="warning" />
           </View>
           <Text style={styles.itemMeta}>
-            Photos and findings are placed on the property diagram, so the property is measured and mapped first. Create the site map, then tap Continue at the
-            bottom of it - the checklist starts, and the areas can be done in any order.
+            Before the checklist, make a map of the property - issues you find are marked on it. Tap Create site map, draw it, then tap Continue at the bottom.
           </Text>
-          <View style={styles.planStatusRow}>
-            <View style={[styles.wizardStepCheckbox, planDrawn && styles.wizardStepCheckboxChecked]}>
-              {planDrawn ? <Text style={styles.wizardStepCheckboxMark}>✓</Text> : null}
-            </View>
-            <Text style={styles.wizardStepLabel}>
-              {planDrawn ? (hasSiteMapImage ? "Site plan photo added" : "Site plan drawn") : "No site plan yet - draw the walls or add a photo of the plan"}
-            </Text>
-          </View>
           <PrimaryButton variant="cta" title={planDrawn ? "Review site map" : "Create site map"} onPress={() => navigation.navigate("SiteMap", { inspectionId })} />
         </Card>
       )}
 
       {!measured ? (
-        <Text style={styles.hint}>The checklist, findings and signatures open once the property is measured.</Text>
+        <Text style={styles.hint}>The checklist opens once the map is made.</Text>
       ) : null}
 
       {measured ? (
