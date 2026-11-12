@@ -1140,11 +1140,16 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       </View>
       <View style={wide ? styles.widePanel : null}>
 
-      {canDraw && !editorOpen && !pendingIssue ? (
+      {canDraw && !editorOpen ? (
         <View style={styles.toggleRow}>
           <View style={mode === "wall" && wallCount > 0 ? styles.buttonHalf : styles.buttonThird}>
             <PrimaryButton title="↶ Undo" onPress={handleUndo} disabled={!canUndo} />
           </View>
+          {pendingIssue && mode !== "marker" ? (
+            <View style={styles.buttonHalf}>
+              <PrimaryButton variant="cta" title="📍 Place the issue" onPress={() => { toggleMode("marker"); setMarkerPoint(null); }} />
+            </View>
+          ) : null}
           {mode === "wall" && wallCount > 0 ? (
             <View style={styles.buttonHalf}>
               <PrimaryButton title="Delete last wall" onPress={handleDeleteLastWall} />
@@ -1490,7 +1495,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         </Card>
       ) : null}
 
-      {canDraw && !editorOpen && !pendingIssue ? (
+      {canDraw && !editorOpen ? (
         <View style={styles.toggleRow}>
           {/* No "+ Marker" any more: issues get their X from the checklist ("Add to site map"). */}
           <View style={styles.buttonThird}>
@@ -1506,7 +1511,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           +Label row above since these don't open any form at all - tap a
           type, tap/drag on the map, done. Tate: "not every annotation needs
           to become a full detailed finding". */}
-      {canDraw && !editorOpen && !pendingIssue ? (
+      {canDraw && !editorOpen ? (
         <View style={styles.toggleRow}>
           {ANNOTATION_TYPES.map(({ type, label }) => (
             <View key={type} style={styles.buttonThird}>
@@ -1519,7 +1524,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         </View>
       ) : null}
 
-      {canDraw && !editorOpen && !isPhotoMode && !pendingIssue ? (
+      {canDraw && !editorOpen && !isPhotoMode ? (
         <View style={styles.toggleRow}>
           <View style={styles.buttonHalf}>
             <PrimaryButton title={mode === "measure" ? "Cancel" : "📏 Measure"} onPress={() => toggleMode("measure")} />
