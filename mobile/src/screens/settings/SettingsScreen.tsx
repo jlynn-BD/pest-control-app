@@ -230,6 +230,13 @@ export default function SettingsScreen() {
             <View style={styles.spacerSmall} />
             <PrimaryButton title="Manage team" onPress={() => navigation.navigate("Team")} />
           </Card>
+
+          <Text style={styles.sectionTitle}>Test records</Text>
+          <Card style={styles.syncCard}>
+            <Text style={styles.meta}>Pick test addresses (and the inspections done on them) and take them out of the system. You choose exactly which ones, and confirm before anything is removed.</Text>
+            <View style={styles.spacerSmall} />
+            <PrimaryButton title="Delete test records" onPress={() => navigation.navigate("TestRecords")} />
+          </Card>
         </>
       ) : null}
 

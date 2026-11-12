@@ -4,7 +4,8 @@ import { prisma } from "../../lib/prisma";
 import { generateId } from "../../lib/id";
 import { storage } from "../../lib/storage";
 import { asyncHandler, HttpError } from "../../middleware/error-handler";
-import { requireAuth } from "../../middleware/auth";
+import { requireAuth, requireRole } from "../../middleware/auth";
+import { logActivity } from "../../lib/audit";
 import { upload } from "../../middleware/upload";
 import { photoExt } from "../../lib/uploadExt";
 import { mergeSketches, parseRawSketch, RawSketch } from "@pest-app/shared";
@@ -96,6 +97,99 @@ propertiesRouter.patch(
     const body = propertySchema.partial().parse(req.body);
     const property = await prisma.property.update({ where: { id: req.params.id }, data: body });
     res.json(property);
+  })
+);
+
+// ---- Admin: clear out test records -----------------------------------------
+// For taking test addresses (and the inspections done on them) out of the live
+// system. Admin only. Nothing is erased from the database: records are marked
+// deleted (the same way every delete here works), vanish from every list and
+// device after the next sync, and each removal is written to the activity log.
+// The ordinary property delete above refuses a property that has inspections;
+// this is the deliberate exception, and it always names exactly what goes.
+propertiesRouter.get(
+  "/admin/removal-list",
+  requireRole("ADMIN"),
+  asyncHandler(async (_req, res) => {
+    const properties = await prisma.property.findMany({
+      where: { deletedAt: null },
+      include: {
+        customer: { select: { id: true, name: true } },
+        inspections: { where: { deletedAt: null }, select: { status: true, createdAt: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json(
+      properties.map((p) => ({
+        id: p.id,
+        addressLine1: p.addressLine1,
+        city: p.city,
+        state: p.state,
+        postalCode: p.postalCode,
+        customerId: p.customerId,
+        customerName: p.customer.name,
+        inspectionCount: p.inspections.length,
+        completedCount: p.inspections.filter((i) => i.status === "COMPLETED").length,
+        createdAt: p.createdAt,
+      }))
+    );
+  })
+);
+
+const removeSchema = z.object({
+  propertyIds: z.array(z.string().min(1)).min(1).max(200),
+  // Also remove the customer when none of their other properties is left.
+  alsoRemoveCustomers: z.boolean().optional(),
+});
+
+propertiesRouter.post(
+  "/admin/remove",
+  requireRole("ADMIN"),
+  asyncHandler(async (req, res) => {
+    const { propertyIds, alsoRemoveCustomers } = removeSchema.parse(req.body);
+    const properties = await prisma.property.findMany({
+      where: { id: { in: propertyIds }, deletedAt: null },
+      include: { customer: { select: { id: true, name: true } } },
+    });
+    const ids = properties.map((p) => p.id);
+    if (ids.length === 0) {
+      res.json({ properties: 0, inspections: 0, appointments: 0, customers: 0 });
+      return;
+    }
+    const now = new Date();
+    const inspections = await prisma.inspection.findMany({ where: { propertyId: { in: ids }, deletedAt: null }, select: { id: true, propertyId: true } });
+    const customerIds = [...new Set(properties.map((p) => p.customerId))];
+
+    const [, appointments] = await prisma.$transaction([
+      prisma.inspection.updateMany({ where: { propertyId: { in: ids }, deletedAt: null }, data: { deletedAt: now } }),
+      prisma.appointment.updateMany({ where: { propertyId: { in: ids }, deletedAt: null }, data: { deletedAt: now } }),
+      prisma.property.updateMany({ where: { id: { in: ids } }, data: { deletedAt: now } }),
+    ]);
+
+    let customers = 0;
+    if (alsoRemoveCustomers) {
+      for (const customerId of customerIds) {
+        const remaining = await prisma.property.count({ where: { customerId, deletedAt: null } });
+        if (remaining === 0) {
+          await prisma.customer.update({ where: { id: customerId }, data: { deletedAt: now } });
+          customers += 1;
+        }
+      }
+    }
+
+    for (const p of properties) {
+      const count = inspections.filter((i) => i.propertyId === p.id).length;
+      await logActivity(req, {
+        action: "property.removed",
+        entityType: "Property",
+        entityId: p.id,
+        label: `${p.addressLine1}, ${p.city}`,
+        summary: `removed ${p.addressLine1}, ${p.city} (${p.customer.name}) with ${count} inspection(s) - test records clean-up`,
+        links: { propertyId: p.id, customerId: p.customerId },
+      });
+    }
+
+    res.json({ properties: ids.length, inspections: inspections.length, appointments: appointments.count, customers });
   })
 );
 

@@ -76,3 +76,25 @@ export interface PropertyApplicabilityPatch {
 export function patchPropertyApplicability(propertyId: string, patch: PropertyApplicabilityPatch): Promise<Property> {
   return apiRequest<Property>(`/api/properties/${propertyId}`, { method: "PATCH", body: patch });
 }
+
+// Admin only: clearing out test records.
+export interface RemovalListEntry {
+  id: string;
+  addressLine1: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  customerId: string;
+  customerName: string;
+  inspectionCount: number;
+  completedCount: number;
+  createdAt: string;
+}
+
+export function getRemovalList(): Promise<RemovalListEntry[]> {
+  return apiRequest<RemovalListEntry[]>("/api/properties/admin/removal-list");
+}
+
+export function removeProperties(propertyIds: string[], alsoRemoveCustomers: boolean): Promise<{ properties: number; inspections: number; appointments: number; customers: number }> {
+  return apiRequest("/api/properties/admin/remove", { method: "POST", body: { propertyIds, alsoRemoveCustomers } });
+}

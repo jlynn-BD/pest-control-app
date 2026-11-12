@@ -714,6 +714,10 @@ function SiteMapCanvasInner({
     setSize({ width, height: h });
   }
 
+  // Pressing an existing label or issue X always picks it up to drag, whatever
+  // drawing tool is on (a Wall tool left on used to make every press start a new
+  // wall). The exception is a run of walls being tapped out - that keeps the touch.
+  const canGrabItems = mode === "view" || mode === "label" || mode === "annotate" || (mode === "wall" && !chainStart);
   const completesOnTap = mode === "label" || mode === "marker" || (mode === "annotate" && annotationType === "x");
 
   // With nothing selected for drawing, dragging empty space moves the sheet
@@ -1230,7 +1234,7 @@ function SiteMapCanvasInner({
             // issue marker; a plain tap opens it. (Two markers close together can
             // have overlapping labels, so a tap picks the one whose label is nearest.)
             const dragProps = {
-              pointerEvents: mode === "view" ? ("auto" as const) : ("none" as const),
+              pointerEvents: canGrabItems ? ("auto" as const) : ("none" as const),
               onDrag: (dx: number, dy: number) => setDraftArrow({ id: a.id, dx: dx / size.width, dy: dy / size.height }),
               onDrop: (dx: number, dy: number) => {
                 if (Math.abs(dx) < 4 && Math.abs(dy) < 4) {
@@ -1382,7 +1386,7 @@ function SiteMapCanvasInner({
               // a label under the pen never steals the stroke.
               <DragSurface
                 key={`label-${l.id}`}
-                pointerEvents={mode === "view" || mode === "label" ? "auto" : "none"}
+                pointerEvents={canGrabItems ? "auto" : "none"}
                 style={[
                   styles.structureLabel,
                   { left: Math.min(Math.max(l.x * size.width - 6, 4), size.width - 100), top: Math.min(Math.max(l.y * size.height - 10, 4), size.height - 22) },
