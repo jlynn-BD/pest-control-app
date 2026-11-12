@@ -932,7 +932,13 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   function handleLabelPress(id: string) {
     if (editorOpen) return;
     const saved = selectedLevel?.labels.find((l) => l.id === id);
-    if (saved) setEditingLabel({ id, text: saved.text });
+    if (!saved) return;
+    // Tapping a label while the Label tool is on picks that label up instead of
+    // starting a new one: drop the half-typed new label and go to view mode, where
+    // the selected label has its drag handle.
+    setPendingLabelPoint(null);
+    setMode("view");
+    setEditingLabel({ id, text: saved.text });
   }
 
   async function handleSaveLabelEdit() {
@@ -1058,7 +1064,7 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           active, which shoved the whole map down and back up each time. */}
       {canDraw && !editorOpen ? (
         <Text style={[styles.drawHint, !siteMapHintText(mode, annotationType, wallRun) && styles.drawHintIdle]}>
-          {siteMapHintText(mode, annotationType, wallRun) ?? (wideEnoughToDrag && !isPhotoMode ? "Tap a shape or wall to edit it. Drag the grid to move around" : "Tap a shape or wall to edit it")}
+          {siteMapHintText(mode, annotationType, wallRun) ?? (wideEnoughToDrag && !isPhotoMode ? "Tap a shape or wall to edit it. Drag a label to move it. Drag the grid to move around" : "Tap a shape or wall to edit it. Drag a label to move it")}
         </Text>
       ) : null}
       {canDraw && !editorOpen ? (

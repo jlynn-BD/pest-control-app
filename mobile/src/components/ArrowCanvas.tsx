@@ -30,7 +30,7 @@ export function siteMapHintText(mode: SiteMapMode, annotationType?: SiteMapAnnot
     case "marker":
       return "Tap the map where the issue is - an X goes there";
     case "label":
-      return "Tap to place a label (tap inside a shape to name it)";
+      return "Tap to place a label - or press a label and drag it where it should go";
     case "measure":
       return "Drag from one point to another to measure it - the distance stays on the map";
     case "grid":
@@ -1352,7 +1352,7 @@ function SiteMapCanvasInner({
               // a label under the pen never steals the stroke.
               <DragSurface
                 key={`label-${l.id}`}
-                pointerEvents={mode === "view" ? "auto" : "none"}
+                pointerEvents={mode === "view" || mode === "label" ? "auto" : "none"}
                 style={[
                   styles.structureLabel,
                   { left: Math.min(Math.max(l.x * size.width - 6, 4), size.width - 100), top: Math.min(Math.max(l.y * size.height - 10, 4), size.height - 22) },
@@ -1575,8 +1575,9 @@ const styles = StyleSheet.create({
   labelText: { fontSize: 11, fontWeight: "600", color: colors.text },
   structureLabel: {
     position: "absolute",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    // Roomy enough to grab with a finger and drag.
+    paddingHorizontal: 8,
+    paddingVertical: 6,
     backgroundColor: colors.chip,
     borderRadius: 4,
     borderWidth: 1,
