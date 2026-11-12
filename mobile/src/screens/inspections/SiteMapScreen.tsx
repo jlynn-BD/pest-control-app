@@ -29,8 +29,9 @@ import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } fr
 import { getCachedProperty, getCachedTemplateSections, isSiteMapSketchDirty, primeCache } from "../../db/cache";
 import { pushDirtySketches, saveSketchLocally } from "../../sync/siteMapSync";
 import { generateId } from "../../lib/uuid";
-import { addLocalFinding, addLocalFindingPhoto, getLocalInspectionDetail, LocalInspectionDetail, markLocalInspectionMeasured } from "../../db/inspectionStore";
-import { clearPendingIssue, getPendingIssue } from "../../lib/pendingIssue";
+import { addLocalFinding, addLocalFindingPhoto, deleteLocalFinding, getLocalInspectionDetail, LocalInspectionDetail, markLocalInspectionMeasured, updateLocalFinding } from "../../db/inspectionStore";
+import { deleteFinding, deleteRecommendation } from "../../api/inspections";
+import { clearPendingIssue, getPendingIssue, PendingIssue, setPendingIssue } from "../../lib/pendingIssue";
 import { PhotoThumb } from "../../components/PhotoThumb";
 import { runSync } from "../../sync/syncEngine";
 import { deleteSiteMap, uploadSiteMap } from "../../api/properties";
@@ -53,6 +54,22 @@ type Props = NativeStackScreenProps<InspectionsStackParamList, "SiteMap">;
 // detailed finding, sometimes the technician simply needs to visually
 // identify an area" (Tate). A small fixed palette rather than a full color
 // picker, since the point is speed, not precision.
+// A drawing-tool button: outlined when idle, filled while that tool is in use.
+function ToolButton({ title, active, onPress }: { title: string; active: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      style={[styles.toolBtn, active && styles.toolBtnOn]}
+    >
+      <Text style={[styles.toolBtnText, active && styles.toolBtnTextOn]} numberOfLines={1}>
+        {title}
+      </Text>
+    </Pressable>
+  );
+}
+
 const ANNOTATION_TYPES: { type: SiteMapAnnotationType; label: string }[] = [
   { type: "x", label: "✕ X mark" },
   { type: "arrow", label: "↗ Arrow" },
@@ -132,6 +149,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // Placing an issue from the checklist: where on the map it was tapped (map
   // coordinates) before "Yes, place it".
   const [markerPoint, setMarkerPoint] = useState<Point | null>(null);
+  // The issue just dropped on the map: kept so it can be undone, or moved by dragging its X.
+  const [placedIssue, setPlacedIssue] = useState<{ findingId: string; pending: PendingIssue } | null>(null);
   const [placing, setPlacing] = useState(false);
   const [chainReset, setChainReset] = useState(0);
   // Grid tools: the "each square is N feet" box, and the real length typed in
@@ -311,18 +330,19 @@ export default function SiteMapScreen({ route, navigation }: Props) {
     if (level) setSelectedLevelId(level.id);
   }
 
-  // The issue is confirmed at the tapped spot: it is saved with its photo,
-  // linked to the checklist item, and the person goes back to the checklist.
-  function handlePlaceIssue() {
+  // Tapping the map drops the issue right there - no "is this right?" step. It is
+  // saved with its photo and linked to the checklist item; the person can drag
+  // the X to a better spot, or Undo, and then goes back to the checklist.
+  function handlePlaceIssue(point: Point) {
     const pending = inspectionId && fromChecklistResponseId ? getPendingIssue(inspectionId, fromChecklistResponseId) : null;
-    if (!pending || !markerPoint || !inspectionId || placing) return;
+    if (!pending || !inspectionId || placing) return;
     setPlacing(true);
     try {
       // The label sits a little up and to the side of the X.
-      const flip = isPhotoMode && markerPoint.x > 0.9;
+      const flip = isPhotoMode && point.x > 0.9;
       const tail = {
-        x: isPhotoMode ? Math.min(0.98, Math.max(0.02, markerPoint.x + (flip ? -0.07 : 0.07))) : markerPoint.x + 0.07,
-        y: isPhotoMode ? Math.min(0.98, Math.max(0.02, markerPoint.y - 0.07)) : markerPoint.y - 0.07,
+        x: isPhotoMode ? Math.min(0.98, Math.max(0.02, point.x + (flip ? -0.07 : 0.07))) : point.x + 0.07,
+        y: isPhotoMode ? Math.min(0.98, Math.max(0.02, point.y - 0.07)) : point.y - 0.07,
       };
       const finding = addLocalFinding(inspectionId, {
         areaLocation: checklistSummary?.prompt ?? "Checklist issue",
@@ -331,8 +351,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         description: pending.description,
         lat: null,
         lng: null,
-        floorPlanX: markerPoint.x,
-        floorPlanY: markerPoint.y,
+        floorPlanX: point.x,
+        floorPlanY: point.y,
         siteMapArrowStartX: tail.x,
         siteMapArrowStartY: tail.y,
         siteMapLevel: isPhotoMode ? null : selectedLevelId,
@@ -341,10 +361,33 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       addLocalFindingPhoto(finding.id, { localUri: pending.photoUri, caption: null, lat: null, lng: null, sortOrder: 0 });
       clearPendingIssue();
       runSync().catch(() => {});
-      navigation.goBack();
+      setPlacedIssue({ findingId: finding.id, pending });
+      setMarkerPoint(null);
+      setMode("view");
+      refresh();
     } finally {
       setPlacing(false);
     }
+  }
+
+  // Takes the just-placed issue back off the map and returns to tapping where it goes.
+  function handleUndoPlacement() {
+    if (!placedIssue) return;
+    const { recommendationId } = deleteLocalFinding(placedIssue.findingId);
+    deleteFinding(placedIssue.findingId).catch(() => {});
+    if (recommendationId) deleteRecommendation(recommendationId).catch(() => {});
+    setPendingIssue(placedIssue.pending);
+    setPlacedIssue(null);
+    setMarkerPoint(null);
+    setMode("marker");
+    refresh();
+  }
+
+  // An issue's X (and its label) dragged to a new spot on the map.
+  function handleArrowMove(id: string, start: Point, end: Point) {
+    updateLocalFinding(id, { floorPlanX: end.x, floorPlanY: end.y, siteMapArrowStartX: start.x, siteMapArrowStartY: start.y });
+    runSync().catch(() => {});
+    refresh();
   }
 
   function handleCancelPlacing() {
@@ -610,6 +653,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
   // Delete (draw a fresh one to replace it) is the whole affordance.
   function handleAnnotationPress(id: string) {
     if (editorOpen) return;
+    // Picked up while an X/arrow/shape tool is on: stop drawing so it can be dragged.
+    setMode((m) => (m === "annotate" ? "view" : m));
     setSelectedWallId(null);
     setSelectedAnnotationId(id);
     setShapeLabelText(selectedLevel?.annotations.find((a) => a.id === id)?.label ?? "");
@@ -1130,7 +1175,8 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         selectedWallId={selectedWallId}
         selectedAnnotationId={selectedAnnotationId}
         pendingMarker={pendingIssue ? markerPoint : null}
-        onMarkerTap={(point) => setMarkerPoint(point)}
+        onMarkerTap={(point) => handlePlaceIssue(point)}
+        onArrowMove={handleArrowMove}
         onArrowDrawn={(start, end) => {
           setMode("view");
           setDraftArrow({ start, end });
@@ -1147,15 +1193,10 @@ export default function SiteMapScreen({ route, navigation }: Props) {
       <View style={wide ? styles.widePanel : null}>
 
       {canDraw && !editorOpen ? (
-        <View style={styles.toggleRow}>
-          <View style={mode === "wall" && wallCount > 0 ? styles.buttonHalf : styles.buttonThird}>
+        <View style={styles.undoRow}>
+          <View style={styles.buttonHalf}>
             <PrimaryButton title="↶ Undo" onPress={handleUndo} disabled={!canUndo} />
           </View>
-          {pendingIssue && mode !== "marker" ? (
-            <View style={styles.buttonHalf}>
-              <PrimaryButton variant="cta" title="📍 Place the issue" onPress={() => { toggleMode("marker"); setMarkerPoint(null); }} />
-            </View>
-          ) : null}
           {mode === "wall" && wallCount > 0 ? (
             <View style={styles.buttonHalf}>
               <PrimaryButton title="Delete last wall" onPress={handleDeleteLastWall} />
@@ -1163,16 +1204,24 @@ export default function SiteMapScreen({ route, navigation }: Props) {
           ) : null}
         </View>
       ) : null}
+      {canDraw && !editorOpen && pendingIssue && mode !== "marker" ? (
+        <View style={styles.undoRow}>
+          <View style={styles.buttonHalf}>
+            <PrimaryButton variant="cta" title="📍 Place the issue" onPress={() => { toggleMode("marker"); setMarkerPoint(null); }} />
+          </View>
+        </View>
+      ) : null}
 
-      {pendingIssue && markerPoint ? (
+      {placedIssue ? (
         <Card style={styles.confirmCard}>
-          <Text style={styles.confirmTitle}>Is this where it should go?</Text>
+          <Text style={styles.confirmTitle}>✓ Issue placed on the map</Text>
+          <Text style={styles.hint}>Not quite right? Drag its X to the right spot, or take it back with Undo placing.</Text>
           <View style={styles.buttonRow}>
             <View style={styles.buttonHalf}>
-              <PrimaryButton variant="cta" title="Yes, place it" onPress={handlePlaceIssue} loading={placing} />
+              <PrimaryButton title="Undo placing" onPress={handleUndoPlacement} />
             </View>
             <View style={styles.buttonHalf}>
-              <PrimaryButton title="Move it" onPress={() => setMarkerPoint(null)} disabled={placing} />
+              <PrimaryButton variant="cta" title="Back to checklist" onPress={() => navigation.goBack()} />
             </View>
           </View>
         </Card>
@@ -1501,42 +1550,30 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         </Card>
       ) : null}
 
+      {/* One tidy block of drawing tools. The tool in use is highlighted
+          (tap it again to put it down); the line under the map says what to do. */}
       {canDraw && !editorOpen ? (
-        <View style={styles.toggleRow}>
-          {/* No "+ Marker" any more: issues get their X from the checklist ("Add to site map"). */}
-          <View style={styles.buttonThird}>
-            <PrimaryButton title={mode === "wall" ? "Cancel" : "+ Wall"} onPress={() => toggleMode("wall")} />
+        <View style={styles.toolGrid}>
+          <View style={styles.toolGridRow}>
+            <ToolButton title="+ Wall" active={mode === "wall"} onPress={() => toggleMode("wall")} />
+            <ToolButton title="+ Label" active={mode === "label"} onPress={() => toggleMode("label")} />
+            {ANNOTATION_TYPES.filter((t) => t.type === "x").map(({ type, label }) => (
+              <ToolButton key={type} title={label} active={mode === "annotate" && annotationType === type} onPress={() => toggleAnnotationType(type)} />
+            ))}
+            {ANNOTATION_TYPES.filter((t) => t.type === "arrow").map(({ type, label }) => (
+              <ToolButton key={type} title={label} active={mode === "annotate" && annotationType === type} onPress={() => toggleAnnotationType(type)} />
+            ))}
           </View>
-          <View style={styles.buttonThird}>
-            <PrimaryButton title={mode === "label" ? "Cancel" : "+ Label"} onPress={() => toggleMode("label")} />
-          </View>
-        </View>
-      ) : null}
-
-      {/* Lightweight annotation tools, separate from the +Marker/+Wall/
-          +Label row above since these don't open any form at all - tap a
-          type, tap/drag on the map, done. Tate: "not every annotation needs
-          to become a full detailed finding". */}
-      {canDraw && !editorOpen ? (
-        <View style={styles.toggleRow}>
-          {ANNOTATION_TYPES.map(({ type, label }) => (
-            <View key={type} style={styles.buttonThird}>
-              <PrimaryButton
-                title={mode === "annotate" && annotationType === type ? "Cancel" : label}
-                onPress={() => toggleAnnotationType(type)}
-              />
-            </View>
-          ))}
-        </View>
-      ) : null}
-
-      {canDraw && !editorOpen && !isPhotoMode ? (
-        <View style={styles.toggleRow}>
-          <View style={styles.buttonHalf}>
-            <PrimaryButton title={mode === "measure" ? "Cancel" : "📏 Measure"} onPress={() => toggleMode("measure")} />
-          </View>
-          <View style={styles.buttonHalf}>
-            <PrimaryButton title={mode === "grid" ? "Cancel" : "▦ Grid"} onPress={toggleGridMode} />
+          <View style={styles.toolGridRow}>
+            {ANNOTATION_TYPES.filter((t) => t.type === "rect").map(({ type, label }) => (
+              <ToolButton key={type} title={label} active={mode === "annotate" && annotationType === type} onPress={() => toggleAnnotationType(type)} />
+            ))}
+            {isPhotoMode ? null : (
+              <>
+                <ToolButton title="📏 Measure" active={mode === "measure"} onPress={() => toggleMode("measure")} />
+                <ToolButton title="▦ Grid" active={mode === "grid"} onPress={toggleGridMode} />
+              </>
+            )}
           </View>
         </View>
       ) : null}
@@ -1690,6 +1727,13 @@ const styles = StyleSheet.create({
   editorTitle: { fontFamily: fonts.display, fontSize: 15, fontWeight: "700", color: colors.text, marginBottom: 4 },
   lastActionCard: { marginTop: 12, gap: 4, borderColor: colors.primary, borderWidth: 1 },
   toolsRow: { flexDirection: "row", gap: 8, marginTop: 10, flexWrap: "wrap" },
+  undoRow: { flexDirection: "row", gap: 10, marginTop: 12 },
+  toolGrid: { marginTop: 14, gap: 8 },
+  toolGridRow: { flexDirection: "row", gap: 8 },
+  toolBtn: { flex: 1, minHeight: 48, paddingHorizontal: 4, borderRadius: 12, borderWidth: 1.5, borderColor: colors.primary, backgroundColor: colors.card, alignItems: "center", justifyContent: "center" },
+  toolBtnOn: { backgroundColor: colors.primary },
+  toolBtnText: { fontSize: 14, fontWeight: "700", color: colors.primaryText },
+  toolBtnTextOn: { color: "#fff" },
   toolChip: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
   toolChipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   toolChipOff: { opacity: 0.4 },

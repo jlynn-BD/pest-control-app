@@ -530,6 +530,7 @@ function SiteMapCanvasInner({
   onWallChange,
   onWallsChange,
   onLabelChange,
+  onArrowMove,
   onCaptionChange,
   onMeasureDrawn,
   onGridChange,
@@ -595,6 +596,8 @@ function SiteMapCanvasInner({
   // Called once, when a finger lifts after dragging the selected label to a
   // new spot - same "commit on drop" shape as onAnnotationChange/onWallChange.
   onLabelChange?: (labelId: string, point: Point) => Promise<unknown> | void;
+  // An issue's X + label dragged: its new label spot and X spot.
+  onArrowMove?: (arrowId: string, start: Point, end: Point) => void;
   // A shape's name dragged to a new spot on it (offset from the shape's top-left).
   onCaptionChange?: (annotationId: string, offset: { dx: number; dy: number }) => Promise<unknown> | void;
   selectedLabelId?: string | null;
@@ -618,9 +621,16 @@ function SiteMapCanvasInner({
   // wall/shape (only one thing is ever selected at once), so there is no
   // need to unify them into one state slot.
   const [draftLabel, setDraftLabel] = useState<{ id: string; x: number; y: number } | null>(null);
+  // An issue marker being dragged: how far it has moved (fractions of the map).
+  const [draftArrow, setDraftArrow] = useState<{ id: string; dx: number; dy: number } | null>(null);
   // A shape name being dragged right now (offset from the shape's corner).
   const [draftCaption, setDraftCaption] = useState<{ id: string; dx: number; dy: number } | null>(null);
   const shownAnnotations = annotations.map((a) => (draft?.kind === "annotation" && draft.id === a.id ? { ...a, ...draft.g } : a));
+  const shownArrows = arrows.map((a) =>
+    draftArrow?.id === a.id
+      ? { ...a, startX: a.startX + draftArrow.dx, startY: a.startY + draftArrow.dy, endX: a.endX + draftArrow.dx, endY: a.endY + draftArrow.dy }
+      : a
+  );
   const shownWalls = savedLines.map((l) => {
     if (draft?.kind !== "wall") return l;
     if (draft.id === l.id) return { ...l, ...(draft.g as Required<Geometry>) };
@@ -735,7 +745,13 @@ function SiteMapCanvasInner({
       const norm = { x: point.x / size.width, y: point.y / size.height };
       if (mode === "label") onLabelTap?.(norm);
       else if (mode === "marker") onMarkerTap?.(norm);
-      else if (mode === "annotate" && annotationType === "x" && annotationColor) onAnnotationDrawn?.("x", annotationColor, norm, norm);
+      else if (mode === "annotate" && annotationType === "x" && annotationColor) {
+        // Tapping an X (or any shape) already on the map picks that one up instead
+        // of dropping another X on top of it.
+        const hit = shownAnnotations.find((a) => distToElement(point.x, point.y, a, elementKind(a), size.width, size.height) < 28);
+        if (hit) onAnnotationPress?.(hit.id);
+        else onAnnotationDrawn?.("x", annotationColor, norm, norm);
+      }
     },
     snapPixels,
     12,
@@ -1039,7 +1055,7 @@ function SiteMapCanvasInner({
                 ? lengthTag(`wall-len-${l.id}`, l.x1, l.y1, l.x2, l.y2, colors.danger, undefined, true)
                 : lengthTag(`wall-len-${l.id}`, l.x1, l.y1, l.x2, l.y2, colors.text)
             )}
-          {arrows.map((a) => {
+          {shownArrows.map((a) => {
             const start = { x: a.startX * size.width, y: a.startY * size.height };
             const end = { x: a.endX * size.width, y: a.endY * size.height };
             const color = SEVERITY_COLOR[a.severity] ?? colors.text;
@@ -1205,46 +1221,60 @@ function SiteMapCanvasInner({
           (a wall, a shape, a label) claims the touch when they overlap; the
           finding bubble still catches everything that isn't. */}
       {size.width > 0
-        ? arrows.map((a) => {
+        ? shownArrows.map((a) => {
             const left = Math.min(Math.max(a.startX * size.width - 60, 4), size.width - 124);
             const top = Math.min(Math.max(a.startY * size.height - 14, 4), size.height - 28);
+            const orig = arrows.find((x) => x.id === a.id) ?? a;
+            const color = SEVERITY_COLOR[a.severity] ?? colors.text;
+            // Press and drag either the label or the X itself to move the whole
+            // issue marker; a plain tap opens it. (Two markers close together can
+            // have overlapping labels, so a tap picks the one whose label is nearest.)
+            const dragProps = {
+              pointerEvents: mode === "view" ? ("auto" as const) : ("none" as const),
+              onDrag: (dx: number, dy: number) => setDraftArrow({ id: a.id, dx: dx / size.width, dy: dy / size.height }),
+              onDrop: (dx: number, dy: number) => {
+                if (Math.abs(dx) < 4 && Math.abs(dy) < 4) {
+                  setDraftArrow(null);
+                  return;
+                }
+                const ndx = dx / size.width;
+                const ndy = dy / size.height;
+                setDraftArrow(null);
+                onArrowMove?.(a.id, { x: orig.startX + ndx, y: orig.startY + ndy }, { x: orig.endX + ndx, y: orig.endY + ndy });
+              },
+              onCancel: () => setDraftArrow(null),
+            };
+            const pickNearest = (tapX: number, tapY: number) => {
+              let best = orig;
+              let bestDist = Infinity;
+              for (const candidate of arrows) {
+                const ddx = candidate.startX * size.width - tapX;
+                const ddy = candidate.startY * size.height - tapY;
+                const dist = ddx * ddx + ddy * ddy;
+                if (dist < bestDist) {
+                  bestDist = dist;
+                  best = candidate;
+                }
+              }
+              onArrowPress?.(best.id);
+            };
             return (
-              <Pressable
-                key={a.id}
-                // Two findings marked close together have overlapping 120px-
-                // wide bubbles, and whichever one happens to be on top (the
-                // most recently created, in DOM order) caught every tap in
-                // the overlap - a technician hit exactly this with two
-                // findings on the same wall, one becoming untappable behind
-                // the other. Reconstructing the actual tap point (this
-                // Pressable's own left/top, which are canvas-relative,
-                // plus the native event's location within it) and picking
-                // whichever finding's arrow start is genuinely nearest to
-                // it fixes this regardless of which Pressable's DOM node
-                // physically received the touch.
-                onPress={(e) => {
-                  const tapX = left + e.nativeEvent.locationX;
-                  const tapY = top + e.nativeEvent.locationY;
-                  let best = a;
-                  let bestDist = Infinity;
-                  for (const candidate of arrows) {
-                    const dx = candidate.startX * size.width - tapX;
-                    const dy = candidate.startY * size.height - tapY;
-                    const dist = dx * dx + dy * dy;
-                    if (dist < bestDist) {
-                      bestDist = dist;
-                      best = candidate;
-                    }
-                  }
-                  onArrowPress?.(best.id);
-                }}
-                pointerEvents={mode === "view" ? "auto" : "none"}
-                style={[styles.labelBubble, { left, top, borderColor: SEVERITY_COLOR[a.severity] ?? colors.text }]}
-              >
-                <Text style={styles.labelText} numberOfLines={1}>
-                  {a.label}
-                </Text>
-              </Pressable>
+              <React.Fragment key={a.id}>
+                <DragSurface
+                  {...dragProps}
+                  onTap={(x, y) => pickNearest(left + x, top + y)}
+                  style={[styles.labelBubble, { left, top, borderColor: color }]}
+                >
+                  <Text style={styles.labelText} numberOfLines={1}>
+                    {a.label}
+                  </Text>
+                </DragSurface>
+                <DragSurface
+                  {...dragProps}
+                  onTap={() => onArrowPress?.(orig.id)}
+                  style={[styles.arrowXGrab, { left: a.endX * size.width - 24, top: a.endY * size.height - 24 }]}
+                />
+              </React.Fragment>
             );
           })
         : null}
@@ -1510,6 +1540,7 @@ export function SiteMapCanvas(
           : undefined
       }
       onLabelChange={rest.onLabelChange ? (id, p) => rest.onLabelChange!(id, toWorld(p)) : undefined}
+      onArrowMove={rest.onArrowMove ? (id, st, en) => rest.onArrowMove!(id, toWorld(st), toWorld(en)) : undefined}
       onCaptionChange={rest.onCaptionChange ? (id, o) => rest.onCaptionChange!(id, { dx: o.dx / k, dy: o.dy / k }) : undefined}
     />
   );
@@ -1563,6 +1594,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     overflow: "hidden",
   },
+  // Invisible, finger-sized target over an issue marker's X so it can be dragged.
+  arrowXGrab: { position: "absolute", width: 48, height: 48, borderRadius: 24 },
   labelBubble: {
     position: "absolute",
     width: 120,
