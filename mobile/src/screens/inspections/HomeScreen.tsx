@@ -3,7 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { listInspections } from "../../api/inspections";
+import { ApiError } from "../../api/client";
+import { getInspection, listInspections } from "../../api/inspections";
 import { openInspection } from "../../lib/openInspection";
 import { getCachedCustomer, getCachedProperties, primeCache } from "../../db/cache";
 import type { LocalProperty } from "../../db/types";
@@ -72,14 +73,34 @@ export default function HomeScreen({ navigation }: Props) {
     if (!user || !data) return;
     const remoteIds = new Set(data.map((r) => r.id));
     const current = listLocalInspections(user.id);
-    // An empty server list while this device holds synced inspections looks
-    // like an outage or a reset, not "every one was deleted elsewhere" -
-    // never wipe the device's copies on that evidence.
-    if (data.length === 0 && current.some((r) => r.syncStatus === "synced")) return;
     const staleIds = current.filter((r) => r.syncStatus === "synced" && !remoteIds.has(r.id)).map((r) => r.id);
     if (staleIds.length === 0) return;
-    for (const id of staleIds) deleteLocalInspection(id);
-    setLocalRows(listLocalInspections(user.id));
+    const prune = (ids: string[]) => {
+      for (const id of ids) deleteLocalInspection(id);
+      setLocalRows(listLocalInspections(user.id));
+    };
+    // An empty server list while this device holds synced inspections could be an
+    // outage or a reset - or every one of them really was removed (an admin
+    // clearing test records). Don't guess: ask the server about each one and drop
+    // only those it says no longer exist.
+    if (data.length === 0) {
+      let cancelled = false;
+      (async () => {
+        const gone: string[] = [];
+        for (const id of staleIds) {
+          try {
+            await getInspection(id);
+          } catch (err) {
+            if (err instanceof ApiError && err.status === 404) gone.push(id);
+          }
+        }
+        if (!cancelled && gone.length > 0) prune(gone);
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+    prune(staleIds);
   }, [data, user]);
 
   const rows: Row[] = useMemo(() => {

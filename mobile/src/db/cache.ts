@@ -147,6 +147,27 @@ export async function primeCache(): Promise<void> {
       }
     }
 
+    // Addresses and customers the server no longer lists (an admin removed test
+    // records, a duplicate was merged) must leave this device too - the inserts
+    // above only ever add or update. Skipped when the server sent nothing at all
+    // (that looks like an outage, not "everything was deleted"), and anything a
+    // not-yet-uploaded inspection here still points at is kept.
+    if (customers.length > 0) {
+      const keepCustomers = new Set(customers.map((c) => c.id));
+      const keepProperties = new Set(properties.map((p) => p.id));
+      const inUse = db.getAllSync<{ propertyId: string; customerId: string }>(`SELECT propertyId, customerId FROM inspections WHERE syncStatus = 'pending'`);
+      for (const row of inUse) {
+        keepProperties.add(row.propertyId);
+        keepCustomers.add(row.customerId);
+      }
+      for (const row of db.getAllSync<{ id: string }>(`SELECT id FROM local_properties`)) {
+        if (!keepProperties.has(row.id)) db.runSync(`DELETE FROM local_properties WHERE id = ?`, [row.id]);
+      }
+      for (const row of db.getAllSync<{ id: string }>(`SELECT id FROM local_customers`)) {
+        if (!keepCustomers.has(row.id)) db.runSync(`DELETE FROM local_customers WHERE id = ?`, [row.id]);
+      }
+    }
+
     // Full replace, not incremental: templates are pure server-mirrored
     // reference data (no local-only fields to preserve, unlike properties'
     // siteMapLocalUri above), so wiping and rebuilding from this fetch is
