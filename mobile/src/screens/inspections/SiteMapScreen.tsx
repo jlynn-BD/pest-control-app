@@ -1044,19 +1044,22 @@ export default function SiteMapScreen({ route, navigation }: Props) {
         </Card>
       ) : null}
       {pendingIssue ? (
-        <Card style={styles.checklistBannerCard}>
-          <Text style={styles.checklistBannerLabel}>📍 Place this issue on the map</Text>
-          <Text style={styles.checklistBannerPrompt}>{checklistSummary?.prompt ?? "Checklist issue"}</Text>
-          <Text style={styles.hint}>{pendingIssue.description}</Text>
+        <Card style={styles.pendingCard}>
           <View style={styles.pendingPhotoRow}>
             <PhotoThumb uri={pendingIssue.photoUri} style={styles.pendingPhoto} />
-            <Text style={styles.pendingPhotoText}>
-              {markerPoint ? "Photo ready." : "Photo ready. Pick the right floor if needed, then tap the map where the issue is."}
+            <View style={styles.pendingText}>
+              <Text style={styles.checklistBannerLabel}>📍 Place this issue on the map</Text>
+              <Text style={styles.checklistBannerPrompt} numberOfLines={2}>
+                {checklistSummary?.prompt ?? "Checklist issue"}
+              </Text>
+              <Text style={styles.pendingDesc} numberOfLines={2}>
+                {pendingIssue.description}
+              </Text>
+            </View>
+            <Text style={styles.pendingCancel} onPress={handleCancelPlacing}>
+              Cancel
             </Text>
           </View>
-          <Text style={styles.dismissLink} onPress={handleCancelPlacing}>
-            Cancel
-          </Text>
         </Card>
       ) : null}
       {!isPhotoMode ? (
@@ -1664,9 +1667,12 @@ export default function SiteMapScreen({ route, navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   continueBlock: { marginTop: 24, gap: 4 },
-  pendingPhotoRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 4 },
-  pendingPhoto: { width: 64, height: 64, borderRadius: 8 },
-  pendingPhotoText: { flex: 1, fontSize: 13, color: colors.textMuted },
+  pendingCard: { marginBottom: 10, paddingVertical: 10, borderColor: colors.primary, borderWidth: 2 },
+  pendingPhotoRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  pendingPhoto: { width: 52, height: 52, borderRadius: 8 },
+  pendingText: { flex: 1, gap: 1 },
+  pendingDesc: { fontSize: 13, color: colors.textMuted },
+  pendingCancel: { color: colors.primaryText, fontWeight: "700", fontSize: 14, paddingVertical: 10, paddingHorizontal: 6 },
   confirmCard: { marginTop: 12, marginBottom: 4, gap: 10, borderColor: colors.danger, borderWidth: 2 },
   confirmTitle: { fontFamily: fonts.display, fontSize: 16, fontWeight: "700", color: colors.text },
   wideRow: { flexDirection: "row", gap: 16, alignItems: "flex-start" },

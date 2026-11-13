@@ -6,7 +6,7 @@ import * as propertiesApi from "../../api/properties";
 import type { RemovalListEntry } from "../../api/properties";
 import { primeCache } from "../../db/cache";
 import { runSync } from "../../sync/syncEngine";
-import { Card, Field, LoadingView, PrimaryButton, colors, fonts } from "../../components/ui";
+import { Card, Field, LoadingView, PrimaryButton, colors, fonts, wideScreen } from "../../components/ui";
 
 function messageFor(err: unknown): string {
   return err instanceof ApiError || err instanceof Error ? err.message : "Something went wrong.";
@@ -156,7 +156,7 @@ export default function TestRecordsScreen() {
 
 const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: colors.bg },
-  container: { padding: 16, paddingBottom: 60 },
+  container: { ...wideScreen, padding: 16, paddingBottom: 60 },
   meta: { fontSize: 14, color: colors.textMuted },
   gap: { height: 12 },
   error: { color: colors.danger, marginTop: 10 },
