@@ -70,6 +70,8 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
   // verified address once one is picked. The session ties the typing to the pick.
   const placeSession = useRef(generateId());
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const [suggestUnavailable, setSuggestUnavailable] = useState(false);
   const [pickingPlaceId, setPickingPlaceId] = useState<string | null>(null);
   const [resolved, setResolved] = useState<ResolvedPlace | null>(null);
   const [lookupNote, setLookupNote] = useState<string | null>(null);
@@ -150,29 +152,38 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
   const resolvedLine = resolved ? `${resolved.addressLine1}, ${resolved.city}, ${resolved.state} ${resolved.postalCode}` : null;
   const usableResolved = resolved && resolvedLine === search.trim() ? resolved : null;
 
-  // Suggestions while typing: a house number and a few letters, then a short pause.
-  // Nothing is asked when a property is already chosen or the form is open.
+  // Suggestions while typing, like a map search: from the third character on, after
+  // a short pause. Asked in the search box and also in the new-customer form's
+  // address field. Not asked once a property is chosen, or once the address has
+  // been picked from the list (it is already verified).
   useEffect(() => {
-    const canLookUp = !adding && !selectedPropertyId && query.length >= 5 && /\d/.test(query);
+    const canLookUp = !selectedPropertyId && !usableResolved && query.length >= 3;
     if (!canLookUp) {
       setSuggestions([]);
+      setSuggestLoading(false);
       return;
     }
     let cancelled = false;
+    setSuggestLoading(true);
     const timer = setTimeout(() => {
       searchPlaces(query, placeSession.current)
         .then((r) => {
-          if (!cancelled) setSuggestions(r.suggestions);
+          if (cancelled) return;
+          setSuggestions(r.suggestions);
+          setSuggestUnavailable(Boolean(r.unavailable));
         })
         .catch(() => {
           if (!cancelled) setSuggestions([]); // offline or not set up: typing the address in still works
+        })
+        .finally(() => {
+          if (!cancelled) setSuggestLoading(false);
         });
-    }, 350);
+    }, 300);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [query, adding, selectedPropertyId]);
+  }, [query, selectedPropertyId, usableResolved]);
 
   // Same place as a record we already have: by Google's place id, or the same
   // street and ZIP however it was abbreviated.
@@ -195,6 +206,7 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
       if (existing) {
         // Already on file - use that record instead of making a second one.
         setSuggestions([]);
+        setAdding(false);
         setSelectedPropertyId(existing.id);
         setSearch(existing.addressLine1);
         setLookupNote("We already have this property on file - selected it.");
@@ -325,6 +337,30 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
     return { ok: false, text: addressHelp(search) };
   })();
 
+  // The address suggestions, shown like a map search: one tap on a line picks it.
+  function renderSuggestions() {
+    if (suggestions.length === 0) return null;
+    return (
+      <View style={styles.suggestBox}>
+        {suggestions.map((s, i) => (
+          <Pressable
+            key={s.placeId}
+            onPress={() => pickSuggestion(s)}
+            accessibilityRole="button"
+            disabled={Boolean(pickingPlaceId)}
+            style={({ pressed }) => [styles.suggestRow, i > 0 && styles.suggestRowBorder, pressed && styles.suggestRowPressed]}
+          >
+            <Text style={styles.suggestPin}>📍</Text>
+            <View style={styles.suggestText}>
+              <Text style={styles.suggestPrimary}>{s.primary}</Text>
+              <Text style={styles.suggestSecondary}>{pickingPlaceId === s.placeId ? "Checking the address…" : s.secondary}</Text>
+            </View>
+          </Pressable>
+        ))}
+      </View>
+    );
+  }
+
   return (
     <ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       {adding ? null : <Text style={styles.sectionTitle}>Property address</Text>}
@@ -378,7 +414,7 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
         </>
       ) : null}
 
-      {showResults && matches.length === 0 ? (
+      {showResults && matches.length === 0 && suggestions.length === 0 && !suggestLoading ? (
         <Card style={styles.noMatchCard}>
           <Text style={styles.cardTitle}>No property on file for that address</Text>
           <Text style={styles.meta}>Add the customer and the property to start the inspection.</Text>
@@ -394,18 +430,20 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
 
       {lookupNote ? <Text style={styles.hint}>{lookupNote}</Text> : null}
 
-      {suggestions.length > 0 && !adding && !selectedProperty ? (
+      {!adding && !selectedProperty && suggestions.length > 0 ? (
         <>
-          <Text style={styles.resultsLabel}>{matches.length > 0 ? "Not one of those? Add a new address" : "Not on file yet - tap the address to add it"}</Text>
-          {suggestions.map((s) => (
-            <Pressable key={s.placeId} onPress={() => pickSuggestion(s)} accessibilityRole="button" disabled={Boolean(pickingPlaceId)}>
-              <Card style={styles.card}>
-                <Text style={styles.cardTitle}>{s.primary}</Text>
-                <Text style={styles.meta}>{pickingPlaceId === s.placeId ? "Checking the address…" : s.secondary}</Text>
-              </Card>
-            </Pressable>
-          ))}
+          <Text style={styles.resultsLabel}>{matches.length > 0 ? "Not one of those? Pick the address to add it" : "Tap the address to add it"}</Text>
+          {renderSuggestions()}
         </>
+      ) : null}
+      {!adding && !selectedProperty && suggestLoading && suggestions.length === 0 && matches.length === 0 ? <Text style={styles.hint}>Looking up addresses…</Text> : null}
+      {!adding && !selectedProperty && suggestUnavailable && !suggestLoading && suggestions.length === 0 && query.length >= 3 ? (
+        <Text style={styles.hint}>Address suggestions aren't available right now - type the full address (street, city, state, ZIP).</Text>
+      ) : null}
+      {!adding && !selectedProperty && suggestions.length > 0 && matches.length === 0 ? (
+        <Pressable onPress={openAddForm} hitSlop={8}>
+          <Text style={styles.addLink}>Not in the list? Type the address in yourself</Text>
+        </Pressable>
       ) : null}
 
       {adding ? (
@@ -413,7 +451,9 @@ export default function NewInspectionScreen({ navigation, route }: Props) {
           <Text style={styles.cardTitle}>New customer & property</Text>
           <Field label="Customer name *" value={newName} onChangeText={setNewName} placeholder="e.g. Dana Whitfield" autoFocus={Boolean(search)} />
           <Field label="Property address *" value={search} onChangeText={setSearch} placeholder={ADDRESS_PLACEHOLDER} autoCapitalize="words" autoCorrect={false} />
-          {addressPreview ? (
+          {renderSuggestions()}
+          {suggestLoading && suggestions.length === 0 && !usableResolved && query.length >= 3 ? <Text style={styles.hint}>Looking up addresses…</Text> : null}
+          {addressPreview && suggestions.length === 0 ? (
             <Text style={addressPreview.ok ? styles.addressOk : styles.addressWarn}>{addressPreview.text}</Text>
           ) : null}
           <Field label="Phone *" value={newPhone} onChangeText={setNewPhone} keyboardType="phone-pad" placeholder="(555) 123-4567" />
@@ -507,6 +547,14 @@ const styles = StyleSheet.create({
   },
   inProgressHint: { fontSize: 12, color: colors.textMuted, marginTop: 4, fontStyle: "italic" },
   meta: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  suggestBox: { marginTop: 6, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, overflow: "hidden" },
+  suggestRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, paddingHorizontal: 14, minHeight: 56 },
+  suggestRowBorder: { borderTopWidth: 1, borderTopColor: colors.border },
+  suggestRowPressed: { backgroundColor: colors.chip },
+  suggestPin: { fontSize: 18 },
+  suggestText: { flex: 1 },
+  suggestPrimary: { fontSize: 15, fontWeight: "700", color: colors.text },
+  suggestSecondary: { fontSize: 13, color: colors.textMuted, marginTop: 1 },
   addLink: { color: colors.primaryText, fontWeight: "600", fontSize: 14, marginTop: 4, marginBottom: 4 },
   error: { color: colors.danger, fontSize: 13, marginTop: 4 },
   addressOk: { color: colors.success, fontSize: 13, marginTop: -4 },
