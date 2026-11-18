@@ -2,7 +2,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useQuery } from "@tanstack/react-query";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { ApiError } from "../../api/client";
 import { getInspection, listInspections } from "../../api/inspections";
 import { openInspection } from "../../lib/openInspection";
@@ -12,6 +12,8 @@ import { deleteLocalInspection, listLocalInspections, LocalInspectionListItem } 
 import { useAuth } from "../../context/AuthContext";
 import { InspectionsStackParamList } from "../../navigation/navigationTypes";
 import { Badge, colors, fonts, wideScreen } from "../../components/ui";
+import { RefreshScroll } from "../../components/RefreshScroll";
+import { runSync } from "../../sync/syncEngine";
 
 type Props = NativeStackScreenProps<InspectionsStackParamList, "Home">;
 
@@ -56,12 +58,33 @@ export default function HomeScreen({ navigation }: Props) {
     }, [user])
   );
 
-  const { data } = useQuery({
+  const { data, refetch } = useQuery({
     queryKey: ["inspections", user?.id],
     queryFn: () => listInspections({ technicianId: user!.id }),
     enabled: !!user,
     retry: false,
   });
+
+  // Pull down to refresh (and again whenever this page comes back into view, e.g. after
+  // an admin removed test records): send anything waiting, re-download the address and
+  // customer lists, ask the server for the inspection list again, and show the result.
+  // Anything the server no longer has drops off this device's copy (see below).
+  const refreshAll = useCallback(async () => {
+    await runSync().catch(() => {});
+    await primeCache().catch(() => {});
+    await refetch().catch(() => {});
+    setProperties(getCachedProperties());
+    if (user) setLocalRows(listLocalInspections(user.id));
+  }, [refetch, user]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refetch().catch(() => {});
+      primeCache()
+        .then(() => setProperties(getCachedProperties()))
+        .catch(() => {});
+    }, [refetch])
+  );
 
   // A local row that already made it to the server (syncStatus "synced") but
   // no longer appears in a successful remote fetch was deleted server-side
@@ -176,7 +199,7 @@ export default function HomeScreen({ navigation }: Props) {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <RefreshScroll onRefresh={refreshAll} style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <View style={styles.searchBox}>
         <Text style={styles.searchIcon}>{"\u{1F50D}"}</Text>
         <TextInput
@@ -256,7 +279,7 @@ export default function HomeScreen({ navigation }: Props) {
           <Text style={styles.hint}>To see older inspections, search the property address above and open its record.</Text>
         </>
       )}
-    </ScrollView>
+    </RefreshScroll>
   );
 }
 
