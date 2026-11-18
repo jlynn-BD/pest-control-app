@@ -7,7 +7,7 @@ import { getCachedTemplateSections } from "../db/cache";
 import { deleteLocalChecklistResponse, getLocalInspectionDetail, upsertLocalChecklistResponse } from "../db/inspectionStore";
 import type { LocalChecklistResponse, LocalChecklistResponsePhoto, LocalFinding, LocalFindingPhoto, LocalTemplateItem } from "../db/types";
 import { CHECKLIST_CATEGORY_DISPLAY_ORDER, CHECKLIST_CATEGORY_LABEL } from "../lib/checklist";
-import { capturePhoto } from "../lib/photo";
+import { capturePhoto, pickPhotoFromLibrary } from "../lib/photo";
 import { setPendingIssue } from "../lib/pendingIssue";
 import { copyCarriedItemIssues, removeItemFindings } from "../lib/followUp";
 import { PhotoThumb } from "./PhotoThumb";
@@ -378,7 +378,9 @@ function ChecklistItemRow({
     else onChoose(next, null);
   }
 
-  async function addToMap() {
+  // The issue needs a photo - taken now, or one already in the library - and then
+  // goes on the site map either way: that step is the same whichever is used.
+  async function addToMap(source: "camera" | "library") {
     if (busy) return;
     if (!issueText.trim()) {
       setHint("First write what the issue is.");
@@ -387,9 +389,13 @@ function ChecklistItemRow({
     setBusy(true);
     setHint(null);
     try {
-      const uri = await capturePhoto();
+      const uri = source === "camera" ? await capturePhoto() : await pickPhotoFromLibrary();
       if (!uri) {
-        setHint("A photo of the issue is needed - tap Add to site map again and take one.");
+        setHint(
+          source === "camera"
+            ? "A photo of the issue is needed - tap Add to site map again and take one."
+            : "No photo chosen - pick one from your library, or tap Add to site map to take one."
+        );
         return;
       }
       onAddToSiteMap(issueText.trim(), uri);
@@ -477,9 +483,12 @@ function ChecklistItemRow({
             }}
             multiline
           />
-          <Text style={styles.issueNextHint}>Next you'll take a photo, then tap the map to show where it is.</Text>
+          <Text style={styles.issueNextHint}>Next you'll take a photo (or pick one from your library), then tap the map to show where it is.</Text>
           {hint ? <Text style={styles.needsIssueText}>{hint}</Text> : null}
-          <PrimaryButton variant="cta" title="📍 Add to site map" onPress={addToMap} loading={busy} />
+          <PrimaryButton variant="cta" title="📍 Add to site map" onPress={() => addToMap("camera")} loading={busy} />
+          <Pressable onPress={() => addToMap("library")} disabled={busy} accessibilityRole="button" style={styles.libraryBtn}>
+            <Text style={styles.libraryBtnText}>🖼 Use a photo from my library</Text>
+          </Pressable>
         </View>
       ) : null}
     </Card>
@@ -563,6 +572,8 @@ const styles = StyleSheet.create({
   choiceMark: { color: "#fff", fontSize: 15, fontWeight: "800", lineHeight: 16 },
   choiceLabel: { flexShrink: 1, fontSize: 14, fontWeight: "600", color: colors.text },
   issueDetails: { gap: 6 },
+  libraryBtn: { minHeight: 48, borderRadius: 12, borderWidth: 1.5, borderColor: colors.primary, backgroundColor: colors.card, alignItems: "center", justifyContent: "center", marginTop: 8 },
+  libraryBtnText: { fontSize: 15, fontWeight: "700", color: colors.primaryText },
   needsIssueText: { fontSize: 13, color: colors.danger, fontWeight: "600" },
   issueNextHint: { fontSize: 12, color: colors.textMuted },
   issueSummary: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },

@@ -84,6 +84,15 @@ export async function pickPhotosFromLibrary(): Promise<string[]> {
   return result.assets.map((a) => a.uri);
 }
 
+// One existing picture from the device's photo library (never opens the camera).
+export async function pickPhotoFromLibrary(): Promise<string | null> {
+  if (Platform.OS === "web") return (await pickOnWeb({ camera: false, multiple: false }))[0] ?? null;
+
+  const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsMultipleSelection: false, quality: 0.7 });
+  if (result.canceled || !result.assets?.[0]) return null;
+  return result.assets[0].uri;
+}
+
 // One picture, from wherever the person prefers: on the web the phone's own
 // chooser (Photo Library / Take Photo / Files) appears; in the phone app a
 // small menu asks.
