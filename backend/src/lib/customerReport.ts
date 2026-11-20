@@ -257,7 +257,7 @@ export async function maybeEmailReportToCompany(req: Request, inspectionId: stri
     );
 
     await sendEmail(
-      to.join(", "),
+      to,
       `Inspection completed - ${inspection.property.addressLine1} - ${tech}`,
       text,
       html,

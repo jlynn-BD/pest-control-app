@@ -4,7 +4,7 @@ import { requireAuth } from "../../middleware/auth";
 import { prisma } from "../../lib/prisma";
 import { storage } from "../../lib/storage";
 import { generateReportFor } from "./generate";
-import { maybeEmailReportToCustomer } from "../../lib/customerReport";
+import { maybeEmailReportToCompany, maybeEmailReportToCustomer } from "../../lib/customerReport";
 import { maskEmail } from "../../lib/email";
 
 export const reportsRouter = Router();
@@ -33,6 +33,25 @@ reportsRouter.post(
       too_soon: [429, "The report was just sent. Please wait a minute before sending it again."],
       already_sent: [409, "The report is already being sent."],
       failed: [502, "We couldn't send the email. Please try again in a moment."],
+    };
+    const [status, text] = message[outcome.reason];
+    throw new HttpError(status, text);
+  })
+);
+
+// "Send the office copy": the technician + Blue Duck copy that normally goes out by
+// itself once the inspection is signed and completed. For one that didn't go out
+// (it is only ever sent once - this does nothing if it already was).
+reportsRouter.post(
+  "/inspections/:id/report/copy",
+  asyncHandler(async (req, res) => {
+    const outcome = await maybeEmailReportToCompany(req, req.params.id);
+    if (outcome.sent) return res.json({ sent: true, to: outcome.to });
+    const message: Record<string, [number, string]> = {
+      not_ready: [400, "The inspection must be completed and signed by both the technician and the customer first."],
+      not_configured: [503, "Email is not set up on the server yet."],
+      already_sent: [409, "The copy was already sent."],
+      failed: [502, "We couldn't send the copy. Please try again in a moment."],
     };
     const [status, text] = message[outcome.reason];
     throw new HttpError(status, text);

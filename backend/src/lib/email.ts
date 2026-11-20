@@ -52,7 +52,18 @@ export interface EmailAttachment {
 
 // EMAIL_REPLY_TO (optional): where a customer's reply goes, since the From
 // address is usually a no-reply sender.
-export async function sendEmail(to: string, subject: string, text: string, html?: string, attachments?: EmailAttachment[]): Promise<void> {
+// `to` is one address, a comma-separated list, or an array. Resend wants an array of single
+// addresses (a comma-joined string in one slot is refused), so it is split here.
+export function splitRecipients(to: string | string[]): string[] {
+  return (Array.isArray(to) ? to : [to])
+    .flatMap((t) => t.split(/[,;]+/))
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+export async function sendEmail(toInput: string | string[], subject: string, text: string, html?: string, attachments?: EmailAttachment[]): Promise<void> {
+  const recipients = splitRecipients(toInput);
+  const to = recipients.join(", ");
   if (consoleMode()) {
     lastConsoleEmail.to = to;
     lastConsoleEmail.subject = subject;
@@ -63,12 +74,12 @@ export async function sendEmail(to: string, subject: string, text: string, html?
     return;
   }
   if (resendConfigured()) {
-    const res = await fetch("https://api.resend.com/emails", {
+    const res = await fetch(`${(process.env.RESEND_API_BASE || "https://api.resend.com").replace(/\/$/, "")}/emails`, {
       method: "POST",
       headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         from: process.env.EMAIL_FROM,
-        to: [to],
+        to: recipients,
         subject,
         text,
         ...(html ? { html } : {}),

@@ -12,3 +12,8 @@ export function getReport(inspectionId: string): Promise<Report> {
 export function emailReportToCustomer(inspectionId: string): Promise<{ sent: true; to: string; maskedTo: string }> {
   return apiRequest(`/api/inspections/${inspectionId}/report/email`, { method: "POST" });
 }
+
+// The technician + Blue Duck office copy, for one that didn't go out by itself.
+export function sendOfficeCopy(inspectionId: string): Promise<{ sent: true; to: string[] }> {
+  return apiRequest(`/api/inspections/${inspectionId}/report/copy`, { method: "POST" });
+}

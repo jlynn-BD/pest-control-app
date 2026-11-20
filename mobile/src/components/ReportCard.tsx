@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { ApiError } from "../api/client";
-import { emailReportToCustomer, generateReport, getReport } from "../api/reports";
+import { emailReportToCustomer, generateReport, getReport, sendOfficeCopy } from "../api/reports";
 import { downloadAndShareReport } from "../lib/report";
 import { Card, PrimaryButton, colors, fonts } from "./ui";
 
@@ -16,6 +16,7 @@ export function ReportCard({ inspectionId, readOnly = false }: { inspectionId: s
   const [reportError, setReportError] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
   const [emailNote, setEmailNote] = useState<string | null>(null);
+  const [copyNote, setCopyNote] = useState<string | null>(null);
 
   const { data: report } = useQuery({
     queryKey: ["reports", inspectionId],
@@ -42,6 +43,20 @@ export function ReportCard({ inspectionId, readOnly = false }: { inspectionId: s
     onError: (err) => {
       setEmailNote(null);
       setReportError(err instanceof ApiError ? err.message : "Couldn't send the email - check your connection and try again.");
+    },
+  });
+
+  const copyMutation = useMutation({
+    mutationFn: () => sendOfficeCopy(inspectionId),
+    onSuccess: (result) => {
+      setReportError(null);
+      setEmailNote(null);
+      setCopyNote(`Copy sent to ${result.to.join(", ")}`);
+      queryClient.invalidateQueries({ queryKey: ["reports", inspectionId] });
+    },
+    onError: (err) => {
+      setCopyNote(null);
+      setReportError(err instanceof ApiError ? err.message : "Couldn't send the copy - check your connection and try again.");
     },
   });
 
@@ -82,8 +97,14 @@ export function ReportCard({ inspectionId, readOnly = false }: { inspectionId: s
           </Text>}
           {readOnly ? null : (
             <Text style={styles.meta}>
-              {report.companyCopiedAt ? `Copy sent to the technician and Blue Duck on ${new Date(report.companyCopiedAt).toLocaleString()}` : "A copy goes to the technician and to Blue Duck automatically once the inspection is signed and completed."}
+              {copyNote ??
+                (report.companyCopiedAt
+                  ? `Copy sent to the technician and Blue Duck on ${new Date(report.companyCopiedAt).toLocaleString()}`
+                  : "A copy goes to the technician and to Blue Duck automatically once the inspection is signed and completed.")}
             </Text>
+          )}
+          {readOnly || report.companyCopiedAt || copyNote ? null : (
+            <PrimaryButton title="Send copy to technician & Blue Duck" onPress={() => copyMutation.mutate()} loading={copyMutation.isPending} variant="navy" />
           )}
           {readOnly ? null : (
             <PrimaryButton
