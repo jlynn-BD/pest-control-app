@@ -72,8 +72,27 @@ function firstName(full: string): string {
   return first && !/^(mr|mrs|ms|dr)\.?$/i.test(first) ? first : full.trim();
 }
 
+// The report to attach. Building a report is the heaviest thing the server does (a job with
+// many photos nearly fills its memory), so when a report was already built after the last
+// signature it is reused rather than built again for every email. Otherwise one is built.
+async function reportForEmail(inspectionId: string, generatedBy: string) {
+  const inspection = await prisma.inspection.findUnique({
+    where: { id: inspectionId },
+    select: { report: true, signatures: { select: { createdAt: true } } },
+  });
+  const report = inspection?.report;
+  if (report) {
+    const lastSignature = Math.max(0, ...(inspection?.signatures ?? []).map((s) => s.createdAt.getTime()));
+    if (report.generatedAt.getTime() >= lastSignature) {
+      const file = await storage.read(`reports/${inspectionId}/report-v${report.version}.pdf`);
+      if (file) return { report, buffer: file.data };
+    }
+  }
+  return generateReportFor(inspectionId, generatedBy);
+}
+
 async function deliver(req: Request, inspectionId: string, to: string, generatedBy: string): Promise<void> {
-  const { report, buffer } = await generateReportFor(inspectionId, generatedBy);
+  const { report, buffer } = await reportForEmail(inspectionId, generatedBy);
   const inspection = await prisma.inspection.findUniqueOrThrow({
     where: { id: inspectionId },
     include: { customer: true, property: true, technician: true },
