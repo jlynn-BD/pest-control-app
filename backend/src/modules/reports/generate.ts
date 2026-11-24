@@ -1,4 +1,5 @@
 import { renderToBuffer } from "@react-pdf/renderer";
+import sharp from "sharp";
 import React from "react";
 import { CHECKLIST_CATEGORY_DISPLAY_ORDER, CHECKLIST_CATEGORY_LABEL, carriedIssueItemIds, fitView, parseCarriedIssues, getSiteMapLevelRank, levelPoints, parseRawSketch, resolveGrid, visibleSketch } from "@pest-app/shared";
 import { generateId } from "../../lib/id";
@@ -9,16 +10,47 @@ import { InspectionReportDocument, ReportData, ReportImage, ReportSiteMapAnnotat
 
 const MEDIA_PREFIX = "/api/media/file/";
 
+// Photos go into the PDF at the size it actually shows them: the picture is at most a
+// little over a page wide, and a full-size phone photo costs the server roughly twelve
+// times its own size in memory while the PDF is built, which is how a report with many
+// photos used to run the server out of memory. So each photo is shrunk (and re-saved as
+// a JPEG) first. Small pictures, signatures and the site-map image are left alone.
+const PDF_PHOTO_MAX_EDGE = 1100;
+const PDF_PHOTO_SKIP_BELOW_BYTES = 120 * 1024;
+
 // Loads a stored image for the PDF. A file that's gone (or can't be read as
 // PNG/JPEG) is skipped instead of failing the whole report.
-async function loadReportImage(fileUrl: string): Promise<ReportImage | null> {
+async function loadReportImage(fileUrl: string, opts: { shrink?: boolean } = {}): Promise<ReportImage | null> {
   const key = fileUrl.startsWith(MEDIA_PREFIX) ? fileUrl.slice(MEDIA_PREFIX.length) : fileUrl;
   const file = await storage.read(key);
   if (!file) return null;
   const isPng = file.data.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
   const isJpg = file.data.subarray(0, 2).equals(Buffer.from([0xff, 0xd8]));
   if (!isPng && !isJpg) return null;
+  if (opts.shrink && file.data.length > PDF_PHOTO_SKIP_BELOW_BYTES) {
+    try {
+      const data = await sharp(file.data, { failOn: "none" })
+        .rotate()
+        .resize({ width: PDF_PHOTO_MAX_EDGE, height: PDF_PHOTO_MAX_EDGE, fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 72 })
+        .toBuffer();
+      return { data, format: "jpg" };
+    } catch {
+      // can't be shrunk: use it as it is
+    }
+  }
   return { data: file.data, format: isPng ? "png" : "jpg" };
+}
+
+// A list of stored photos, one at a time (loading them all at once held every full-size
+// copy in memory together), skipping any that are missing or unreadable.
+async function loadPhotos(urls: string[]): Promise<ReportImage[]> {
+  const out: ReportImage[] = [];
+  for (const url of urls) {
+    const img = await loadReportImage(url, { shrink: true });
+    if (img) out.push(img);
+  }
+  return out;
 }
 
 function toReportRecommendation(r: { title: string; description: string | null; priority: string; status: string; deadline: Date | null }) {
@@ -61,7 +93,7 @@ export async function buildReportData(inspectionId: string): Promise<ReportData>
   // item the issue belongs to AND in the findings list, and are one entry in the gallery.
   const findingPhotos = new Map<string, ReportImage[]>();
   for (const f of inspection.findings) {
-    findingPhotos.set(f.id, (await Promise.all(f.photos.map((p) => loadReportImage(p.fileUrl)))).filter((img): img is ReportImage => img !== null));
+    findingPhotos.set(f.id, await loadPhotos(f.photos.map((p) => p.fileUrl)));
   }
   const checklistByCategory = new Map<
     string,
@@ -78,7 +110,7 @@ export async function buildReportData(inspectionId: string): Promise<ReportData>
     const category = r.templateItem.section.category;
     const items = checklistByCategory.get(category) ?? [];
     // The pictures taken on this checklist item, shown under its answer.
-    const photoPaths = (await Promise.all(r.photos.map((p) => loadReportImage(p.fileUrl)))).filter((img): img is ReportImage => img !== null);
+    const photoPaths = await loadPhotos(r.photos.map((p) => p.fileUrl));
     let carriedState: "STILL_PRESENT" | "RESOLVED" | undefined;
     if (carriedItemIds.has(r.templateItemId)) {
       if (r.status === "NEEDS_ATTENTION") {
@@ -179,7 +211,7 @@ export async function buildReportData(inspectionId: string): Promise<ReportData>
     followUpDate: inspection.followUpsFrom[0]?.scheduledDate?.toISOString() ?? null,
     siteMapPanels,
     // Pictures of why an area couldn't be inspected go with that area below, not here.
-    propertyPhotos: (await Promise.all(inspection.photos.filter((p) => !p.sectionCategory).map((p) => loadReportImage(p.fileUrl)))).filter((img): img is ReportImage => img !== null),
+    propertyPhotos: await loadPhotos(inspection.photos.filter((p) => !p.sectionCategory).map((p) => p.fileUrl)),
     checklistSections,
     skippedSections: await Promise.all(
       inspection.sectionSkips.map(async (s) => ({
@@ -191,7 +223,7 @@ export async function buildReportData(inspectionId: string): Promise<ReportData>
         reason: s.reason,
         photoPaths:
           s.kind === "NOT_ACCESSIBLE"
-            ? (await Promise.all(inspection.photos.filter((p) => p.sectionCategory === s.category).map((p) => loadReportImage(p.fileUrl)))).filter((img): img is ReportImage => img !== null)
+            ? await loadPhotos(inspection.photos.filter((p) => p.sectionCategory === s.category).map((p) => p.fileUrl))
             : [],
       }))
     ),
