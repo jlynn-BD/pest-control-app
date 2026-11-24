@@ -24,6 +24,23 @@ const FAKE_DOMAINS = ["example.com", "example.org", "example.net", "pestapp.dev"
 const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 const RESEND_COOLDOWN_MS = 60 * 1000;
 
+// While an email is being prepared the inspection is "claimed" (so two triggers arriving
+// together send one), with this marker where the address will go. The real address is
+// written only once the email has actually been sent. If the server dies in between (it
+// did, out of memory, on a report with many photos), the marker is left behind: after
+// this long it no longer counts, and the next trigger sends the email.
+export const SENDING = "~sending";
+const STALE_CLAIM_MS = 10 * 60 * 1000;
+// A claim that means "sent" (or "being sent right now"), as opposed to nothing or a stale marker.
+export function claimHolds(at: Date | null | undefined, to: string | null | undefined): boolean {
+  if (!at) return false;
+  return to !== SENDING || Date.now() - at.getTime() < STALE_CLAIM_MS;
+}
+// What the report screen may show as "sent": only a finished send.
+export function sentAt(at: Date | null | undefined, to: string | null | undefined): Date | null {
+  return at && to !== SENDING ? at : null;
+}
+
 export function isRealCustomerEmail(email: string | null | undefined): email is string {
   if (!email) return false;
   const e = email.trim().toLowerCase();
@@ -108,13 +125,14 @@ async function deliver(req: Request, inspectionId: string, to: string, generated
 export async function maybeEmailReportToCustomer(req: Request, inspectionId: string, opts: { force?: boolean } = {}): Promise<CustomerEmailOutcome> {
   const inspection = await prisma.inspection.findFirst({
     where: { id: inspectionId, deletedAt: null },
-    select: { id: true, status: true, customerId: true, technicianId: true, reportEmailedAt: true, signatures: { select: { signerType: true } } },
+    select: { id: true, status: true, customerId: true, technicianId: true, reportEmailedAt: true, reportEmailedTo: true, signatures: { select: { signerType: true } } },
   });
   if (!inspection) return { sent: false, reason: "not_ready" };
   const signed = new Set(inspection.signatures.map((s) => s.signerType));
   if (inspection.status !== "COMPLETED" || !signed.has("CUSTOMER") || !signed.has("TECHNICIAN")) return { sent: false, reason: "not_ready" };
-  if (inspection.reportEmailedAt && !opts.force) return { sent: false, reason: "already_sent" };
-  if (inspection.reportEmailedAt && Date.now() - inspection.reportEmailedAt.getTime() < RESEND_COOLDOWN_MS) return { sent: false, reason: "too_soon" };
+  const held = claimHolds(inspection.reportEmailedAt, inspection.reportEmailedTo);
+  if (held && !opts.force) return { sent: false, reason: "already_sent" };
+  if (held && inspection.reportEmailedAt && Date.now() - inspection.reportEmailedAt.getTime() < RESEND_COOLDOWN_MS) return { sent: false, reason: "too_soon" };
 
   const to = await customerAddress(inspection.customerId);
   if (!to) return { sent: false, reason: "no_email" };
@@ -123,18 +141,20 @@ export async function maybeEmailReportToCustomer(req: Request, inspectionId: str
   // Claim it before the slow part (building the PDF) so two requests arriving
   // together send one email. Putting the old value back if sending fails lets
   // the next signature / sync / button press try again.
-  const previous = inspection.reportEmailedAt;
+  const previousAt = held ? inspection.reportEmailedAt : null;
+  const previousTo = held ? inspection.reportEmailedTo : null;
   const claimed = await prisma.inspection.updateMany({
-    where: { id: inspection.id, reportEmailedAt: previous },
-    data: { reportEmailedAt: new Date(), reportEmailedTo: to },
+    where: { id: inspection.id, reportEmailedAt: inspection.reportEmailedAt },
+    data: { reportEmailedAt: new Date(), reportEmailedTo: SENDING },
   });
   if (claimed.count === 0) return { sent: false, reason: "already_sent" };
 
   try {
     await deliver(req, inspection.id, to, inspection.technicianId);
+    await prisma.inspection.updateMany({ where: { id: inspection.id }, data: { reportEmailedAt: new Date(), reportEmailedTo: to } });
     return { sent: true, to };
   } catch (err) {
-    await prisma.inspection.updateMany({ where: { id: inspection.id }, data: { reportEmailedAt: previous } });
+    await prisma.inspection.updateMany({ where: { id: inspection.id }, data: { reportEmailedAt: previousAt, reportEmailedTo: previousTo } });
     // eslint-disable-next-line no-console
     console.error("Customer report email failed", inspection.id, err instanceof Error ? err.message : err);
     return { sent: false, reason: "failed" };
@@ -200,12 +220,12 @@ export async function maybeEmailReportToCompany(req: Request, inspectionId: stri
   const techSig = latest("TECHNICIAN");
   const custSig = latest("CUSTOMER");
   if (inspection.status !== "COMPLETED" || !techSig || !custSig) return { sent: false, reason: "not_ready" };
-  if (inspection.companyCopiedAt) return { sent: false, reason: "already_sent" };
+  if (claimHolds(inspection.companyCopiedAt, inspection.companyCopiedTo)) return { sent: false, reason: "already_sent" };
 
   // Claim first (same reason as the customer email), put it back on failure.
   const claimed = await prisma.inspection.updateMany({
-    where: { id: inspection.id, companyCopiedAt: null },
-    data: { companyCopiedAt: new Date(), companyCopiedTo: to.join(", ") },
+    where: { id: inspection.id, companyCopiedAt: inspection.companyCopiedAt },
+    data: { companyCopiedAt: new Date(), companyCopiedTo: SENDING },
   });
   if (claimed.count === 0) return { sent: false, reason: "already_sent" };
 
@@ -271,6 +291,7 @@ export async function maybeEmailReportToCompany(req: Request, inspectionId: stri
       summary: "sent the Blue Duck office its copy of the signed inspection report",
       links: { inspectionId: inspection.id, customerId: inspection.customerId, propertyId: inspection.propertyId },
     });
+    await prisma.inspection.updateMany({ where: { id: inspection.id }, data: { companyCopiedAt: new Date(), companyCopiedTo: to.join(", ") } });
     return { sent: true, to };
   } catch (err) {
     await prisma.inspection.updateMany({ where: { id: inspection.id }, data: { companyCopiedAt: null, companyCopiedTo: null } });

@@ -4,7 +4,7 @@ import { requireAuth } from "../../middleware/auth";
 import { prisma } from "../../lib/prisma";
 import { storage } from "../../lib/storage";
 import { generateReportFor } from "./generate";
-import { maybeEmailReportToCompany, maybeEmailReportToCustomer } from "../../lib/customerReport";
+import { maybeEmailReportToCompany, maybeEmailReportToCustomer, sentAt } from "../../lib/customerReport";
 import { maskEmail } from "../../lib/email";
 
 export const reportsRouter = Router();
@@ -63,8 +63,9 @@ reportsRouter.get(
   asyncHandler(async (req, res) => {
     const report = await prisma.report.findUnique({ where: { inspectionId: req.params.id } });
     if (!report) throw new HttpError(404, "No report generated for this inspection yet");
-    const sent = await prisma.inspection.findUnique({ where: { id: req.params.id }, select: { reportEmailedAt: true, reportEmailedTo: true, companyCopiedAt: true } });
-    res.json({ ...report, customerEmailedAt: sent?.reportEmailedAt ?? null, customerEmailedTo: sent?.reportEmailedTo ?? null, companyCopiedAt: sent?.companyCopiedAt ?? null });
+    const sent = await prisma.inspection.findUnique({ where: { id: req.params.id }, select: { reportEmailedAt: true, reportEmailedTo: true, companyCopiedAt: true, companyCopiedTo: true } });
+    const customerDone = sentAt(sent?.reportEmailedAt, sent?.reportEmailedTo);
+    res.json({ ...report, customerEmailedAt: customerDone, customerEmailedTo: customerDone ? sent?.reportEmailedTo ?? null : null, companyCopiedAt: sentAt(sent?.companyCopiedAt, sent?.companyCopiedTo) });
   })
 );
 
